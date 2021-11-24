@@ -1,0 +1,18 @@
+type float4 = vec4<f32>;
+struct VertexInput {
+    [[location(0)]] position: float4;
+    [[location(1)]] color: float4;
+};
+
+struct VertexOutput {
+    [[builtin(position)]] position: float4;
+    [[location(0)]] color: float4;
+};
+
+[[stage(vertex)]]
+fn vertex_main(vert: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.color = vert.color;
+    out.position = vert.position;
+    return out;
+};

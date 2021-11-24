@@ -81,6 +81,7 @@ pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root:
 
     const cfg = builder.addOptions();
     cfg.addOption(Platform, "platform", build_options.platform);
+    cfg.addOption(GfxBackend, "gfx_backend", build_options.gfx_backend);
     cfg.addOption(bool, "log_enabled", build_options.opt_level != .release);
     app_lib_exe.step.dependOn(&cfg.step);
 

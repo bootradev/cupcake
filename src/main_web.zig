@@ -1,11 +1,15 @@
 const app = @import("app");
 const std = @import("std");
 
-pub export fn mainInit() void {
+pub export fn init() void {
     app.init() catch |err| handleError(err);
 }
 
-fn handleError(err: anyerror) void {
+pub export fn update() void {
+    app.update() catch |err| handleError(err);
+}
+
+fn handleError(err: anyerror) noreturn {
     std.log.err("{}", .{err});
-    unreachable;
+    @panic("error!");
 }

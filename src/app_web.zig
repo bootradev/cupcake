@@ -17,14 +17,13 @@ pub fn log(
     const prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     const msg = level_txt ++ prefix ++ format;
 
-    comptime var buf: [2048]u8 = undefined;
-    const msg_buf = &[_]u8{} ++ comptime std.fmt.bufPrint(buf[0..], msg, args) catch unreachable;
+    var buf: [2048]u8 = undefined;
+    const msg_buf = std.fmt.bufPrint(buf[0..], msg, args) catch return;
 
-    js.logConsole(msg_buf, msg_buf.len);
+    js.logConsole(msg_buf.ptr, msg_buf.len);
 }
 
 pub const Window = struct {
-    name: []const u8,
     width: u32,
     height: u32,
 
@@ -32,7 +31,6 @@ pub const Window = struct {
         js.setWindowTitle(name.ptr, name.len);
         js.createCanvas(width, height);
         window.* = .{
-            .name = name,
             .width = width,
             .height = height,
         };

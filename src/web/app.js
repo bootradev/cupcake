@@ -2,8 +2,7 @@ const app = {
     canvas: undefined,
 
     logConsole(msgPtr, msgLen) {
-        const msgString = utils.getString(msgPtr, msgLen);
-        console.log(msgString);
+        console.log(utils.getString(msgPtr, msgLen));
     },
     
     setWindowTitle(titlePtr, titleLen) {

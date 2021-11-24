@@ -4,6 +4,7 @@ const main = {
     run(wasmPath) {
         const imports = {
             app,
+            webgpu,
         };
 
         fetch(wasmPath)
@@ -11,8 +12,14 @@ const main = {
             .then(arrayBuffer => WebAssembly.instantiate(arrayBuffer, imports))
             .then(results => {
                 main.wasm = results.instance.exports;
-                main.wasm.mainInit();
+                main.wasm.init();
+                window.requestAnimationFrame(main.update);
             })
-            .catch(() => console.log("Failed to initialize wasm!"));
+            .catch((err) => console.log(err));
+    },
+
+    update(timestamp) {
+        main.wasm.update();
+        window.requestAnimationFrame(main.update);
     },
 };
