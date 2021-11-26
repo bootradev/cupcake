@@ -1,11 +1,12 @@
 const bt = @import("bootra");
+const cfg = @import("cfg");
 const shaders = @import("shaders.zig");
-const std = @import("std");
 
 const Example = struct {
+    status: Status,
     window: bt.Window,
     device: bt.GfxDevice(onDeviceReady, onDeviceError),
-    status: Status,
+    render_pipeline: bt.RenderPipeline,
 };
 
 const Status = union(enum) {
@@ -40,6 +41,44 @@ fn onDeviceReady() void {
     var frag_shader = try example.device.initShader(shaders.tri_frag);
     defer example.device.deinitShader(&frag_shader);
     example.device.checkShaderCompile(&frag_shader);
+
+    const pipeline_layout = try example.device.initPipelineLayout(&[_]bt.BindGroupLayout{}, .{});
+    example.render_pipeline = try example.device.initRenderPipeline(
+        &pipeline_layout,
+        &vert_shader,
+        &frag_shader,
+        .{
+            .vertex = .{
+                .entry_point = "vertex_main",
+                .buffers = &[_]bt.VertexBufferLayout{
+                    .{
+                        .array_stride = 2 * 4 * 4,
+                        .step_mode = .vertex,
+                        .attributes = &[_]bt.VertexAttribute{
+                            .{
+                                .format = .float32x4,
+                                .offset = 0,
+                                .shader_location = 0,
+                            },
+                            .{
+                                .format = .float32x4,
+                                .offset = 4 * 4,
+                                .shader_location = 1,
+                            },
+                        },
+                    },
+                },
+            },
+            .fragment = .{
+                .entry_point = "fragment_main",
+                .targets = &[_]bt.ColorTargetState{
+                    .{
+                        .format = bt.swapchain_format,
+                    },
+                },
+            },
+        },
+    );
 
     example.status = .ok;
 }
