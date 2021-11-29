@@ -3,17 +3,39 @@ const RequestDeviceFailed = 1;
 const CreateShaderFailed = 2;
 
 const webgpu = {
-    adapter: undefined,
-    device: undefined,
+    contexts: [null],
+    adapters: [null],
+    devices: [null],
     shaders: [null],
     pipelineLayouts: [null],
     renderPipelines: [null],
 
-    requestAdapter() {
-        navigator.gpu.requestAdapter()
+    getContext(canvasId) {
+        webgpu.contexts.push(app.canvases[canvasId].getContext("webgpu"));
+        return webgpu.contexts.length - 1;
+    },
+
+    configure(deviceId, contextId, formatPtr, formatLen, usage, width, height) {
+        webgpu.contexts[contextId].configure({
+            device: webgpu.devices[deviceId],
+            format: utils.getString(formatPtr, formatLen),
+            usage: usage,
+            size: [width, height]
+        });
+    },
+
+    requestAdapter(powerPreferencePtr, powerPreferenceLen, forceFallbackAdapter, cb) {
+        const desc = {
+            powerPreference: utils.getString(powerPreferencePtr, powerPreferenceLen),
+            forceFallbackAdapter: forceFallbackAdapter,
+        };
+        if (desc.powerPreference === "undefined") {
+            desc.powerPreference = undefined;
+        }
+        navigator.gpu.requestAdapter(desc)
             .then(adapter => {
-                webgpu.adapter = adapter;
-                main.wasm.requestAdapterComplete();
+                webgpu.adapters.push(adapter);
+                main.wasm.requestAdapterComplete(webgpu.adapters.length - 1, cb);
             })
             .catch((err) => {
                 console.log(err);
@@ -21,11 +43,12 @@ const webgpu = {
             });
     },
 
-    requestDevice() {
-        webgpu.adapter.requestDevice()
+    requestDevice(adapterId, jsonPtr, jsonLen, cb) {
+        const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
+        webgpu.adapters[adapterId].requestDevice(desc)
             .then(device => {
-                webgpu.device = device;
-                main.wasm.requestDeviceComplete();
+                webgpu.devices.push(device);
+                main.wasm.requestDeviceComplete(webgpu.devices.length - 1, cb);
             })
             .catch((err) => {
                 console.log(err);
@@ -33,8 +56,8 @@ const webgpu = {
             });
     },
 
-    createShader(codePtr, codeLen) {
-        webgpu.shaders.push(webgpu.device.createShaderModule({
+    createShader(deviceId, codePtr, codeLen) {
+        webgpu.shaders.push(webgpu.devices[deviceId].createShaderModule({
             code: utils.getString(codePtr, codeLen)
         }));
         return webgpu.shaders.length - 1;
@@ -62,14 +85,14 @@ const webgpu = {
             });
     },
 
-    createPipelineLayout(bindGroupLayoutIdsPtr, bindGroupLayoutIdsLen) {
-        webgpu.pipelineLayouts.push(webgpu.device.createPipelineLayout({
+    createPipelineLayout(deviceId, bindGroupLayoutIdsPtr, bindGroupLayoutIdsLen) {
+        webgpu.pipelineLayouts.push(webgpu.devices[deviceId].createPipelineLayout({
             bindGroupLayouts: []
         }));
         return webgpu.pipelineLayouts.length - 1;
     },
 
-    createRenderPipeline(pipelineLayoutId, vertShaderId, fragShaderId, jsonPtr, jsonLen) {
+    createRenderPipeline(deviceId, pipelineLayoutId, vertShaderId, fragShaderId, jsonPtr, jsonLen) {
         const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
         desc.layout = webgpu.pipelineLayouts[pipelineLayoutId];
         desc.vertex.module = webgpu.shaders[vertShaderId];
@@ -80,7 +103,7 @@ const webgpu = {
         if (desc.primitive.stripIndexFormat === null) {
             desc.primitive.stripIndexFormat = undefined;
         }
-        webgpu.renderPipelines.push(webgpu.device.createRenderPipeline(desc));
+        webgpu.renderPipelines.push(webgpu.devices[deviceId].createRenderPipeline(desc));
         return webgpu.renderPipelines.length - 1;
     },
 };

@@ -1,7 +1,7 @@
+const app = @import("app.zig");
 const gfx = @import("gfx.zig");
+const math = @import("math.zig");
 const std = @import("std");
-
-pub const swapchain_format = gfx.TextureFormat.bgra8unorm;
 
 const js = struct {
     const GPUSize32 = u32;
@@ -9,11 +9,17 @@ const js = struct {
     const GPUIndex32 = u32;
     const GPUSampleMask = u32;
     const GPUColorWriteFlags = u32;
+    const GPUTextureUsageFlags = u32;
     const GPUStencilValue = u32;
     const GPUDepthBias = i32;
     const GPUFlagsConstant = u32;
+    const GPUIntegerCoordinate = u32;
 
     const ObjectId = i32;
+    const CanvasId = ObjectId;
+    const ContextId = ObjectId;
+    const AdapterId = ObjectId;
+    const DeviceId = ObjectId;
     const ShaderId = ObjectId;
     const BindGroupLayoutId = ObjectId;
     const PipelineLayoutId = ObjectId;
@@ -27,16 +33,50 @@ const js = struct {
         ALL = 0xF,
     };
 
-    extern "webgpu" fn requestAdapter() void;
-    extern "webgpu" fn requestDevice() void;
-    extern "webgpu" fn createShader(code_ptr: [*]const u8, code_len: usize) ShaderId;
+    pub const TextureUsage = enum(GPUFlagsConstant) {
+        COPY_SRC = 0x01,
+        COPY_DST = 0x02,
+        TEXTURE_BINDING = 0x04,
+        STORAGE_BINDING = 0x08,
+        RENDER_ATTACHMENT = 0x10,
+    };
+
+    extern "webgpu" fn getContext(canvas_id: ObjectId) ContextId;
+    extern "webgpu" fn configure(
+        device_id: DeviceId,
+        context_id: ContextId,
+        format_ptr: [*]const u8,
+        format_len: usize,
+        usage: GPUTextureUsageFlags,
+        width: GPUIntegerCoordinate,
+        height: GPUIntegerCoordinate,
+    ) void;
+    extern "webgpu" fn requestAdapter(
+        power_preference_ptr: [*]const u8,
+        power_preference_len: usize,
+        force_fallback_adapter: bool,
+        cb: *c_void,
+    ) void;
+    extern "webgpu" fn requestDevice(
+        adapter_id: AdapterId,
+        json_ptr: [*]const u8,
+        json_len: usize,
+        cb: *c_void,
+    ) void;
+    extern "webgpu" fn createShader(
+        device_id: DeviceId,
+        code_ptr: [*]const u8,
+        code_len: usize,
+    ) ShaderId;
     extern "webgpu" fn destroyShader(shader_id: ShaderId) void;
     extern "webgpu" fn checkShaderCompile(shader_id: ShaderId) void;
     extern "webgpu" fn createPipelineLayout(
+        device_id: DeviceId,
         bind_group_layout_ids_ptr: [*]const u8,
         bind_group_layout_ids_len: usize,
     ) PipelineLayoutId;
     extern "webgpu" fn createRenderPipeline(
+        deviceId: DeviceId,
         pipeline_layout_id: PipelineLayoutId,
         vert_shader_id: ShaderId,
         frag_shader_id: ShaderId,
@@ -45,63 +85,90 @@ const js = struct {
     ) RenderPipelineId;
 };
 
-pub fn GfxDevice(
-    comptime device_ready_cb: gfx.DeviceReadyCb,
-    comptime device_error_cb: gfx.DeviceErrorCb,
+pub fn Api(
+    comptime adapter_ready_cb: fn () void,
+    comptime device_ready_cb: fn () void,
+    comptime error_cb: fn (err: anyerror) void,
 ) type {
-    return struct {
-        const Self = @This();
+    const Surface = packed struct {
+        id: js.CanvasId,
 
-        const device_ready_cb = device_ready_cb;
-        const device_error_cb = device_error_cb;
+        pub fn getPreferredFormat() gfx.TextureFormat {
+            return .bgra8unorm;
+        }
+    };
 
-        pub fn init(_: *Self) !void {
-            js.requestAdapter();
+    const Swapchain = packed struct {
+        id: js.ContextId,
+    };
+
+    const Shader = packed struct {
+        id: js.ShaderId,
+    };
+
+    const BindGroupLayout = packed struct {
+        id: js.BindGroupLayoutId,
+    };
+
+    const PipelineLayout = packed struct {
+        id: js.PipelineLayoutId,
+    };
+
+    const RenderPipeline = packed struct {
+        id: js.RenderPipelineId,
+    };
+
+    const Device = struct {
+        const Device = @This();
+
+        id: js.DeviceId,
+
+        pub fn initSwapchain(
+            device: *Device,
+            surface: *Surface,
+            size: math.V2u32,
+            comptime desc: gfx.SwapchainDesc,
+        ) !Swapchain {
+            const swapchain = Swapchain{ .id = js.getContext(surface.id) };
+            const texture_format = comptime getTextureFormatString(desc.format);
+            const texture_usage = comptime getTextureUsageFlags(desc.usage);
+            js.configure(
+                device.id,
+                swapchain.id,
+                texture_format.ptr,
+                texture_format.len,
+                texture_usage,
+                size.x,
+                size.y,
+            );
+            return swapchain;
         }
 
-        export fn requestAdapterComplete() void {
-            js.requestDevice();
+        pub fn initShader(device: *Device, code: []const u8) !Shader {
+            return Shader{ .id = js.createShader(device.id, code.ptr, code.len) };
         }
 
-        export fn requestDeviceComplete() void {
-            device_ready_cb();
-        }
-
-        export fn runtimeError(error_code: u32) void {
-            const err = switch (error_code) {
-                0 => error.RequestAdapterFailed,
-                1 => error.RequestDeviceFailed,
-                2 => error.CreateShaderFailed,
-                else => error.UnknownError,
-            };
-            device_error_cb(err);
-        }
-
-        pub fn initShader(_: *Self, code: []const u8) !Shader {
-            return Shader{ .id = js.createShader(code.ptr, code.len) };
-        }
-
-        pub fn deinitShader(_: *Self, shader: *Shader) void {
+        pub fn deinitShader(_: *Device, shader: *Shader) void {
             js.destroyShader(shader.id);
         }
 
-        pub fn checkShaderCompile(_: *Self, shader: *Shader) void {
+        pub fn checkShaderCompile(_: *Device, shader: *Shader) void {
             js.checkShaderCompile(shader.id);
         }
 
         pub fn initPipelineLayout(
-            _: *Self,
+            device: *Device,
             bind_group_layouts: []const BindGroupLayout,
             comptime _: gfx.PipelineLayoutDesc,
         ) !PipelineLayout {
             const bytes = std.mem.sliceAsBytes(bind_group_layouts);
             return PipelineLayout{
-                .id = js.createPipelineLayout(bytes.ptr, bytes.len),
+                .id = js.createPipelineLayout(device.id, bytes.ptr, bytes.len),
             };
         }
 
         pub fn initRenderPipeline(
-            _: *Self,
+            device: *Device,
             pipeline_layout: *const PipelineLayout,
             vert_shader: *const Shader,
             frag_shader: *const Shader,
@@ -110,6 +177,7 @@ pub fn GfxDevice(
             const json = comptime stringifyRenderPipelineDescComptime(desc);
             return RenderPipeline{
                 .id = js.createRenderPipeline(
+                    device.id,
                     pipeline_layout.id,
                     vert_shader.id,
                     frag_shader.id,
@@ -119,23 +187,132 @@ pub fn GfxDevice(
             };
         }
     };
+
+    const Adapter = struct {
+        const Adapter = @This();
+
+        id: js.AdapterId,
+
+        pub fn requestDevice(
+            adapter: *Adapter,
+            comptime desc: gfx.DeviceDesc,
+            device: *Device,
+        ) !void {
+            const json = comptime stringifyDeviceDescComptime(desc);
+            js.requestDevice(adapter.id, json.ptr, json.len, device);
+        }
+
+        export fn requestDeviceComplete(device_id: js.DeviceId, device_c: *c_void) void {
+            var device = @ptrCast(*Device, @alignCast(@alignOf(*Device), device_c));
+            device.id = device_id;
+            device_ready_cb();
+        }
+    };
+
+    const Instance = struct {
+        const Instance = @This();
+
+        pub fn init(_: *Instance) !void {}
+
+        pub fn initSurface(
+            _: *Instance,
+            window: *app.Window,
+            comptime _: gfx.SurfaceDesc,
+        ) !Surface {
+            return Surface{ .id = window.id };
+        }
+
+        pub fn requestAdapter(
+            _: *Instance,
+            _: *const Surface,
+            comptime desc: gfx.AdapterDesc,
+            adapter: *Adapter,
+        ) !void {
+            const power_preference = comptime getPowerPreferenceString(desc.power_preference);
+            js.requestAdapter(
+                power_preference.ptr,
+                power_preference.len,
+                desc.force_fallback_adapter,
+                adapter,
+            );
+        }
+
+        export fn requestAdapterComplete(adapter_id: js.AdapterId, adapter_c: *c_void) void {
+            var adapter = @ptrCast(*Adapter, @alignCast(@alignOf(*Adapter), adapter_c));
+            adapter.id = adapter_id;
+            adapter_ready_cb();
+        }
+    };
+
+    return struct {
+        pub usingnamespace gfx;
+
+        pub const Instance = Instance;
+        pub const Adapter = Adapter;
+        pub const Device = Device;
+        pub const Surface = Surface;
+        pub const Swapchain = Swapchain;
+        pub const Shader = Shader;
+        pub const BindGroupLayout = BindGroupLayout;
+        pub const PipelineLayout = PipelineLayout;
+        pub const RenderPipeline = RenderPipeline;
+
+        export fn runtimeError(error_code: u32) void {
+            const err = switch (error_code) {
+                0 => error.RequestAdapterFailed,
+                1 => error.RequestDeviceFailed,
+                2 => error.CreateShaderFailed,
+                else => error.UnknownError,
+            };
+
+            error_cb(err);
+        }
+    };
 }
 
-pub const Shader = packed struct {
-    id: js.ShaderId,
-};
+fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
+    const JsonLimits = packed struct {
+        maxTextureDimension1D: u32,
+        maxTextureDimension2D: u32,
+        maxTextureDimension3D: u32,
+        maxTextureArrayLayers: u32,
+        maxBindGroups: u32,
+        maxDynamicUniformBuffersPerPipelineLayout: u32,
+        maxDynamicStorageBuffersPerPipelineLayout: u32,
+        maxSampledTexturesPerShaderStage: u32,
+        maxSamplersPerShaderStage: u32,
+        maxStorageBuffersPerShaderStage: u32,
+        maxStorageTexturesPerShaderStage: u32,
+        maxUniformBuffersPerShaderStage: u32,
+        maxUniformBufferBindingSize: u64,
+        maxStorageBufferBindingSize: u64,
+        minUniformBufferOffsetAlignment: u32,
+        minStorageBufferOffsetAlignment: u32,
+        maxVertexBuffers: u32,
+        maxVertexAttributes: u32,
+        maxVertexBufferArrayStride: u32,
+        maxInterStageShaderComponents: u32,
+        maxComputeWorkgroupStorageSize: u32,
+        maxComputeInvocationsPerWorkgroup: u32,
+        maxComputeWorkgroupSizeX: u32,
+        maxComputeWorkgroupSizeY: u32,
+        maxComputeWorkgroupSizeZ: u32,
+        maxComputeWorkgroupsPerDimension: u32,
+    };
+    const JsonDesc = struct {
+        requiredFeatures: []const []const u8,
+        requiredLimits: JsonLimits,
+    };
 
-pub const BindGroupLayout = packed struct {
-    id: js.BindGroupLayoutId,
-};
+    comptime var json: JsonDesc = undefined;
+    json.requiredFeatures = &[_][]const u8{};
+    inline for (desc.required_features) |required_feature| {
+        json.requiredFeatures = json.requiredFeatures ++ required_feature;
+    }
+    json.requiredLimits = @bitCast(JsonLimits, desc.required_limits);
 
-pub const PipelineLayout = packed struct {
-    id: js.PipelineLayoutId,
-};
-
-pub const RenderPipeline = packed struct {
-    id: js.RenderPipelineId,
-};
+    return comptime try stringifyComptime(json);
+}
 
 fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []const u8 {
     const JsonVertAttr = struct {
@@ -369,6 +546,10 @@ fn stringifyComptime(value: anytype) ![]const u8 {
     return &[_]u8{} ++ json[0..buffer_stream.write_index];
 }
 
+fn getPowerPreferenceString(comptime power_preference: gfx.PowerPreference) []const u8 {
+    return comptime replaceUnderscoreWithDash(@tagName(power_preference));
+}
+
 fn getStepModeString(comptime step_mode: gfx.VertexStepMode) []const u8 {
     return @tagName(step_mode);
 }
@@ -423,6 +604,16 @@ fn getBlendOperationString(comptime blend_operation: gfx.BlendOperation) []const
 
 fn getBlendFactorString(comptime blend_factor: gfx.BlendFactor) []const u8 {
     return comptime replaceUnderscoreWithDash(@tagName(blend_factor));
+}
+
+fn getTextureUsageFlags(comptime texture_usage: gfx.TextureUsage) js.GPUTextureUsageFlags {
+    comptime var flags: js.GPUTextureUsageFlags = 0;
+    if (texture_usage.copy_src) flags |= @enumToInt(js.TextureUsage.COPY_SRC);
+    if (texture_usage.copy_dst) flags |= @enumToInt(js.TextureUsage.COPY_DST);
+    if (texture_usage.texture_binding) flags |= @enumToInt(js.TextureUsage.TEXTURE_BINDING);
+    if (texture_usage.storage_binding) flags |= @enumToInt(js.TextureUsage.STORAGE_BINDING);
+    if (texture_usage.render_attachment) flags |= @enumToInt(js.TextureUsage.RENDER_ATTACHMENT);
+    return flags;
 }
 
 fn getColorWriteFlags(comptime color_write_mask: gfx.ColorWriteMask) js.GPUColorWriteFlags {

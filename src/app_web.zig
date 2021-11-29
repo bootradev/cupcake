@@ -1,10 +1,13 @@
 const cfg = @import("cfg");
+const math = @import("math.zig");
 const std = @import("std");
 
 const js = struct {
+    const CanvasId = i32;
+
     extern "app" fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
     extern "app" fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
-    extern "app" fn createCanvas(width: u32, height: u32) void;
+    extern "app" fn createCanvas(width: u32, height: u32) CanvasId;
 };
 
 pub fn log(
@@ -24,15 +27,14 @@ pub fn log(
 }
 
 pub const Window = struct {
-    width: u32,
-    height: u32,
+    size: math.V2u32,
+    id: js.CanvasId,
 
-    pub fn init(window: *Window, name: []const u8, width: u32, height: u32) !void {
+    pub fn init(window: *Window, name: []const u8, size: math.V2u32) !void {
         js.setWindowTitle(name.ptr, name.len);
-        js.createCanvas(width, height);
         window.* = .{
-            .width = width,
-            .height = height,
+            .id = js.createCanvas(size.x, size.y),
+            .size = size,
         };
     }
 };

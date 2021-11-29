@@ -5,8 +5,81 @@ pub usingnamespace switch (cfg.gfx_backend) {
     .webgpu => @import("gfx_webgpu.zig"),
 };
 
-pub const DeviceReadyCb = fn () void;
-pub const DeviceErrorCb = fn (err: anyerror) void;
+pub const SurfaceDesc = struct {
+    label: []const u8 = "",
+};
+
+pub const PowerPreference = enum {
+    @"undefined",
+    low_power,
+    high_performance,
+};
+
+pub const AdapterDesc = struct {
+    power_preference: PowerPreference = .@"undefined",
+    force_fallback_adapter: bool = false,
+};
+
+pub const FeatureName = enum {
+    @"undefined",
+    depth_clip_control,
+    depth24unorm_stencil8,
+    depth32float_stencil8,
+    timestamp_query,
+    pipeline_statistics_query,
+    texture_compression_bc,
+    texture_compression_etc2,
+    texture_compression_astc,
+    indirect_first_instance,
+};
+
+pub const Limits = packed struct {
+    max_texture_dimension_1d: u32 = 8192,
+    max_texture_dimension_2d: u32 = 8192,
+    max_texture_dimension_3d: u32 = 2048,
+    max_texture_array_layers: u32 = 256,
+    max_bind_groups: u32 = 4,
+    max_dynamic_uniform_buffers_per_pipeline_layout: u32 = 8,
+    max_dynamic_storage_buffers_per_pipeline_layout: u32 = 4,
+    max_sampled_textures_per_shader_stage: u32 = 16,
+    max_samplers_per_shader_stage: u32 = 16,
+    max_storage_buffers_per_shader_stage: u32 = 8,
+    max_storage_textures_per_shader_stage: u32 = 4,
+    max_uniform_buffers_per_shader_stage: u32 = 12,
+    max_uniform_buffer_binding_size: u64 = 16384,
+    max_storage_buffer_binding_size: u64 = 134217728,
+    min_uniform_buffer_offset_alignment: u32 = 256,
+    min_storage_buffer_offset_alignment: u32 = 256,
+    max_vertex_buffers: u32 = 8,
+    max_vertex_attributes: u32 = 16,
+    max_vertex_buffer_array_stride: u32 = 2048,
+    max_inter_stage_shader_components: u32 = 60,
+    max_compute_workgroup_storage_size: u32 = 16352,
+    max_compute_invocations_per_workgroup: u32 = 256,
+    max_compute_workgroup_size_x: u32 = 256,
+    max_compute_workgroup_size_y: u32 = 256,
+    max_compute_workgroup_size_z: u32 = 64,
+    max_compute_workgroups_per_dimension: u32 = 65535,
+};
+
+pub const DeviceDesc = struct {
+    label: []const u8 = "",
+    required_features: []const FeatureName = &[_]FeatureName{},
+    required_limits: Limits = .{},
+};
+
+pub const PresentMode = enum {
+    immediate,
+    mailbox,
+    fifo,
+};
+
+pub const SwapchainDesc = struct {
+    label: []const u8 = "",
+    usage: TextureUsage = .{ .render_attachment = true },
+    format: TextureFormat,
+    present_mode: PresentMode = .fifo,
+};
 
 pub const PipelineLayoutDesc = struct {
     label: []const u8 = "",
@@ -216,6 +289,14 @@ pub const VertexFormat = enum {
     sint32x2,
     sint32x3,
     sint32x4,
+};
+
+pub const TextureUsage = packed struct {
+    copy_src: bool = false,
+    copy_dst: bool = false,
+    texture_binding: bool = false,
+    storage_binding: bool = false,
+    render_attachment: bool = false,
 };
 
 pub const TextureFormat = enum {

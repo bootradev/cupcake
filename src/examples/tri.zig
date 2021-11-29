@@ -1,12 +1,19 @@
+const app = bt.app;
 const bt = @import("bootra");
 const cfg = @import("cfg");
+const gfx = bt.gfx.Api(onAdapterReady, onDeviceReady, onGfxError);
+const math = bt.math;
 const shaders = @import("shaders.zig");
 
 const Example = struct {
     status: Status,
-    window: bt.Window,
-    device: bt.GfxDevice(onDeviceReady, onDeviceError),
-    render_pipeline: bt.RenderPipeline,
+    window: app.Window,
+    instance: gfx.Instance,
+    adapter: gfx.Adapter,
+    device: gfx.Device,
+    surface: gfx.Surface,
+    swapchain: gfx.Swapchain,
+    render_pipeline: gfx.RenderPipeline,
 };
 
 const Status = union(enum) {
@@ -19,21 +26,30 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.status = .pending;
-    try example.window.init("tri", 800, 600);
-    try example.device.init();
+    try example.window.init("tri", math.V2u32.init(800, 600));
+    try example.instance.init();
+    example.surface = try example.instance.initSurface(&example.window, .{});
+    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);
 }
 
-pub fn update() !void {
-    // todo: see if this is a compiler error - shouldn't need to copy status here
-    const status = example.status;
-    switch (status) {
-        .pending => return,
-        .fail => |err| return err,
-        .ok => {},
-    }
+fn onAdapterReady() void {
+    try example.adapter.requestDevice(
+        .{},
+        &example.device,
+    );
 }
 
 fn onDeviceReady() void {
+    const swapchain_format = comptime gfx.Surface.getPreferredFormat();
+
+    example.swapchain = try example.device.initSwapchain(
+        &example.surface,
+        example.window.size,
+        .{
+            .format = swapchain_format,
+        },
+    );
+
     var vert_shader = try example.device.initShader(shaders.tri_vert);
     defer example.device.deinitShader(&vert_shader);
     example.device.checkShaderCompile(&vert_shader);
@@ -42,7 +58,7 @@ fn onDeviceReady() void {
     defer example.device.deinitShader(&frag_shader);
     example.device.checkShaderCompile(&frag_shader);
 
-    const pipeline_layout = try example.device.initPipelineLayout(&[_]bt.BindGroupLayout{}, .{});
+    const pipeline_layout = try example.device.initPipelineLayout(&[_]gfx.BindGroupLayout{}, .{});
     example.render_pipeline = try example.device.initRenderPipeline(
         &pipeline_layout,
         &vert_shader,
@@ -50,11 +66,11 @@ fn onDeviceReady() void {
         .{
             .vertex = .{
                 .entry_point = "vertex_main",
-                .buffers = &[_]bt.VertexBufferLayout{
+                .buffers = &[_]gfx.VertexBufferLayout{
                     .{
                         .array_stride = 2 * 4 * 4,
                         .step_mode = .vertex,
-                        .attributes = &[_]bt.VertexAttribute{
+                        .attributes = &[_]gfx.VertexAttribute{
                             .{
                                 .format = .float32x4,
                                 .offset = 0,
@@ -71,9 +87,9 @@ fn onDeviceReady() void {
             },
             .fragment = .{
                 .entry_point = "fragment_main",
-                .targets = &[_]bt.ColorTargetState{
+                .targets = &[_]gfx.ColorTargetState{
                     .{
-                        .format = bt.swapchain_format,
+                        .format = swapchain_format,
                     },
                 },
             },
@@ -83,6 +99,16 @@ fn onDeviceReady() void {
     example.status = .ok;
 }
 
-fn onDeviceError(err: anyerror) void {
+fn onGfxError(err: anyerror) void {
     example.status = Status{ .fail = err };
+}
+
+pub fn update() !void {
+    // todo: see if this is a compiler error - shouldn't need to copy status here
+    const status = example.status;
+    switch (status) {
+        .pending => return,
+        .fail => |err| return err,
+        .ok => {},
+    }
 }
