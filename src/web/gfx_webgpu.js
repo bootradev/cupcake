@@ -1,6 +1,7 @@
 const RequestAdapterFailed = 0;
 const RequestDeviceFailed = 1;
 const CreateShaderFailed = 2;
+const InvalidId = -1;
 
 const webgpu = {
     contexts: [null],
@@ -24,15 +25,8 @@ const webgpu = {
         });
     },
 
-    requestAdapter(powerPreferencePtr, powerPreferenceLen, forceFallbackAdapter, cb) {
-        const desc = {
-            powerPreference: utils.getString(powerPreferencePtr, powerPreferenceLen),
-            forceFallbackAdapter: forceFallbackAdapter,
-        };
-        if (desc.powerPreference === "undefined") {
-            desc.powerPreference = undefined;
-        }
-        navigator.gpu.requestAdapter(desc)
+    requestAdapter(jsonPtr, jsonLen, cb) {
+        navigator.gpu.requestAdapter(JSON.parse(utils.getString(jsonPtr, jsonLen)))
             .then(adapter => {
                 webgpu.adapters.push(adapter);
                 main.wasm.requestAdapterComplete(webgpu.adapters.length - 1, cb);
@@ -44,8 +38,7 @@ const webgpu = {
     },
 
     requestDevice(adapterId, jsonPtr, jsonLen, cb) {
-        const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
-        webgpu.adapters[adapterId].requestDevice(desc)
+        webgpu.adapters[adapterId].requestDevice(JSON.parse(utils.getString(jsonPtr, jsonLen)))
             .then(device => {
                 webgpu.devices.push(device);
                 main.wasm.requestDeviceComplete(webgpu.devices.length - 1, cb);
@@ -96,12 +89,8 @@ const webgpu = {
         const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
         desc.layout = webgpu.pipelineLayouts[pipelineLayoutId];
         desc.vertex.module = webgpu.shaders[vertShaderId];
-        desc.fragment.module = webgpu.shaders[fragShaderId];
-        if (desc.depthStencil === null) {
-            desc.depthStencil = undefined;
-        }
-        if (desc.primitive.stripIndexFormat === null) {
-            desc.primitive.stripIndexFormat = undefined;
+        if (fragShaderId != InvalidId) {
+            desc.fragment.module = webgpu.shaders[fragShaderId];
         }
         webgpu.renderPipelines.push(webgpu.devices[deviceId].createRenderPipeline(desc));
         return webgpu.renderPipelines.length - 1;

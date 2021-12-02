@@ -33,7 +33,7 @@ pub const FeatureName = enum {
     indirect_first_instance,
 };
 
-pub const Limits = packed struct {
+pub const Limits = struct {
     max_texture_dimension_1d: u32 = 8192,
     max_texture_dimension_2d: u32 = 8192,
     max_texture_dimension_3d: u32 = 2048,
@@ -103,7 +103,7 @@ pub const VertexAttribute = struct {
 
 pub const VertexBufferLayout = struct {
     array_stride: u64,
-    step_mode: VertexStepMode,
+    step_mode: VertexStepMode = .vertex,
     attributes: []const VertexAttribute,
 };
 
@@ -142,7 +142,7 @@ pub const PrimitiveState = struct {
     topology: PrimitiveTopology = .triangle_list,
     strip_index_format: IndexFormat = .@"undefined",
     front_face: FrontFace = .ccw,
-    cull_mode: CullMode = .back,
+    cull_mode: CullMode = .none,
 };
 
 pub const CompareFunction = enum {
@@ -169,23 +169,23 @@ pub const StencilOperation = enum {
 };
 
 pub const StencilFaceState = struct {
-    compare: CompareFunction,
-    fail_op: StencilOperation,
-    depth_fail_op: StencilOperation,
-    pass_op: StencilOperation,
+    compare: CompareFunction = .always,
+    fail_op: StencilOperation = .keep,
+    depth_fail_op: StencilOperation = .keep,
+    pass_op: StencilOperation = .keep,
 };
 
 pub const DepthStencilState = struct {
     format: TextureFormat,
-    depth_write_enabled: bool,
-    depth_compare: CompareFunction,
-    stencil_front: StencilFaceState,
-    stencil_back: StencilFaceState,
-    stencil_read_mask: u32,
-    stencil_write_mask: u32,
-    depth_bias: i32,
-    depth_bias_slope_scale: f32,
-    depth_bias_clamp: f32,
+    depth_write_enabled: bool = false,
+    depth_compare: CompareFunction = .always,
+    stencil_front: StencilFaceState = .{},
+    stencil_back: StencilFaceState = .{},
+    stencil_read_mask: u32 = 0xFFFFFFFF,
+    stencil_write_mask: u32 = 0xFFFFFFFF,
+    depth_bias: i32 = 0,
+    depth_bias_slope_scale: f32 = 0,
+    depth_bias_clamp: f32 = 0,
 };
 
 pub const MultisampleState = struct {
@@ -197,7 +197,7 @@ pub const MultisampleState = struct {
 pub const BlendOperation = enum {
     add,
     subtract,
-    reverse_substract,
+    reverse_subtract,
     min,
     max,
 };
@@ -238,7 +238,7 @@ pub const ColorWriteMask = packed struct {
 
 pub const ColorTargetState = struct {
     format: TextureFormat,
-    blend: BlendState = .{},
+    blend: ?BlendState = null,
     write_mask: ColorWriteMask = .{},
 };
 

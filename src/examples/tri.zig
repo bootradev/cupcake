@@ -33,10 +33,7 @@ pub fn init() !void {
 }
 
 fn onAdapterReady() void {
-    try example.adapter.requestDevice(
-        .{},
-        &example.device,
-    );
+    try example.adapter.requestDevice(.{}, &example.device);
 }
 
 fn onDeviceReady() void {
