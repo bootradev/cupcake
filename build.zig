@@ -41,11 +41,11 @@ pub fn build(builder: *std.build.Builder) !void {
     var app_options: AppOptions = switch (example) {
         .tri => .{
             .app_name = "tri",
-            .app_src_root = "src/examples/tri.zig",
+            .app_src_root = "examples/tri.zig",
             .shader_names = &.{ "tri_vert", "tri_frag" },
         },
     };
-    app_options.shader_dir = "src/examples/shaders";
+    app_options.shader_dir = "examples/shaders";
 
     try buildApp(builder, &app_options);
 }
