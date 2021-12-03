@@ -3,7 +3,7 @@ const bt = @import("bootra");
 const cfg = @import("cfg");
 const gfx = bt.gfx.Api(onAdapterReady, onDeviceReady, onGfxError);
 const math = bt.math;
-const shaders = @import("shaders.zig");
+const shaders = @import("shaders");
 
 const Example = struct {
     status: Status,

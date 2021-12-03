@@ -25,24 +25,32 @@ const BuildOptions = struct {
     gfx_backend: GfxBackend,
 };
 
+pub const AppOptions = struct {
+    app_name: []const u8,
+    app_src_root: []const u8,
+    shader_dir: []const u8 = "",
+    shader_names: []const []const u8 = &[_][]const u8{},
+};
+
 const default_platform = .web;
 const default_gfx_backend = .webgpu;
 
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .tri;
 
-    const app_name = switch (example) {
-        .tri => "tri",
+    var app_options: AppOptions = switch (example) {
+        .tri => .{
+            .app_name = "tri",
+            .app_src_root = "src/examples/tri.zig",
+            .shader_names = &.{ "tri_vert", "tri_frag" },
+        },
     };
+    app_options.shader_dir = "src/examples/shaders";
 
-    const app_src_root = switch (example) {
-        .tri => "src/examples/tri.zig",
-    };
-
-    try buildApp(builder, app_name, app_src_root);
+    try buildApp(builder, &app_options);
 }
 
-pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root: []const u8) !void {
+pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !void {
     const platform = builder.option(
         Platform,
         "platform",
@@ -62,8 +70,8 @@ pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root:
     ) orelse default_gfx_backend;
 
     const build_options = BuildOptions{
-        .app_name = app_name,
-        .app_src_root = app_src_root,
+        .app_name = app_options.app_name,
+        .app_src_root = app_options.app_src_root,
         .platform = platform,
         .opt_level = opt_level,
         .gfx_backend = gfx_backend,
@@ -72,6 +80,14 @@ pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root:
     const app_lib_exe = switch (build_options.platform) {
         .web => try buildWeb(builder, &build_options),
     };
+
+    const shader_build = try ShaderBuildStep.create(
+        builder,
+        app_options.shader_dir,
+        app_options.shader_names,
+        build_options.gfx_backend,
+    );
+    app_lib_exe.step.dependOn(&shader_build.step);
 
     const mode: std.builtin.Mode = switch (build_options.opt_level) {
         .debug => .Debug,
@@ -85,6 +101,7 @@ pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root:
     cfg.addOption(bool, "log_enabled", build_options.opt_level != .release);
     app_lib_exe.step.dependOn(&cfg.step);
 
+    const shader_pkg = shader_build.getPackage("shaders");
     const cfg_pkg = cfg.getPackage("cfg");
     const bootra_pkg = std.build.Pkg{
         .name = "bootra",
@@ -94,7 +111,7 @@ pub fn buildApp(builder: *std.build.Builder, app_name: []const u8, app_src_root:
     const app_pkg = std.build.Pkg{
         .name = "app",
         .path = .{ .path = build_options.app_src_root },
-        .dependencies = &[_]std.build.Pkg{ cfg_pkg, bootra_pkg },
+        .dependencies = &[_]std.build.Pkg{ cfg_pkg, bootra_pkg, shader_pkg },
     };
 
     app_lib_exe.addPackage(cfg_pkg);
@@ -125,6 +142,99 @@ fn buildWeb(
 
     return app_lib_exe;
 }
+
+const ShaderBuildStep = struct {
+    builder: *std.build.Builder,
+    step: std.build.Step,
+    contents: std.ArrayList(u8),
+    dir: []const u8,
+    names: []const []const u8,
+    gfx_backend: GfxBackend,
+    generated_file: std.build.GeneratedFile,
+
+    pub fn create(
+        builder: *std.build.Builder,
+        dir: []const u8,
+        names: []const []const u8,
+        gfx_backend: GfxBackend,
+    ) !*ShaderBuildStep {
+        const shader_build = try builder.allocator.create(ShaderBuildStep);
+        shader_build.* = .{
+            .builder = builder,
+            .step = std.build.Step.init(.custom, "shader build", builder.allocator, make),
+            .contents = std.ArrayList(u8).init(builder.allocator),
+            .dir = dir,
+            .names = names,
+            .gfx_backend = gfx_backend,
+            .generated_file = undefined,
+        };
+        shader_build.generated_file = .{ .step = &shader_build.step };
+
+        return shader_build;
+    }
+
+    fn make(step: *std.build.Step) !void {
+        const shader_build = @fieldParentPtr(ShaderBuildStep, "step", step);
+
+        var shader_dir = try std.fs.openDirAbsolute(
+            shader_build.builder.pathFromRoot(
+                try std.fs.path.join(
+                    shader_build.builder.allocator,
+                    &[_][]const u8{shader_build.dir},
+                ),
+            ),
+            .{},
+        );
+        defer shader_dir.close();
+
+        const writer = shader_build.contents.writer();
+        for (shader_build.names) |name| {
+            const shader_name = try std.mem.concat(
+                shader_build.builder.allocator,
+                u8,
+                &[_][]const u8{ name, ".wgsl" },
+            );
+
+            const shader_file = try shader_dir.openFile(shader_name, .{});
+            defer shader_file.close();
+
+            const shader_stat = try shader_file.stat();
+            const shader_bytes = try shader_file.readToEndAlloc(
+                shader_build.builder.allocator,
+                shader_stat.size,
+            );
+            const shader_bytes_min = try minifySource(shader_bytes, shader_build.builder.allocator);
+            try writer.print("pub const {s} = \"{s}\";\n", .{ name, shader_bytes_min });
+        }
+
+        const shader_build_dir = shader_build.builder.pathFromRoot(
+            try std.fs.path.join(
+                shader_build.builder.allocator,
+                &[_][]const u8{ shader_build.builder.cache_root, "shader_build" },
+            ),
+        );
+
+        try std.fs.cwd().makePath(shader_build_dir);
+
+        const shader_build_src_file_name = @tagName(shader_build.gfx_backend);
+
+        const shader_build_src_file = try std.fs.path.join(
+            shader_build.builder.allocator,
+            &[_][]const u8{ shader_build_dir, shader_build_src_file_name },
+        );
+
+        try std.fs.cwd().writeFile(shader_build_src_file, shader_build.contents.items);
+
+        shader_build.generated_file.path = shader_build_src_file;
+    }
+
+    pub fn getPackage(shader_build: ShaderBuildStep, package_name: []const u8) std.build.Pkg {
+        return .{
+            .name = package_name,
+            .path = std.build.FileSource{ .generated = &shader_build.generated_file },
+        };
+    }
+};
 
 const WebPackStep = struct {
     builder: *std.build.Builder,
@@ -191,11 +301,14 @@ const WebPackStep = struct {
             defer src_file.close();
 
             const src_stat = try src_file.stat();
-            const src_bytes = try src_file.readToEndAlloc(web_pack.builder.allocator, src_stat.size);
+            const src_bytes = try src_file.readToEndAlloc(
+                web_pack.builder.allocator,
+                src_stat.size,
+            );
             defer web_pack.builder.allocator.free(src_bytes);
 
             if (web_pack.opt_level == .release) {
-                const src_bytes_min = try minifyJS(src_bytes, web_pack.builder.allocator);
+                const src_bytes_min = try minifySource(src_bytes, web_pack.builder.allocator);
                 defer web_pack.builder.allocator.free(src_bytes_min);
                 try js_file.writeAll(src_bytes_min);
             } else {
@@ -204,30 +317,30 @@ const WebPackStep = struct {
             }
         }
     }
+};
 
-    fn minifyJS(src_bytes: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
-        const src_bytes_min = try allocator.alloc(u8, src_bytes.len);
+fn minifySource(src_bytes: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
+    const src_bytes_min = try allocator.alloc(u8, src_bytes.len);
 
-        var write_index: usize = 0;
-        for (src_bytes) |byte, read_index| {
-            var write_byte = false;
-            if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
-                const symbols = "{}()[]=<>;,:|/-+* ";
-                const last_byte = src_bytes_min[write_index - 1];
-                const next_byte = src_bytes[read_index + 1];
-                const prev_write = std.mem.indexOfScalar(u8, symbols, last_byte) == null;
-                const next_write = std.mem.indexOfScalar(u8, symbols, next_byte) == null;
-                write_byte = prev_write and next_write;
-            } else {
-                write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
-            }
-
-            if (write_byte) {
-                src_bytes_min[write_index] = byte;
-                write_index += 1;
-            }
+    var write_index: usize = 0;
+    for (src_bytes) |byte, read_index| {
+        var write_byte = false;
+        if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
+            const symbols = "{}()[]=<>;,:|/-+*! ";
+            const last_byte = src_bytes_min[write_index - 1];
+            const next_byte = src_bytes[read_index + 1];
+            const prev_write = std.mem.indexOfScalar(u8, symbols, last_byte) == null;
+            const next_write = std.mem.indexOfScalar(u8, symbols, next_byte) == null;
+            write_byte = prev_write and next_write;
+        } else {
+            write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
         }
 
-        return src_bytes_min[0..write_index];
+        if (write_byte) {
+            src_bytes_min[write_index] = byte;
+            write_index += 1;
+        }
     }
-};
+
+    return src_bytes_min[0..write_index];
+}
