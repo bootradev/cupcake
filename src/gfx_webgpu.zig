@@ -24,6 +24,10 @@ const js = struct {
     const BindGroupLayoutId = ObjectId;
     const PipelineLayoutId = ObjectId;
     const RenderPipelineId = ObjectId;
+    const CommandEncoderId = ObjectId;
+    const CommandBufferId = ObjectId;
+    const TextureId = ObjectId;
+    const TextureViewId = ObjectId;
 
     const invalid_id: ObjectId = -1;
 
@@ -44,6 +48,7 @@ const js = struct {
     };
 
     extern "webgpu" fn getContext(canvas_id: ObjectId) ContextId;
+    extern "webgpu" fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern "webgpu" fn configure(
         device_id: DeviceId,
         context_id: ContextId,
@@ -77,13 +82,21 @@ const js = struct {
         bind_group_layout_ids_len: usize,
     ) PipelineLayoutId;
     extern "webgpu" fn createRenderPipeline(
-        deviceId: DeviceId,
+        device_id: DeviceId,
         pipeline_layout_id: PipelineLayoutId,
         vert_shader_id: ShaderId,
         frag_shader_id: ShaderId,
         json_ptr: [*]const u8,
         json_len: usize,
     ) RenderPipelineId;
+    extern "webgpu" fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
+    extern "webgpu" fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
+    extern "webgpu" fn queueSubmit(
+        device_id: DeviceId,
+        command_buffers_ptr: [*]const u8,
+        command_buffers_len: usize,
+    ) void;
+    extern "webgpu" fn createTextureView(texture_id: TextureId) TextureViewId;
 };
 
 pub fn Api(
@@ -99,8 +112,23 @@ pub fn Api(
         }
     };
 
+    const TextureView = packed struct {
+        tex_id: js.TextureId,
+        view_id: js.TextureViewId,
+    };
+
     const Swapchain = packed struct {
+        const Swapchain = @This();
+
         id: js.ContextId,
+
+        pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
+            const tex_id = js.getContextCurrentTexture(swapchain.id);
+            const view_id = js.createTextureView(tex_id);
+            return TextureView{ .tex_id = tex_id, .view_id = view_id };
+        }
+
+        pub fn present(_: *Swapchain) void {}
     };
 
     const Shader = packed struct {
@@ -117,6 +145,34 @@ pub fn Api(
 
     const RenderPipeline = packed struct {
         id: js.RenderPipelineId,
+    };
+
+    const CommandBuffer = packed struct {
+        id: js.CommandBufferId,
+    };
+
+    const CommandEncoder = packed struct {
+        const CommandEncoder = @This();
+
+        id: js.CommandEncoderId,
+
+        pub fn finish(
+            command_encoder: *CommandEncoder,
+            comptime _: gfx.CommandBufferDesc,
+        ) CommandBuffer {
+            return CommandBuffer{ .id = js.finishCommandEncoder(command_encoder.id) };
+        }
+    };
+
+    const Queue = packed struct {
+        const Queue = @This();
+
+        id: js.DeviceId,
+
+        pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
+            const bytes = std.mem.sliceAsBytes(command_buffers);
+            js.queueSubmit(queue.id, bytes.ptr, bytes.len);
+        }
     };
 
     const Device = struct {
@@ -187,6 +243,14 @@ pub fn Api(
                 ),
             };
         }
+
+        pub fn createCommandEncoder(device: *Device) CommandEncoder {
+            return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
+        }
+
+        pub fn getQueue(device: *Device) Queue {
+            return Queue{ .id = device.id };
+        }
     };
 
     const Adapter = struct {
@@ -252,6 +316,9 @@ pub fn Api(
         pub const BindGroupLayout = BindGroupLayout;
         pub const PipelineLayout = PipelineLayout;
         pub const RenderPipeline = RenderPipeline;
+        pub const CommandEncoder = CommandEncoder;
+        pub const CommandBuffer = CommandBuffer;
+        pub const Queue = Queue;
 
         export fn runtimeError(error_code: u32) void {
             const err = switch (error_code) {

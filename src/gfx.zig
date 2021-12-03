@@ -257,6 +257,10 @@ pub const RenderPipelineDesc = struct {
     fragment: ?FragmentState = null,
 };
 
+pub const CommandBufferDesc = struct {
+    label: []const u8 = "",
+};
+
 pub const VertexFormat = enum {
     @"undefined",
     uint8x2,

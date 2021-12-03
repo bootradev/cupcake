@@ -108,4 +108,12 @@ pub fn update() !void {
         .fail => |err| return err,
         .ok => {},
     }
+
+    _ = try example.swapchain.getCurrentTextureView();
+    var command_encoder = example.device.createCommandEncoder();
+
+    const command_buffer = command_encoder.finish(.{});
+    var queue = example.device.getQueue();
+    queue.submit(&[_]gfx.CommandBuffer{command_buffer});
+    example.swapchain.present();
 }
