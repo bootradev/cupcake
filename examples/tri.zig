@@ -109,8 +109,22 @@ pub fn update() !void {
         .ok => {},
     }
 
-    _ = try example.swapchain.getCurrentTextureView();
+    const swapchain_view = try example.swapchain.getCurrentTextureView();
     var command_encoder = example.device.createCommandEncoder();
+    var render_pass = command_encoder.beginRenderPass(
+        .{
+            .color_views = &[_]gfx.TextureView{swapchain_view},
+        },
+        .{
+            .color_attachments = &[_]gfx.ColorAttachment{
+                .{
+                    .load_op = .clear,
+                    .store_op = .store,
+                },
+            },
+        },
+    );
+    render_pass.end();
 
     const command_buffer = command_encoder.finish(.{});
     var queue = example.device.getQueue();

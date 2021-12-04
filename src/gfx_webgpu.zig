@@ -24,10 +24,12 @@ const js = struct {
     const BindGroupLayoutId = ObjectId;
     const PipelineLayoutId = ObjectId;
     const RenderPipelineId = ObjectId;
+    const RenderPassId = ObjectId;
     const CommandEncoderId = ObjectId;
     const CommandBufferId = ObjectId;
     const TextureId = ObjectId;
     const TextureViewId = ObjectId;
+    const QuerySetId = ObjectId;
 
     const invalid_id: ObjectId = -1;
 
@@ -91,6 +93,22 @@ const js = struct {
     ) RenderPipelineId;
     extern "webgpu" fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern "webgpu" fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
+    extern "webgpu" fn beginRenderPass(
+        command_encoder_id: CommandEncoderId,
+        color_view_ids_ptr: [*]const u8,
+        color_view_ids_len: usize,
+        color_resolve_target_ids_ptr: [*]const u8,
+        color_resolve_target_ids_len: usize,
+        depth_stencil_view_tex_id: TextureId,
+        depth_stencil_view_view_id: TextureViewId,
+        occlusion_query_set_id: QuerySetId,
+        timestamp_query_set_ids_ptr: [*]const u8,
+        timestamp_query_set_ids_len: usize,
+        json_ptr: [*]const u8,
+        json_len: usize,
+    ) RenderPassId;
+    extern "webgpu" fn endRenderPass(render_pass_id: RenderPassId) void;
+
     extern "webgpu" fn queueSubmit(
         device_id: DeviceId,
         command_buffers_ptr: [*]const u8,
@@ -147,14 +165,75 @@ pub fn Api(
         id: js.RenderPipelineId,
     };
 
+    const RenderPass = packed struct {
+        const RenderPass = @This();
+
+        id: js.RenderPassId,
+
+        pub fn end(render_pass: *RenderPass) void {
+            js.endRenderPass(render_pass.id);
+        }
+    };
+
     const CommandBuffer = packed struct {
         id: js.CommandBufferId,
+    };
+
+    const QuerySet = packed struct {
+        id: js.QuerySetId,
     };
 
     const CommandEncoder = packed struct {
         const CommandEncoder = @This();
 
         id: js.CommandEncoderId,
+
+        pub const BeginRenderPassArgs = struct {
+            color_views: []const TextureView,
+            color_resolve_targets: []const TextureView = &[_]TextureView{},
+            depth_stencil_view: ?TextureView = null,
+            occlusion_query_set: ?QuerySet = null,
+            timestamp_query_sets: []const QuerySet = &[_]QuerySet{},
+        };
+
+        pub fn beginRenderPass(
+            command_encoder: *CommandEncoder,
+            args: BeginRenderPassArgs,
+            comptime desc: gfx.RenderPassDesc,
+        ) RenderPass {
+            const color_views_bytes = std.mem.sliceAsBytes(args.color_views);
+            const color_resolve_targets_bytes = std.mem.sliceAsBytes(args.color_resolve_targets);
+            const depth_stencil_view_tex_id = if (args.depth_stencil_view) |depth_stencil_view|
+                depth_stencil_view.tex_id
+            else
+                js.invalid_id;
+            const depth_stencil_view_view_id = if (args.depth_stencil_view) |depth_stencil_view|
+                depth_stencil_view.view_id
+            else
+                js.invalid_id;
+            const occlusion_query_set_id = if (args.occlusion_query_set) |occlusion_query_set|
+                occlusion_query_set.id
+            else
+                js.invalid_id;
+            const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
+            const json = comptime try stringifyRenderPassDescComptime(desc);
+            return RenderPass{
+                .id = js.beginRenderPass(
+                    command_encoder.id,
+                    color_views_bytes.ptr,
+                    color_views_bytes.len,
+                    color_resolve_targets_bytes.ptr,
+                    color_resolve_targets_bytes.len,
+                    depth_stencil_view_tex_id,
+                    depth_stencil_view_view_id,
+                    occlusion_query_set_id,
+                    timestamp_query_set_ids.ptr,
+                    timestamp_query_set_ids.len,
+                    json.ptr,
+                    json.len,
+                ),
+            };
+        }
 
         pub fn finish(
             command_encoder: *CommandEncoder,
@@ -311,6 +390,7 @@ pub fn Api(
         pub const Adapter = Adapter;
         pub const Device = Device;
         pub const Surface = Surface;
+        pub const TextureView = TextureView;
         pub const Swapchain = Swapchain;
         pub const Shader = Shader;
         pub const BindGroupLayout = BindGroupLayout;
@@ -726,6 +806,115 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
     return comptime try stringifyComptime(json);
 }
 
+fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u8 {
+    const JsonColorLoadValue = union(enum) {
+        loadOp: []const u8,
+        clearColor: []const f64,
+    };
+    const JsonDepthLoadValue = union(enum) {
+        loadOp: []const u8,
+        clearDepth: f32,
+    };
+    const JsonStencilLoadValue = union(enum) {
+        loadOp: []const u8,
+        clearStencil: u32,
+    };
+    const JsonColorAttachment = struct {
+        loadValue: JsonColorLoadValue,
+        storeOp: []const u8,
+    };
+    const JsonDepthStencilAttachment = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        depthLoadValue: JsonDepthLoadValue,
+        depthStoreOp: []const u8,
+        depthReadOnly: JsonOptional(bool) = .none,
+        stencilLoadValue: JsonStencilLoadValue,
+        stencilStoreOp: []const u8,
+        stencilReadOnly: JsonOptional(bool) = .none,
+    };
+    const JsonTimestampWrite = struct {
+        queryIndex: js.GPUSize32,
+        location: []const u8,
+    };
+    const JsonDesc = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        colorAttachments: []const JsonColorAttachment = &[_]JsonColorAttachment{},
+        depthStencilAttachment: JsonOptional(JsonDepthStencilAttachment) = .none,
+        timestampWrites: JsonOptional([]const JsonTimestampWrite) = .none,
+    };
+    comptime var json: JsonDesc = .{};
+    inline for (desc.color_attachments) |color_attachment| {
+        json.colorAttachments = json.colorAttachments ++ &[_]JsonColorAttachment{
+            .{
+                .loadValue = switch (color_attachment.load_op) {
+                    .clear => .{
+                        .clearColor = &[_]f64{
+                            color_attachment.clear_color.x,
+                            color_attachment.clear_color.y,
+                            color_attachment.clear_color.z,
+                            color_attachment.clear_color.w,
+                        },
+                    },
+                    .load => .{ .loadOp = "load" },
+                },
+                .storeOp = comptime getStoreOpString(color_attachment.store_op),
+            },
+        };
+    }
+    if (desc.depth_stencil_attachment) |depth_stencil_attachment| {
+        json.depthStencilAttachment = .{
+            .some = .{
+                .depthLoadValue = switch (depth_stencil_attachment.depth_load_op) {
+                    .clear => .{
+                        .clearDepth = depth_stencil_attachment.clear_depth,
+                    },
+                    .load => .{ .loadOp = "load" },
+                },
+                .depthStoreOp = comptime getStoreOpString(
+                    depth_stencil_attachment.depth_store_op,
+                ),
+                .stencilLoadValue = switch (depth_stencil_attachment.stencil_load_op) {
+                    .clear => .{
+                        .clearStencil = depth_stencil_attachment.clear_stencil,
+                    },
+                    .load => .{ .loadOp = "load" },
+                },
+                .stencilStoreOp = comptime getStoreOpString(
+                    depth_stencil_attachment.stencil_store_op,
+                ),
+            },
+        };
+
+        comptime json.depthStencilAttachment.some.depthReadOnly.setIfNotDefault(
+            depth_stencil_attachment,
+            "depth_read_only",
+            depth_stencil_attachment.depth_read_only,
+        );
+        comptime json.depthStencilAttachment.some.stencilReadOnly.setIfNotDefault(
+            depth_stencil_attachment,
+            "stencil_read_only",
+            depth_stencil_attachment.stencil_read_only,
+        );
+    }
+
+    if (desc.timestamp_writes.len > 0) {
+        comptime var json_timestamp_writes: []const JsonTimestampWrite = &[_]JsonTimestampWrite{};
+        inline for (desc.timestamp_writes) |timestamp_write| {
+            json_timestamp_writes = json_timestamp_writes ++ &[_]JsonTimestampWrite{
+                .{
+                    .queryIndex = timestamp_write.query_index,
+                    .location = comptime getRenderPassTimestampLocationString(
+                        timestamp_write.location,
+                    ),
+                },
+            };
+        }
+        json.timestampWrites = .{ .some = json_timestamp_writes };
+    }
+
+    return comptime try stringifyComptime(json);
+}
+
 fn stringifyComptime(value: anytype) ![]const u8 {
     const FixedBufferStream = struct {
         const Self = @This();
@@ -919,6 +1108,14 @@ fn getBlendOperationString(comptime blend_operation: gfx.BlendOperation) []const
 
 fn getBlendFactorString(comptime blend_factor: gfx.BlendFactor) []const u8 {
     return comptime replaceUnderscoreWithDash(@tagName(blend_factor));
+}
+
+fn getStoreOpString(comptime store_op: gfx.StoreOp) []const u8 {
+    return @tagName(store_op);
+}
+
+fn getRenderPassTimestampLocationString(comptime loc: gfx.RenderPassTimestampLocation) []const u8 {
+    return @tagName(loc);
 }
 
 fn getTextureUsageFlags(comptime texture_usage: gfx.TextureUsage) js.GPUTextureUsageFlags {

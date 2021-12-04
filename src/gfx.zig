@@ -1,4 +1,5 @@
 const cfg = @import("cfg");
+const math = @import("math.zig");
 const std = @import("std");
 
 pub usingnamespace switch (cfg.gfx_backend) {
@@ -109,7 +110,7 @@ pub const VertexBufferLayout = struct {
 
 pub const VertexState = struct {
     entry_point: []const u8,
-    constants: ?[]const ConstantEntry = null,
+    constants: []const ConstantEntry = &[_]ConstantEntry{},
     buffers: []const VertexBufferLayout,
 };
 
@@ -259,6 +260,50 @@ pub const RenderPipelineDesc = struct {
 
 pub const CommandBufferDesc = struct {
     label: []const u8 = "",
+};
+
+pub const LoadOp = enum {
+    clear,
+    load,
+};
+
+pub const StoreOp = enum {
+    store,
+    discard,
+};
+
+pub const ColorAttachment = struct {
+    load_op: LoadOp,
+    store_op: StoreOp,
+    clear_color: math.V4f64 = math.V4f64.init(0, 0, 0, 1),
+};
+
+pub const DepthStencilAttachment = struct {
+    depth_load_op: LoadOp,
+    depth_store_op: StoreOp,
+    clear_depth: f32,
+    depth_read_only: bool = false,
+    stencil_load_op: LoadOp,
+    stencil_store_op: StoreOp,
+    clear_stencil: u32,
+    stencil_read_only: bool = false,
+};
+
+pub const RenderPassTimestampLocation = enum {
+    beginning,
+    end,
+};
+
+pub const RenderPassTimestampWrite = struct {
+    query_index: u32,
+    location: RenderPassTimestampLocation,
+};
+
+pub const RenderPassDesc = struct {
+    label: []const u8 = "",
+    color_attachments: []const ColorAttachment,
+    depth_stencil_attachment: ?DepthStencilAttachment = null,
+    timestamp_writes: []const RenderPassTimestampWrite = &[_]RenderPassTimestampWrite{},
 };
 
 pub const VertexFormat = enum {

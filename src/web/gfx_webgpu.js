@@ -13,6 +13,8 @@ const webgpu = {
     textures: [],
     commandEncoders: [],
     commandBuffers: [],
+    renderPasses: [],
+    querySets: [],
 
     getContext(canvasId) {
         webgpu.textures.push({});
@@ -117,6 +119,66 @@ const webgpu = {
         webgpu.commandBuffers.push(webgpu.commandEncoders[commandEncoderId].finish());
         webgpu.destroy(commandEncoderId, webgpu.commandEncoders);
         return webgpu.commandBuffers.length - 1;
+    },
+
+    beginRenderPass(
+        commandEncoderId,
+        colorViewIdsPtr,
+        colorViewIdsLen,
+        colorResolveTargetsPtr,
+        colorResolveTargetsLen,
+        depthStencilViewTexId,
+        depthStencilViewViewId,
+        occlusionQuerySetId,
+        timestampQuerySetIdsPtr,
+        timestampQuerySetIdsLen,
+        jsonPtr,
+        jsonLen,
+    ) {
+        const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
+
+        const colorViewIds = new Int32Array(utils.getSlice(colorViewIdsPtr, colorViewIdsLen));
+        for (let i = 0; i < desc.colorAttachments.length; ++i) {
+            const colorView = webgpu.textures[colorViewIds[i * 2]].views[colorViewIds[i * 2 + 1]];
+            desc.colorAttachments[i].view = colorView;
+        }
+
+        if (colorResolveTargetsLen > 0) {
+            const colorResolveTargetIds = new Int32Aray(
+                utils.getSlice(colorResolveTargetsPtr, colorResolveTargetsLen)
+            );
+            for (let i = 0; i < desc.colorAttachments.length; ++i) {
+                const resolve_tex = webgpu.textures[colorResolveTargetIds[i * 2]];
+                const resolve_view = resolve_tex.views[colorResolveTargetIds[i * 2 + 1]];
+                desc.colorAttachments[i].resolveTarget = resolve_view;
+            }
+        }
+
+        if (depthStencilViewTexId != InvalidId) {
+            const depth_view = webgpu.textures[depthStencilViewTexId].views[depthStencilViewViewId];
+            desc.depthStencilAttachment.view = depth_view;
+        }
+
+        if (occlusionQuerySetId != InvalidId) {
+            desc.occlusionQuerySet = webgpu.querySets[occlusionQuerySetId];
+        }
+
+        if (timestampQuerySetIdsLen > 0) {
+            let timestampQuerySetIds = new Int32Array(
+                utils.getSlice(timestampQuerySetIdsPtr, timestampQuerySetIdsLen)
+            );
+            for (let i = 0; i < desc.timestampWrites.length; ++i) {
+                desc.timestampWrites[i].querySet = webgpu.querySets[timestampQuerySetIds[i]];
+            }
+        }
+
+        webgpu.renderPasses.push(webgpu.commandEncoders[commandEncoderId].beginRenderPass(desc));
+        return webgpu.renderPasses.length - 1;
+    },
+
+    endRenderPass(renderPassId) {
+        webgpu.renderPasses[renderPassId].endPass();
+        webgpu.destroy(renderPassId, webgpu.renderPasses);
     },
 
     queueSubmit(deviceId, commandBuffersPtr, commandBuffersLen) {
