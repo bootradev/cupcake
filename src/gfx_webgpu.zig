@@ -10,6 +10,7 @@ const js = struct {
     const GPUSampleMask = u32;
     const GPUColorWriteFlags = u32;
     const GPUTextureUsageFlags = u32;
+    const GPUBufferUsageFlags = u32;
     const GPUStencilValue = u32;
     const GPUDepthBias = i32;
     const GPUFlagsConstant = u32;
@@ -30,6 +31,7 @@ const js = struct {
     const TextureId = ObjectId;
     const TextureViewId = ObjectId;
     const QuerySetId = ObjectId;
+    const BufferId = ObjectId;
 
     const invalid_id: ObjectId = -1;
 
@@ -39,6 +41,19 @@ const js = struct {
         BLUE = 0x4,
         ALPHA = 0x8,
         ALL = 0xF,
+    };
+
+    pub const BufferUsage = enum(GPUFlagsConstant) {
+        MAP_READ = 0x0001,
+        MAP_WRITE = 0x0002,
+        COPY_SRC = 0x0004,
+        COPY_DST = 0x0008,
+        INDEX = 0x0010,
+        VERTEX = 0x0020,
+        UNIFORM = 0x0040,
+        STORAGE = 0x0080,
+        INDIRECT = 0x0100,
+        QUERY_RESOLVE = 0x0200,
     };
 
     pub const TextureUsage = enum(GPUFlagsConstant) {
@@ -114,6 +129,13 @@ const js = struct {
         command_buffers_ptr: [*]const u8,
         command_buffers_len: usize,
     ) void;
+    extern "webgpu" fn createBuffer(
+        device_id: DeviceId,
+        size: usize,
+        usage: GPUBufferUsageFlags,
+        data_ptr: [*]const u8,
+        data_len: usize,
+    ) BufferId;
     extern "webgpu" fn createTextureView(texture_id: TextureId) TextureViewId;
 };
 
@@ -173,6 +195,10 @@ pub fn Api(
         pub fn end(render_pass: *RenderPass) void {
             js.endRenderPass(render_pass.id);
         }
+    };
+
+    const Buffer = packed struct {
+        id: js.BufferId,
     };
 
     const CommandBuffer = packed struct {
@@ -323,12 +349,30 @@ pub fn Api(
             };
         }
 
-        pub fn createCommandEncoder(device: *Device) CommandEncoder {
+        pub fn initCommandEncoder(device: *Device) CommandEncoder {
             return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
         }
 
         pub fn getQueue(device: *Device) Queue {
             return Queue{ .id = device.id };
+        }
+
+        pub fn initBuffer(
+            device: *Device,
+            init_data: ?[]const u8,
+            size: usize,
+            comptime desc: gfx.BufferDesc,
+        ) !Buffer {
+            const data = if (init_data) |data| data else &[_]u8{};
+            return Buffer{
+                .id = js.createBuffer(
+                    device.id,
+                    size,
+                    comptime getBufferUsageFlags(desc.usage),
+                    data.ptr,
+                    data.len,
+                ),
+            };
         }
     };
 
@@ -390,6 +434,7 @@ pub fn Api(
         pub const Adapter = Adapter;
         pub const Device = Device;
         pub const Surface = Surface;
+        pub const Buffer = Buffer;
         pub const TextureView = TextureView;
         pub const Swapchain = Swapchain;
         pub const Shader = Shader;
@@ -1116,6 +1161,21 @@ fn getStoreOpString(comptime store_op: gfx.StoreOp) []const u8 {
 
 fn getRenderPassTimestampLocationString(comptime loc: gfx.RenderPassTimestampLocation) []const u8 {
     return @tagName(loc);
+}
+
+fn getBufferUsageFlags(comptime buffer_usage: gfx.BufferUsage) js.GPUBufferUsageFlags {
+    comptime var flags: js.GPUBufferUsageFlags = 0;
+    if (buffer_usage.map_read) flags |= @enumToInt(js.BufferUsage.MAP_READ);
+    if (buffer_usage.map_write) flags |= @enumToInt(js.BufferUsage.MAP_WRITE);
+    if (buffer_usage.copy_src) flags |= @enumToInt(js.BufferUsage.COPY_SRC);
+    if (buffer_usage.copy_dst) flags |= @enumToInt(js.BufferUsage.COPY_DST);
+    if (buffer_usage.index) flags |= @enumToInt(js.BufferUsage.INDEX);
+    if (buffer_usage.vertex) flags |= @enumToInt(js.BufferUsage.VERTEX);
+    if (buffer_usage.uniform) flags |= @enumToInt(js.BufferUsage.UNIFORM);
+    if (buffer_usage.storage) flags |= @enumToInt(js.BufferUsage.STORAGE);
+    if (buffer_usage.indirect) flags |= @enumToInt(js.BufferUsage.INDIRECT);
+    if (buffer_usage.query_resolve) flags |= @enumToInt(js.BufferUsage.QUERY_RESOLVE);
+    return flags;
 }
 
 fn getTextureUsageFlags(comptime texture_usage: gfx.TextureUsage) js.GPUTextureUsageFlags {

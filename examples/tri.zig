@@ -4,6 +4,7 @@ const cfg = @import("cfg");
 const gfx = bt.gfx.Api(onAdapterReady, onDeviceReady, onGfxError);
 const math = bt.math;
 const shaders = @import("shaders");
+const std = @import("std");
 
 const Example = struct {
     status: Status,
@@ -14,6 +15,7 @@ const Example = struct {
     surface: gfx.Surface,
     swapchain: gfx.Swapchain,
     render_pipeline: gfx.RenderPipeline,
+    buffer: gfx.Buffer,
 };
 
 const Status = union(enum) {
@@ -23,6 +25,12 @@ const Status = union(enum) {
 };
 
 var example: Example = undefined;
+
+const vertices = [_]f32{
+    1,  -1, 0, 1, 1, 0, 0, 1,
+    -1, -1, 0, 1, 0, 1, 0, 1,
+    0,  1,  0, 1, 0, 0, 1, 1,
+};
 
 pub fn init() !void {
     example.status = .pending;
@@ -93,6 +101,13 @@ fn onDeviceReady() void {
         },
     );
 
+    const vertices_bytes = std.mem.sliceAsBytes(&vertices);
+    example.buffer = try example.device.initBuffer(
+        vertices_bytes,
+        vertices_bytes.len,
+        .{ .usage = .{ .vertex = true } },
+    );
+
     example.status = .ok;
 }
 
@@ -110,7 +125,7 @@ pub fn update() !void {
     }
 
     const swapchain_view = try example.swapchain.getCurrentTextureView();
-    var command_encoder = example.device.createCommandEncoder();
+    var command_encoder = example.device.initCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
         .{
             .color_views = &[_]gfx.TextureView{swapchain_view},

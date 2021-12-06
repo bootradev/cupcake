@@ -10,6 +10,7 @@ const webgpu = {
     shaders: [],
     pipelineLayouts: [],
     renderPipelines: [],
+    buffers: [],
     textures: [],
     commandEncoders: [],
     commandBuffers: [],
@@ -133,7 +134,7 @@ const webgpu = {
         timestampQuerySetIdsPtr,
         timestampQuerySetIdsLen,
         jsonPtr,
-        jsonLen,
+        jsonLen
     ) {
         const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
 
@@ -197,6 +198,23 @@ const webgpu = {
         for (let i = commandBufferIds.length - 1; i >= 0; --i) {
             webgpu.destroy(commandBufferIds[i], webgpu.commandBuffers);
         }
+    },
+
+    createBuffer(deviceId, size, usage, dataPtr, dataLen) {
+        const mappedAtCreation = dataLen > 0;
+        const buffer = webgpu.devices[deviceId].createBuffer({
+            size: size,
+            usage: usage,
+            mappedAtCreation: mappedAtCreation
+        });
+
+        if (mappedAtCreation) {
+            new Uint8Array(buffer.getMappedRange()).set(utils.getSlice(dataPtr, dataLen));
+            buffer.unmap();
+        }
+
+        webgpu.buffers.push(buffer);
+        return webgpu.buffers.length - 1;
     },
 
     createTextureView(textureId) {
