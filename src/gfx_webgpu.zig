@@ -122,6 +122,24 @@ const js = struct {
         json_ptr: [*]const u8,
         json_len: usize,
     ) RenderPassId;
+    extern "webgpu" fn setPipeline(
+        render_pass_id: RenderPassId,
+        render_pipeline_id: RenderPipelineId,
+    ) void;
+    extern "webgpu" fn setVertexBuffer(
+        render_pass_id: RenderPassId,
+        slot: u32,
+        buffer: BufferId,
+        offset: u32,
+        size: usize,
+    ) void;
+    extern "webgpu" fn draw(
+        render_pass_id: RenderPassId,
+        vertex_count: usize,
+        instance_count: usize,
+        first_vertex: usize,
+        first_instance: usize,
+    ) void;
     extern "webgpu" fn endRenderPass(render_pass_id: RenderPassId) void;
 
     extern "webgpu" fn queueSubmit(
@@ -175,6 +193,10 @@ pub fn Api(
         id: js.ShaderId,
     };
 
+    const Buffer = packed struct {
+        id: js.BufferId,
+    };
+
     const BindGroupLayout = packed struct {
         id: js.BindGroupLayoutId,
     };
@@ -192,13 +214,33 @@ pub fn Api(
 
         id: js.RenderPassId,
 
+        pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *RenderPipeline) void {
+            js.setPipeline(render_pass.id, render_pipeline.id);
+        }
+
+        pub fn setVertexBuffer(
+            render_pass: *RenderPass,
+            slot: u32,
+            buffer: *Buffer,
+            offset: u32,
+            size: usize,
+        ) void {
+            js.setVertexBuffer(render_pass.id, slot, buffer.id, offset, size);
+        }
+
+        pub fn draw(
+            render_pass: *RenderPass,
+            vertex_count: usize,
+            instance_count: usize,
+            first_vertex: usize,
+            first_instance: usize,
+        ) void {
+            js.draw(render_pass.id, vertex_count, instance_count, first_vertex, first_instance);
+        }
+
         pub fn end(render_pass: *RenderPass) void {
             js.endRenderPass(render_pass.id);
         }
-    };
-
-    const Buffer = packed struct {
-        id: js.BufferId,
     };
 
     const CommandBuffer = packed struct {

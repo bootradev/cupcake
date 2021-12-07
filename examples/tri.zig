@@ -139,6 +139,11 @@ pub fn update() !void {
             },
         },
     );
+
+    render_pass.setPipeline(&example.render_pipeline);
+    render_pass.setVertexBuffer(0, &example.buffer, 0, gfx.whole_size);
+    render_pass.draw(3, 1, 0, 0);
+
     render_pass.end();
 
     const command_buffer = command_encoder.finish(.{});

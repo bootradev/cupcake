@@ -2,6 +2,7 @@ const RequestAdapterFailed = 0;
 const RequestDeviceFailed = 1;
 const CreateShaderFailed = 2;
 const InvalidId = -1;
+const WholeSize = -1;
 
 const webgpu = {
     contexts: [],
@@ -177,6 +178,31 @@ const webgpu = {
         return webgpu.renderPasses.length - 1;
     },
 
+    setPipeline(renderPassId, pipelineId) {
+        webgpu.renderPasses[renderPassId].setPipeline(webgpu.renderPipelines[pipelineId]);
+    },
+
+    setVertexBuffer(slot, renderPassId, bufferId, offset, size) {
+        if (size === WholeSize) {
+            size = undefined;
+        }
+
+        webgpu.renderPasses[renderPassId].setVertexBuffer(
+            slot,
+            webgpu.buffers[bufferId],
+            offset,
+            size
+        );
+    },
+
+    draw(renderPassId, vertexCount, instanceCount, firstVertex, firstInstance) {
+        webgpu.renderPasses[renderPassId].draw(
+            vertexCount,
+            instanceCount,
+            firstVertex,
+            firstInstance);
+    },
+
     endRenderPass(renderPassId) {
         webgpu.renderPasses[renderPassId].endPass();
         webgpu.destroy(renderPassId, webgpu.renderPasses);
@@ -209,7 +235,9 @@ const webgpu = {
         });
 
         if (mappedAtCreation) {
-            new Uint8Array(buffer.getMappedRange()).set(utils.getSlice(dataPtr, dataLen));
+            const src = new Uint8Array(utils.getSlice(dataPtr, dataLen));
+            const dst = new Uint8Array(buffer.getMappedRange());
+            dst.set(src);
             buffer.unmap();
         }
 
