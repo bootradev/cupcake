@@ -15,6 +15,7 @@ const GfxBackend = enum {
 
 const Example = enum {
     tri,
+    cube,
 };
 
 const BuildOptions = struct {
@@ -36,16 +37,22 @@ const default_platform = .web;
 const default_gfx_backend = .webgpu;
 
 pub fn build(builder: *std.build.Builder) !void {
-    const example = builder.option(Example, "example", "example project") orelse .tri;
+    const example = builder.option(Example, "example", "example project") orelse .cube;
 
     var app_options: AppOptions = switch (example) {
         .tri => .{
             .app_name = "tri",
-            .app_src_root = "examples/tri.zig",
+            .app_src_root = "examples/tri/tri.zig",
             .shader_names = &.{ "tri_vert", "tri_frag" },
+            .shader_dir = "examples/tri",
+        },
+        .cube => .{
+            .app_name = "cube",
+            .app_src_root = "examples/cube/cube.zig",
+            .shader_names = &.{ "cube_vert", "cube_frag" },
+            .shader_dir = "examples/cube",
         },
     };
-    app_options.shader_dir = "examples";
 
     try buildApp(builder, &app_options);
 }
