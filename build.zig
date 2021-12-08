@@ -30,7 +30,7 @@ pub const AppOptions = struct {
     app_name: []const u8,
     app_src_root: []const u8,
     shader_dir: []const u8 = "",
-    shader_names: []const []const u8 = &[_][]const u8{},
+    shader_names: []const []const u8 = &.{},
 };
 
 const default_platform = .web;
@@ -113,12 +113,12 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
     const bootra_pkg = std.build.Pkg{
         .name = "bootra",
         .path = .{ .path = "src/bootra.zig" },
-        .dependencies = &[_]std.build.Pkg{cfg_pkg},
+        .dependencies = &.{cfg_pkg},
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
         .path = .{ .path = build_options.app_src_root },
-        .dependencies = &[_]std.build.Pkg{ cfg_pkg, bootra_pkg, shader_pkg },
+        .dependencies = &.{ cfg_pkg, bootra_pkg, shader_pkg },
     };
 
     app_lib_exe.addPackage(cfg_pkg);
@@ -187,7 +187,7 @@ const ShaderBuildStep = struct {
             shader_build.builder.pathFromRoot(
                 try std.fs.path.join(
                     shader_build.builder.allocator,
-                    &[_][]const u8{shader_build.dir},
+                    &.{shader_build.dir},
                 ),
             ),
             .{},
@@ -199,7 +199,7 @@ const ShaderBuildStep = struct {
             const shader_name = try std.mem.concat(
                 shader_build.builder.allocator,
                 u8,
-                &[_][]const u8{ name, ".wgsl" },
+                &.{ name, ".wgsl" },
             );
 
             const shader_file = try shader_dir.openFile(shader_name, .{});
@@ -221,7 +221,7 @@ const ShaderBuildStep = struct {
         const shader_build_dir = shader_build.builder.pathFromRoot(
             try std.fs.path.join(
                 shader_build.builder.allocator,
-                &[_][]const u8{ shader_build.builder.cache_root, "shader_build" },
+                &.{ shader_build.builder.cache_root, "shader_build" },
             ),
         );
 
@@ -231,7 +231,7 @@ const ShaderBuildStep = struct {
 
         const shader_build_src_file = try std.fs.path.join(
             shader_build.builder.allocator,
-            &[_][]const u8{ shader_build_dir, shader_build_src_file_name },
+            &.{ shader_build_dir, shader_build_src_file_name },
         );
 
         try std.fs.cwd().writeFile(shader_build_src_file, shader_build.contents.items);

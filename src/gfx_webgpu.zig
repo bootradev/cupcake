@@ -285,7 +285,7 @@ pub const Device = struct {
         size: usize,
         comptime desc: gfx.BufferDesc,
     ) !Buffer {
-        const data = if (init_data) |data| data else &[_]u8{};
+        const data = if (init_data) |data| data else &.{};
         return Buffer{
             .id = js.createBuffer(
                 device.id,
@@ -390,10 +390,10 @@ pub const CommandEncoder = packed struct {
 
     pub const BeginRenderPassArgs = struct {
         color_views: []const TextureView,
-        color_resolve_targets: []const TextureView = &[_]TextureView{},
+        color_resolve_targets: []const TextureView = &.{},
         depth_stencil_view: ?TextureView = null,
         occlusion_query_set: ?QuerySet = null,
-        timestamp_query_sets: []const QuerySet = &[_]QuerySet{},
+        timestamp_query_sets: []const QuerySet = &.{},
     };
 
     pub fn beginRenderPass(
@@ -519,9 +519,9 @@ fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
 
     comptime var json: JsonDesc = .{};
     if (desc.required_features.len > 0) {
-        comptime var required_features: []const []const u8 = &[_][]const u8{};
+        comptime var required_features: []const []const u8 = &.{};
         inline for (desc.required_features) |required_feature| {
-            required_features = required_features ++ &[_][]const u8{
+            required_features = required_features ++ &.{
                 comptime getFeatureNameString(required_feature),
             };
         }
@@ -556,7 +556,7 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
         usingnamespace JsonOptionalStruct(@This());
         arrayStride: js.GPUSize64 = 0,
         stepMode: JsonOptional([]const u8) = .none,
-        attributes: []const JsonVertAttr = &[_]JsonVertAttr{},
+        attributes: []const JsonVertAttr = &.{},
     };
     const JsonVertState = struct {
         usingnamespace JsonOptionalStruct(@This());
@@ -615,7 +615,7 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
     };
     const JsonFragState = struct {
         entryPoint: []const u8 = "",
-        targets: []const JsonTarget = &[_]JsonTarget{},
+        targets: []const JsonTarget = &.{},
     };
     const JsonDesc = struct {
         usingnamespace JsonOptionalStruct(@This());
@@ -629,7 +629,7 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
     comptime var json: JsonDesc = .{};
     json.vertex.entryPoint = desc.vertex.entry_point;
     if (desc.vertex.buffers.len > 0) {
-        comptime var vert_buffers: []const JsonVertLayout = &[_]JsonVertLayout{};
+        comptime var vert_buffers: []const JsonVertLayout = &.{};
         inline for (desc.vertex.buffers) |buffer| {
             comptime var json_buffer: JsonVertLayout = .{};
             json_buffer.arrayStride = buffer.array_stride;
@@ -638,7 +638,7 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
                 "step_mode",
                 getStepModeString(buffer.step_mode),
             );
-            comptime var vert_attrs: []const JsonVertAttr = &[_]JsonVertAttr{};
+            comptime var vert_attrs: []const JsonVertAttr = &.{};
             inline for (buffer.attributes) |attr| {
                 comptime var json_attr: JsonVertAttr = .{
                     .format = comptime getVertexFormatString(attr.format),
@@ -885,7 +885,7 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
     };
     const JsonDesc = struct {
         usingnamespace JsonOptionalStruct(@This());
-        colorAttachments: []const JsonColorAttachment = &[_]JsonColorAttachment{},
+        colorAttachments: []const JsonColorAttachment = &.{},
         depthStencilAttachment: JsonOptional(JsonDepthStencilAttachment) = .none,
         timestampWrites: JsonOptional([]const JsonTimestampWrite) = .none,
     };
@@ -895,7 +895,7 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
             .{
                 .loadValue = switch (color_attachment.load_op) {
                     .clear => .{
-                        .clearColor = &[_]f64{
+                        .clearColor = &.{
                             color_attachment.clear_color.x,
                             color_attachment.clear_color.y,
                             color_attachment.clear_color.z,
@@ -945,7 +945,7 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
     }
 
     if (desc.timestamp_writes.len > 0) {
-        comptime var json_timestamp_writes: []const JsonTimestampWrite = &[_]JsonTimestampWrite{};
+        comptime var json_timestamp_writes: []const JsonTimestampWrite = &.{};
         inline for (desc.timestamp_writes) |timestamp_write| {
             json_timestamp_writes = json_timestamp_writes ++ &[_]JsonTimestampWrite{
                 .{

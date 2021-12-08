@@ -80,7 +80,7 @@ pub const Limits = struct {
 
 pub const DeviceDesc = struct {
     label: []const u8 = "",
-    required_features: []const FeatureName = &[_]FeatureName{},
+    required_features: []const FeatureName = &.{},
     required_limits: Limits = .{},
 };
 
@@ -159,7 +159,7 @@ pub const VertexBufferLayout = struct {
 
 pub const VertexState = struct {
     entry_point: []const u8,
-    constants: []const ConstantEntry = &[_]ConstantEntry{},
+    constants: []const ConstantEntry = &.{},
     buffers: []const VertexBufferLayout,
 };
 
@@ -352,7 +352,7 @@ pub const RenderPassDesc = struct {
     label: []const u8 = "",
     color_attachments: []const ColorAttachment,
     depth_stencil_attachment: ?DepthStencilAttachment = null,
-    timestamp_writes: []const RenderPassTimestampWrite = &[_]RenderPassTimestampWrite{},
+    timestamp_writes: []const RenderPassTimestampWrite = &.{},
 };
 
 pub const BufferDesc = struct {
