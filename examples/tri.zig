@@ -1,10 +1,8 @@
 const app = bt.app;
 const bt = @import("bootra");
-const cfg = @import("cfg");
 const gfx = bt.gfx;
 const math = bt.math;
 const shaders = @import("shaders");
-const std = @import("std");
 
 pub const gfx_cbs = .{
     .adapter_ready_cb = onAdapterReady,
@@ -30,12 +28,6 @@ const Status = union(enum) {
 };
 
 var example: Example = undefined;
-
-const vertices = [_]f32{
-    1,  -1, 0, 1, 1, 0, 0, 1,
-    -1, -1, 0, 1, 0, 1, 0, 1,
-    0,  1,  0, 1, 0, 0, 1, 1,
-};
 
 pub fn init() !void {
     example.status = .pending;
