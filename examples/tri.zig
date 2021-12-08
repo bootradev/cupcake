@@ -21,7 +21,6 @@ const Example = struct {
     surface: gfx.Surface,
     swapchain: gfx.Swapchain,
     render_pipeline: gfx.RenderPipeline,
-    buffer: gfx.Buffer,
 };
 
 const Status = union(enum) {
@@ -60,7 +59,6 @@ fn onDeviceReady() void {
             .format = swapchain_format,
         },
     );
-
     var vert_shader = try example.device.initShader(shaders.tri_vert);
     defer example.device.deinitShader(&vert_shader);
     example.device.checkShaderCompile(&vert_shader);
@@ -76,28 +74,11 @@ fn onDeviceReady() void {
         &frag_shader,
         .{
             .vertex = .{
-                .entry_point = "vertex_main",
-                .buffers = &[_]gfx.VertexBufferLayout{
-                    .{
-                        .array_stride = 2 * 4 * 4,
-                        .step_mode = .vertex,
-                        .attributes = &[_]gfx.VertexAttribute{
-                            .{
-                                .format = .float32x4,
-                                .offset = 0,
-                                .shader_location = 0,
-                            },
-                            .{
-                                .format = .float32x4,
-                                .offset = 4 * 4,
-                                .shader_location = 1,
-                            },
-                        },
-                    },
-                },
+                .entry_point = "vs_main",
+                .buffers = &[_]gfx.VertexBufferLayout{},
             },
             .fragment = .{
-                .entry_point = "fragment_main",
+                .entry_point = "fs_main",
                 .targets = &[_]gfx.ColorTargetState{
                     .{
                         .format = swapchain_format,
@@ -105,13 +86,6 @@ fn onDeviceReady() void {
                 },
             },
         },
-    );
-
-    const vertices_bytes = std.mem.sliceAsBytes(&vertices);
-    example.buffer = try example.device.initBuffer(
-        vertices_bytes,
-        vertices_bytes.len,
-        .{ .usage = .{ .vertex = true } },
     );
 
     example.status = .ok;
@@ -147,7 +121,6 @@ pub fn update() !void {
     );
 
     render_pass.setPipeline(&example.render_pipeline);
-    render_pass.setVertexBuffer(0, &example.buffer, 0, gfx.whole_size);
     render_pass.draw(3, 1, 0, 0);
 
     render_pass.end();

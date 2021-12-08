@@ -203,7 +203,11 @@ const ShaderBuildStep = struct {
                 shader_build.builder.allocator,
                 shader_stat.size,
             );
-            const shader_bytes_min = try minifySource(shader_bytes, shader_build.builder.allocator);
+            const shader_bytes_min = try minifySource(
+                shader_bytes,
+                shader_build.builder.allocator,
+                .single_space,
+            );
             try writer.print("pub const {s} = \"{s}\";\n", .{ name, shader_bytes_min });
         }
 
@@ -308,7 +312,11 @@ const WebPackStep = struct {
             defer web_pack.builder.allocator.free(src_bytes);
 
             if (web_pack.opt_level == .release) {
-                const src_bytes_min = try minifySource(src_bytes, web_pack.builder.allocator);
+                const src_bytes_min = try minifySource(
+                    src_bytes,
+                    web_pack.builder.allocator,
+                    .no_whitespace,
+                );
                 defer web_pack.builder.allocator.free(src_bytes_min);
                 try js_file.writeAll(src_bytes_min);
             } else {
@@ -319,19 +327,35 @@ const WebPackStep = struct {
     }
 };
 
-fn minifySource(src_bytes: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
+const MinifyMode = enum {
+    single_space,
+    no_whitespace,
+};
+
+fn minifySource(
+    src_bytes: []const u8,
+    allocator: *std.mem.Allocator,
+    comptime mode: MinifyMode,
+) ![]const u8 {
     const src_bytes_min = try allocator.alloc(u8, src_bytes.len);
 
     var write_index: usize = 0;
     for (src_bytes) |byte, read_index| {
         var write_byte = false;
         if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
-            const symbols = "{}()[]=<>;,:|/-+*! ";
             const last_byte = src_bytes_min[write_index - 1];
             const next_byte = src_bytes[read_index + 1];
-            const prev_write = std.mem.indexOfScalar(u8, symbols, last_byte) == null;
-            const next_write = std.mem.indexOfScalar(u8, symbols, next_byte) == null;
-            write_byte = prev_write and next_write;
+            switch (mode) {
+                .single_space => {
+                    write_byte = last_byte != ' ' and next_byte != ' ';
+                },
+                .no_whitespace => {
+                    const symbols = "{}()[]=<>;,:|/-+*!& ";
+                    const prev_write = std.mem.indexOfScalar(u8, symbols, last_byte) == null;
+                    const next_write = std.mem.indexOfScalar(u8, symbols, next_byte) == null;
+                    write_byte = prev_write and next_write;
+                },
+            }
         } else {
             write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
         }
