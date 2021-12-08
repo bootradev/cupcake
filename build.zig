@@ -315,7 +315,7 @@ const WebPackStep = struct {
                 const src_bytes_min = try minifySource(
                     src_bytes,
                     web_pack.builder.allocator,
-                    .no_whitespace,
+                    .no_space,
                 );
                 defer web_pack.builder.allocator.free(src_bytes_min);
                 try js_file.writeAll(src_bytes_min);
@@ -329,7 +329,7 @@ const WebPackStep = struct {
 
 const MinifyMode = enum {
     single_space,
-    no_whitespace,
+    no_space,
 };
 
 fn minifySource(
@@ -339,25 +339,67 @@ fn minifySource(
 ) ![]const u8 {
     const src_bytes_min = try allocator.alloc(u8, src_bytes.len);
 
+    const ParseState = union(enum) {
+        normal,
+        line_comment,
+        block_comment,
+        string: u8,
+    };
+    var parse_state: ParseState = .normal;
+
     var write_index: usize = 0;
     for (src_bytes) |byte, read_index| {
         var write_byte = false;
-        if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
-            const last_byte = src_bytes_min[write_index - 1];
-            const next_byte = src_bytes[read_index + 1];
-            switch (mode) {
-                .single_space => {
-                    write_byte = last_byte != ' ' and next_byte != ' ';
-                },
-                .no_whitespace => {
-                    const symbols = "{}()[]=<>;,:|/-+*!& ";
-                    const prev_write = std.mem.indexOfScalar(u8, symbols, last_byte) == null;
-                    const next_write = std.mem.indexOfScalar(u8, symbols, next_byte) == null;
-                    write_byte = prev_write and next_write;
-                },
-            }
-        } else {
-            write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
+
+        switch (parse_state) {
+            .line_comment => {
+                if (byte == '\n') {
+                    parse_state = .normal;
+                }
+            },
+            .block_comment => {
+                if (byte == '/' and src_bytes[read_index - 1] == '*') {
+                    parse_state = .normal;
+                }
+            },
+            .string => |char| {
+                if (byte == char and src_bytes[read_index - 1] != '\\') {
+                    parse_state = .normal;
+                }
+                write_byte = true;
+            },
+            .normal => {
+                if (byte == '/' and
+                    read_index < src_bytes.len - 1 and
+                    src_bytes[read_index + 1] == '/')
+                {
+                    parse_state = .line_comment;
+                } else if (byte == '/' and
+                    read_index < src_bytes.len - 1 and
+                    src_bytes[read_index + 1] == '*')
+                {
+                    parse_state = .block_comment;
+                } else if (std.mem.indexOfScalar(u8, "\"'`", byte) != null) {
+                    parse_state = ParseState{ .string = byte };
+                    write_byte = true;
+                } else if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
+                    const last_byte = src_bytes_min[write_index - 1];
+                    const next_byte = src_bytes[read_index + 1];
+                    switch (mode) {
+                        .single_space => {
+                            write_byte = last_byte != ' ' and next_byte != ' ';
+                        },
+                        .no_space => {
+                            const symbols = "{}()[]=<>;,:|/-+*!& ";
+                            const write_prev = std.mem.indexOfScalar(u8, symbols, last_byte);
+                            const write_next = std.mem.indexOfScalar(u8, symbols, next_byte);
+                            write_byte = write_prev == null and write_next == null;
+                        },
+                    }
+                } else {
+                    write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
+                }
+            },
         }
 
         if (write_byte) {
