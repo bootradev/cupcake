@@ -45,7 +45,7 @@ pub fn build(builder: *std.build.Builder) !void {
             .shader_names = &.{ "tri_vert", "tri_frag" },
         },
     };
-    app_options.shader_dir = "examples/shaders";
+    app_options.shader_dir = "examples";
 
     try buildApp(builder, &app_options);
 }
@@ -134,7 +134,7 @@ fn buildWeb(
     const target = try std.zig.CrossTarget.parse(.{ .arch_os_abi = "wasm32-freestanding" });
     app_lib_exe.setTarget(target);
 
-    const js_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "src/web" });
+    const js_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "src" });
     defer builder.allocator.free(js_dir);
 
     const web_pack = try WebPackStep.create(builder, build_options, js_dir);
@@ -282,7 +282,7 @@ const WebPackStep = struct {
         const html_file = try lib_dir.createFile(web_pack.html_name, .{ .truncate = true });
         defer html_file.close();
 
-        const html_fmt = @embedFile("src/web/template.html");
+        const html_fmt = @embedFile("src/template.html");
         try std.fmt.format(html_file.writer(), html_fmt, .{ web_pack.js_name, web_pack.wasm_name });
 
         const js_file = try lib_dir.createFile(web_pack.js_name, .{ .truncate = true });

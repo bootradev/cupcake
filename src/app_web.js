@@ -1,5 +1,5 @@
 const app = {
-    canvases: [null],
+    canvases: [],
 
     logConsole(msgPtr, msgLen) {
         console.log(utils.getString(msgPtr, msgLen));
