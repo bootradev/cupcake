@@ -1,5 +1,6 @@
 const cfg = @import("cfg");
 const math = @import("math.zig");
+const root = @import("root");
 const std = @import("std");
 
 pub usingnamespace switch (cfg.gfx_backend) {
@@ -7,6 +8,18 @@ pub usingnamespace switch (cfg.gfx_backend) {
 };
 
 pub const whole_size = std.math.maxInt(usize);
+
+pub const GfxCbs = struct {
+    adapter_ready_cb: fn () void = adapterReadyNull,
+    device_ready_cb: fn () void = deviceReadyNull,
+    error_cb: fn (err: anyerror) void = errorNull,
+};
+
+fn adapterReadyNull() void {}
+fn deviceReadyNull() void {}
+fn errorNull(_: anyerror) void {}
+
+pub const cbs: GfxCbs = if (@hasDecl(root.app, "gfx_cbs")) root.app.gfx_cbs else .{};
 
 pub const SurfaceDesc = struct {
     label: []const u8 = "",

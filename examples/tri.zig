@@ -1,10 +1,16 @@
 const app = bt.app;
 const bt = @import("bootra");
 const cfg = @import("cfg");
-const gfx = bt.gfx.Api(onAdapterReady, onDeviceReady, onGfxError);
+const gfx = bt.gfx;
 const math = bt.math;
 const shaders = @import("shaders");
 const std = @import("std");
+
+pub const gfx_cbs = .{
+    .adapter_ready_cb = onAdapterReady,
+    .device_ready_cb = onDeviceReady,
+    .error_cb = onGfxError,
+};
 
 const Example = struct {
     status: Status,
