@@ -160,7 +160,7 @@ const js = struct {
 pub const Instance = struct {
     pub fn init(_: *Instance) !void {}
 
-    pub fn initSurface(
+    pub fn createSurface(
         _: *Instance,
         window: *app.Window,
         comptime _: gfx.SurfaceDesc,
@@ -207,7 +207,7 @@ pub const Adapter = struct {
 pub const Device = struct {
     id: js.DeviceId,
 
-    pub fn initSwapchain(
+    pub fn createSwapchain(
         device: *Device,
         surface: *Surface,
         size: math.V2u32,
@@ -228,11 +228,11 @@ pub const Device = struct {
         return swapchain;
     }
 
-    pub fn initShader(device: *Device, code: []const u8) !Shader {
+    pub fn createShader(device: *Device, code: []const u8) !Shader {
         return Shader{ .id = js.createShader(device.id, code.ptr, code.len) };
     }
 
-    pub fn deinitShader(_: *Device, shader: *Shader) void {
+    pub fn destroyShader(_: *Device, shader: *Shader) void {
         js.destroyShader(shader.id);
     }
 
@@ -240,7 +240,7 @@ pub const Device = struct {
         js.checkShaderCompile(shader.id);
     }
 
-    pub fn initPipelineLayout(
+    pub fn createPipelineLayout(
         device: *Device,
         bind_group_layouts: []const BindGroupLayout,
         comptime _: gfx.PipelineLayoutDesc,
@@ -251,7 +251,7 @@ pub const Device = struct {
         };
     }
 
-    pub fn initRenderPipeline(
+    pub fn createRenderPipeline(
         device: *Device,
         pipeline_layout: *const PipelineLayout,
         vert_shader: *const Shader,
@@ -271,7 +271,7 @@ pub const Device = struct {
         };
     }
 
-    pub fn initCommandEncoder(device: *Device) CommandEncoder {
+    pub fn createCommandEncoder(device: *Device) CommandEncoder {
         return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
     }
 
@@ -279,20 +279,20 @@ pub const Device = struct {
         return Queue{ .id = device.id };
     }
 
-    pub fn initBuffer(
+    pub fn createBuffer(
         device: *Device,
-        init_data: ?[]const u8,
+        data: ?[]const u8,
         size: usize,
         comptime desc: gfx.BufferDesc,
     ) !Buffer {
-        const data = if (init_data) |data| data else &.{};
+        const init_data = if (data) |init_data| init_data else &.{};
         return Buffer{
             .id = js.createBuffer(
                 device.id,
                 size,
                 comptime getBufferUsageFlags(desc.usage),
-                data.ptr,
-                data.len,
+                init_data.ptr,
+                init_data.len,
             ),
         };
     }
