@@ -49,6 +49,7 @@ fn onDeviceReady() void {
         example.window.size,
         .{ .format = swapchain_format },
     );
+
     var vert_shader = try example.device.createShader(shaders.tri_vert);
     defer example.device.destroyShader(&vert_shader);
     example.device.checkShaderCompile(&vert_shader);
@@ -57,7 +58,9 @@ fn onDeviceReady() void {
     defer example.device.destroyShader(&frag_shader);
     example.device.checkShaderCompile(&frag_shader);
 
-    const pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
+    defer example.device.destroyPipelineLayout(&pipeline_layout);
+
     example.render_pipeline = try example.device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
@@ -110,4 +113,14 @@ pub fn update() !void {
     var queue = example.device.getQueue();
     queue.submit(&.{command_buffer});
     example.swapchain.present();
+}
+
+pub fn deinit() !void {
+    example.device.destroyRenderPipeline(&example.render_pipeline);
+    example.device.destroySwapchain(&example.swapchain);
+    example.device.destroy();
+    example.adapter.destroy();
+    example.instance.destroySurface(&example.surface);
+    example.instance.deinit();
+    example.window.deinit();
 }

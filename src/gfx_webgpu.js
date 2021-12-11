@@ -18,13 +18,18 @@ const webgpu = {
     renderPasses: [],
     querySets: [],
 
-    getContext(canvasId) {
+    createContext(canvasId) {
         webgpu.textures.push({});
         webgpu.contexts.push({
             obj: app.canvases[canvasId].getContext("webgpu"),
             texId: webgpu.textures.length - 1,
         });
         return webgpu.contexts.length - 1;
+    },
+
+    destroyContext(contextId) {
+        utils.destroy(webgpu.contexts[contextId].texId, webgpu.textures);
+        utils.destroy(contextId, webgpu.contexts);
     },
 
     getContextCurrentTexture(contextId) {
@@ -55,6 +60,10 @@ const webgpu = {
             });
     },
 
+    destroyAdapter(adapterId) {
+        utils.destroy(adapterId, webgpu.adapters);
+    },
+
     requestDevice(adapterId, jsonPtr, jsonLen, cb) {
         webgpu.adapters[adapterId].requestDevice(JSON.parse(utils.getString(jsonPtr, jsonLen)))
             .then(device => {
@@ -67,6 +76,10 @@ const webgpu = {
             });
     },
 
+    destroyDevice(deviceId) {
+        utils.destroy(deviceId, webgpu.devices);
+    },
+
     createShader(deviceId, codePtr, codeLen) {
         webgpu.shaders.push(webgpu.devices[deviceId].createShaderModule({
             code: utils.getString(codePtr, codeLen)
@@ -75,7 +88,7 @@ const webgpu = {
     },
 
     destroyShader(shaderId) {
-        webgpu.destroy(shaderId, webgpu.shaders);
+        utils.destroy(shaderId, webgpu.shaders);
     },
 
     checkShaderCompile(shaderId) {
@@ -101,6 +114,10 @@ const webgpu = {
         return webgpu.pipelineLayouts.length - 1;
     },
 
+    destroyPipelineLayout(pipelineLayoutId) {
+        utils.destroy(pipelineLayoutId, webgpu.pipelineLayouts);
+    },
+
     createRenderPipeline(deviceId, pipelineLayoutId, vertShaderId, fragShaderId, jsonPtr, jsonLen) {
         const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
         desc.layout = webgpu.pipelineLayouts[pipelineLayoutId];
@@ -112,6 +129,10 @@ const webgpu = {
         return webgpu.renderPipelines.length - 1;
     },
 
+    destroyRenderPipeline(renderPipelineId) {
+        utils.destroy(renderPipelineId, webgpu.renderPipelines);
+    },
+
     createCommandEncoder(deviceId) {
         webgpu.commandEncoders.push(webgpu.devices[deviceId].createCommandEncoder());
         return webgpu.commandEncoders.length - 1;
@@ -119,7 +140,7 @@ const webgpu = {
 
     finishCommandEncoder(commandEncoderId) {
         webgpu.commandBuffers.push(webgpu.commandEncoders[commandEncoderId].finish());
-        webgpu.destroy(commandEncoderId, webgpu.commandEncoders);
+        utils.destroy(commandEncoderId, webgpu.commandEncoders);
         return webgpu.commandBuffers.length - 1;
     },
 
@@ -205,7 +226,7 @@ const webgpu = {
 
     endRenderPass(renderPassId) {
         webgpu.renderPasses[renderPassId].endPass();
-        webgpu.destroy(renderPassId, webgpu.renderPasses);
+        utils.destroy(renderPassId, webgpu.renderPasses);
     },
 
     queueSubmit(deviceId, commandBuffersPtr, commandBuffersLen) {
@@ -222,7 +243,7 @@ const webgpu = {
 
         commandBufferIds.sort();
         for (let i = commandBufferIds.length - 1; i >= 0; --i) {
-            webgpu.destroy(commandBufferIds[i], webgpu.commandBuffers);
+            utils.destroy(commandBufferIds[i], webgpu.commandBuffers);
         }
     },
 
@@ -250,10 +271,4 @@ const webgpu = {
         texture.views.push(texture.obj.createView());
         return texture.views.length - 1;
     },
-
-    destroy(id, array) {
-        if (id == array.length - 1) {
-            array.pop();
-        }
-    }
 };

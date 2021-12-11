@@ -7,4 +7,10 @@ const utils = {
         const textDecoder = new TextDecoder();
         return textDecoder.decode(utils.getSlice(ptr, len));
     },
+
+    destroy(id, array) {
+        if (id == array.length - 1) {
+            array.pop();
+        }
+    },
 };

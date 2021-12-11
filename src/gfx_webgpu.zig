@@ -64,7 +64,8 @@ const js = struct {
         RENDER_ATTACHMENT = 0x10,
     };
 
-    extern "webgpu" fn getContext(canvas_id: ObjectId) ContextId;
+    extern "webgpu" fn createContext(canvas_id: ObjectId) ContextId;
+    extern "webgpu" fn destroyContext(contex_id: ContextId) void;
     extern "webgpu" fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern "webgpu" fn configure(
         device_id: DeviceId,
@@ -80,12 +81,14 @@ const js = struct {
         json_len: usize,
         cb: *c_void,
     ) void;
+    extern "webgpu" fn destroyAdapter(adapter_id: AdapterId) void;
     extern "webgpu" fn requestDevice(
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
         cb: *c_void,
     ) void;
+    extern "webgpu" fn destroyDevice(device_id: DeviceId) void;
     extern "webgpu" fn createShader(
         device_id: DeviceId,
         code_ptr: [*]const u8,
@@ -98,6 +101,7 @@ const js = struct {
         bind_group_layout_ids_ptr: [*]const u8,
         bind_group_layout_ids_len: usize,
     ) PipelineLayoutId;
+    extern "webgpu" fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
     extern "webgpu" fn createRenderPipeline(
         device_id: DeviceId,
         pipeline_layout_id: PipelineLayoutId,
@@ -106,6 +110,7 @@ const js = struct {
         json_ptr: [*]const u8,
         json_len: usize,
     ) RenderPipelineId;
+    extern "webgpu" fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
     extern "webgpu" fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern "webgpu" fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
     extern "webgpu" fn beginRenderPass(
@@ -159,6 +164,7 @@ const js = struct {
 
 pub const Instance = struct {
     pub fn init(_: *Instance) !void {}
+    pub fn deinit(_: *Instance) void {}
 
     pub fn createSurface(
         _: *Instance,
@@ -167,6 +173,8 @@ pub const Instance = struct {
     ) !Surface {
         return Surface{ .id = window.id };
     }
+
+    pub fn destroySurface(_: *Instance, _: *Surface) void {}
 
     pub fn requestAdapter(
         _: *Instance,
@@ -188,6 +196,10 @@ pub const Instance = struct {
 pub const Adapter = struct {
     id: js.AdapterId,
 
+    pub fn destroy(adapter: *Adapter) void {
+        js.destroyAdapter(adapter.id);
+    }
+
     pub fn requestDevice(
         adapter: *Adapter,
         comptime desc: gfx.DeviceDesc,
@@ -207,13 +219,17 @@ pub const Adapter = struct {
 pub const Device = struct {
     id: js.DeviceId,
 
+    pub fn destroy(device: *Device) void {
+        js.destroyDevice(device.id);
+    }
+
     pub fn createSwapchain(
         device: *Device,
         surface: *Surface,
         size: math.V2u32,
         comptime desc: gfx.SwapchainDesc,
     ) !Swapchain {
-        const swapchain = Swapchain{ .id = js.getContext(surface.id) };
+        const swapchain = Swapchain{ .id = js.createContext(surface.id) };
         const texture_format = comptime getTextureFormatString(desc.format);
         const texture_usage = comptime getTextureUsageFlags(desc.usage);
         js.configure(
@@ -226,6 +242,10 @@ pub const Device = struct {
             size.y,
         );
         return swapchain;
+    }
+
+    pub fn destroySwapchain(_: *Device, swapchain: *Swapchain) void {
+        js.destroyContext(swapchain.id);
     }
 
     pub fn createShader(device: *Device, code: []const u8) !Shader {
@@ -251,6 +271,10 @@ pub const Device = struct {
         };
     }
 
+    pub fn destroyPipelineLayout(_: *Device, pipeline_layout: *PipelineLayout) void {
+        js.destroyPipelineLayout(pipeline_layout.id);
+    }
+
     pub fn createRenderPipeline(
         device: *Device,
         pipeline_layout: *const PipelineLayout,
@@ -269,6 +293,10 @@ pub const Device = struct {
                 json.len,
             ),
         };
+    }
+
+    pub fn destroyRenderPipeline(_: *Device, render_pipeline: *RenderPipeline) void {
+        js.destroyRenderPipeline(render_pipeline.id);
     }
 
     pub fn createCommandEncoder(device: *Device) CommandEncoder {
