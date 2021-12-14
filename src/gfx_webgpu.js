@@ -2,17 +2,23 @@ const RequestAdapterFailed = 0;
 const RequestDeviceFailed = 1;
 const CreateShaderFailed = 2;
 const InvalidId = -1;
-const WholeSize = -1;
+const WholeSize = 0xFFFFFFFF;
+const BindTypeBuffer = 0;
+const BindTypeSampler = 1;
+const BindTypeTextureView = 2;
 
 const webgpu = {
     contexts: [],
     adapters: [],
     devices: [],
     shaders: [],
+    bindGroupLayouts: [],
+    bindGroups: [],
     pipelineLayouts: [],
     renderPipelines: [],
     buffers: [],
     textures: [],
+    samplers: [],
     commandEncoders: [],
     commandBuffers: [],
     renderPasses: [],
@@ -107,9 +113,85 @@ const webgpu = {
             });
     },
 
-    createPipelineLayout(deviceId, bindGroupLayoutIdsPtr, bindGroupLayoutIdsLen) {
+    createBindGroupLayout(deviceId, jsonPtr, jsonLen) {
+        const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
+        webgpu.bindGroupLayouts.push(webgpu.devices[deviceId].createBindGroupLayout(desc));
+        return webgpu.bindGroupLayouts.length - 1;
+    },
+
+    destroyBindGroupLayout(bindGroupLayoutId) {
+        utils.destroy(bindGroupLayoutId, webgpu.bindGroupLayouts);
+    },
+
+    createBindGroup(
+        deviceId,
+        bindGroupLayoutId,
+        resourceTypesPtr,
+        resourceTypesLen, 
+        resourceIdsPtr,
+        resourceIdsLen,
+        bufferOffsetsPtr,
+        bufferOffsetsLen,
+        bufferSizesPtr,
+        bufferSizesLen,
+        jsonPtr,
+        jsonLen
+    ) {
+        const desc = JSON.parse(utils.getString(jsonPtr, jsonLen));
+        desc.layout = webgpu.bindGroupLayouts[bindGroupLayoutId];
+
+        const resourceTypes = new Uint32Array(utils.getSlice(resourceTypesPtr, resourceTypesLen));
+        const resourceIds = new Int32Array(utils.getSlice(resourceIdsPtr, resourceIdsLen));
+        const bufferOffsets = new Uint32Array(utils.getSlice(bufferOffsetsPtr, bufferOffsetsLen)); 
+        const bufferSizes = new Uint32Array(utils.getSlice(bufferSizesPtr, bufferSizesLen));
+        let resourceIdIndex = 0;
+        for (let i = 0; i < resourceTypes.length; ++i) {
+            const resourceId = resourceIds[resourceIdIndex];
+            switch (resourceTypes[i]) {
+                case BindTypeBuffer:
+                    desc.entries[i].resource = {
+                        buffer: webgpu.buffers[resourceId]
+                    };
+                    if (bufferOffsets[i] != 0) {
+                        desc.entries[i].resource.offset = bufferOffsets[i];
+                    }
+                    if (bufferSizes[i] != WholeSize) {
+                        desc.entries[i].resource.size = bufferSizes[i];
+                    }
+                    resourceIdIndex++;
+                    break;
+                case BindTypeSampler:
+                    desc.entries[i].resource = {
+                        sampler: webgpu.samplers[resourceId]
+                    };
+                    resourceIdIndex++;
+                    break;
+                case BindTypeTextureView:
+                    const viewId = resourceIds[resourceIdIndex + 1];
+                    desc.entries[i].resource = {
+                        textureView: webgpu.textures[resourceId].views[viewId]
+                    };
+                    resourceIdIndex += 2;
+                    break;
+            }
+        }
+
+        webgpu.bindGroups.push(webgpu.devices[deviceId].createBindGroup(desc));
+        return webgpu.bindGroups.length - 1;
+    },
+
+    destroyBindGroup(bindGroupId) {
+        utils.destroy(bindGroupId, webgpu.bindGroups);
+    },
+
+    createPipelineLayout(deviceId, layoutIdsPtr, layoutIdsLen) {
+        const bindGroupLayoutIds = new Uint32Array(utils.getSlice(layoutIdsPtr, layoutIdsLen));
+        const bindGroupLayouts = [];
+        for (let i = 0; i < bindGroupLayoutIds.length; ++i) {
+            bindGroupLayouts.push(webgpu.bindGroupLayouts[bindGroupLayoutIds[i]]);
+        }
         webgpu.pipelineLayouts.push(webgpu.devices[deviceId].createPipelineLayout({
-            bindGroupLayouts: []
+            bindGroupLayouts: bindGroupLayouts
         }));
         return webgpu.pipelineLayouts.length - 1;
     },
@@ -203,8 +285,18 @@ const webgpu = {
         webgpu.renderPasses[renderPassId].setPipeline(webgpu.renderPipelines[pipelineId]);
     },
 
+    setBindGroup(renderPassId, groupIndex, bindGroupId, dynamicOffsetsPtr, dynamicOffsetsLen) {
+        const bindGroup = webgpu.bindGroups[bindGroupId];
+        if (dynamicOffsetsLen > 0) {
+            const offsets = new Uint32Array(utils.getSlice(dynamicOffsetsPtr, dynamicOffsetsLen));
+            webgpu.renderPasses[renderPassId].setBindGroup(groupIndex, bindGroup, offsets);
+        } else {
+            webgpu.renderPasses[renderPassId].setBindGroup(groupIndex, bindGroup);
+        }
+    },
+
     setVertexBuffer(slot, renderPassId, bufferId, offset, size) {
-        if (size === WholeSize) {
+        if (size === -1) {
             size = undefined;
         }
 
@@ -247,6 +339,16 @@ const webgpu = {
         }
     },
 
+    queueWriteBuffer(deviceId, bufferId, bufferOffset, dataPtr, dataLen, dataOffset) {
+        webgpu.devices[deviceId].queue.writeBuffer(
+            webgpu.buffers[bufferId],
+            bufferOffset,
+            new Uint8Array(utils.getSlice(dataPtr, dataLen)),
+            dataOffset,
+            dataLen
+        );
+    },
+
     createBuffer(deviceId, size, usage, dataPtr, dataLen) {
         const mappedAtCreation = dataLen > 0;
         const buffer = webgpu.devices[deviceId].createBuffer({
@@ -264,6 +366,41 @@ const webgpu = {
 
         webgpu.buffers.push(buffer);
         return webgpu.buffers.length - 1;
+    },
+
+    destroyBuffer(bufferId) {
+        webgpu.buffers[bufferId].destroy();
+        utils.destroy(bufferId, webgpu.buffers);
+    },
+
+    createTexture(
+        deviceId,
+        usage,
+        dimensionPtr,
+        dimensionLen,
+        width,
+        height,
+        depthOrArrayLayers,
+        formatPtr,
+        formatLen,
+        mipLevelCount,
+        sampleCount
+    ) {
+        const texture = webgpu.devices[deviceId].createTexture({
+            usage: usage,
+            dimension: utils.getString(dimensionPtr, dimensionLen),
+            size: { width: width, height: height, depthOrArrayLayers: depthOrArrayLayers },
+            format: utils.getString(formatPtr, formatLen),
+            mipLevelCount: mipLevelCount,
+            sampleCount: sampleCount,
+        });
+        webgpu.textures.push({obj: texture, views: []});
+        return webgpu.textures.length - 1;
+    },
+
+    destroyTexture(textureId) {
+        webgpu.textures[textureId].destroy();
+        utils.destroy(textureId, webgpu.textures);
     },
 
     createTextureView(textureId) {

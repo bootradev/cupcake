@@ -97,6 +97,105 @@ pub const SwapchainDesc = struct {
     present_mode: PresentMode = .fifo,
 };
 
+pub const ShaderStage = packed struct {
+    vertex: bool = false,
+    fragment: bool = false,
+    compute: bool = false,
+};
+
+pub const BufferBindingType = enum {
+    @"undefined",
+    uniform,
+    storage,
+    read_only_storage,
+};
+
+pub const BufferBindingLayout = struct {
+    @"type": BufferBindingType = .uniform,
+    has_dynamic_offset: bool = false,
+    min_binding_size: u64 = 0,
+};
+
+pub const SamplerBindingType = enum {
+    @"undefined",
+    filtering,
+    non_filtering,
+    comparison,
+};
+
+pub const SamplerBindingLayout = struct {
+    @"type": SamplerBindingType = .filtering,
+};
+
+pub const TextureSampleType = enum {
+    float,
+    unfilterable_float,
+    depth,
+    sint,
+    uint,
+};
+
+pub const TextureViewDimension = enum {
+    @"undefined",
+    @"1d",
+    @"2d",
+    @"2d_array",
+    cube,
+    cube_array,
+    @"3d",
+};
+
+pub const TextureBindingLayout = struct {
+    sample_type: TextureSampleType = .float,
+    view_dimension: TextureViewDimension = .@"2d",
+    multisampled: bool = false,
+};
+
+pub const StorageTextureAccess = enum {
+    @"undefined",
+    write_only,
+};
+
+pub const StorageTextureBindingLayout = struct {
+    access: StorageTextureAccess = .write_only,
+    format: TextureFormat,
+    view_dimension: TextureViewDimension = .@"2d",
+};
+
+pub const BindingLayout = union(enum) {
+    buffer: BufferBindingLayout,
+    sampler: SamplerBindingLayout,
+    texture: TextureBindingLayout,
+    storage_texture: StorageTextureBindingLayout,
+};
+
+pub const BindGroupLayoutEntry = struct {
+    binding: u32,
+    visibility: ShaderStage,
+    layout: BindingLayout,
+};
+
+pub const BindGroupLayoutDesc = struct {
+    label: []const u8 = "",
+    entries: []const BindGroupLayoutEntry,
+};
+
+pub const BindType = enum {
+    buffer,
+    sampler,
+    texture_view,
+};
+
+pub const BindGroupEntry = struct {
+    binding: u32,
+    resource_type: BindType,
+};
+
+pub const BindGroupDesc = struct {
+    label: []const u8 = "",
+    entries: []const BindGroupEntry,
+};
+
 pub const PipelineLayoutDesc = struct {
     label: []const u8 = "",
 };
@@ -324,17 +423,17 @@ pub const StoreOp = enum {
 pub const ColorAttachment = struct {
     load_op: LoadOp,
     store_op: StoreOp,
-    clear_color: math.V4f64 = math.V4f64.init(0, 0, 0, 1),
+    clear_color: math.V4f64 = math.V4f64.make(0, 0, 0, 1),
 };
 
 pub const DepthStencilAttachment = struct {
     depth_load_op: LoadOp,
     depth_store_op: StoreOp,
-    clear_depth: f32,
+    clear_depth: f32 = 1.0,
     depth_read_only: bool = false,
     stencil_load_op: LoadOp,
     stencil_store_op: StoreOp,
-    clear_stencil: u32,
+    clear_stencil: u32 = 0,
     stencil_read_only: bool = false,
 };
 
@@ -371,6 +470,27 @@ pub const BufferUsage = packed struct {
     storage: bool = false,
     indirect: bool = false,
     query_resolve: bool = false,
+};
+
+pub const TextureDimension = enum {
+    @"1d",
+    @"2d",
+    @"3d",
+};
+
+pub const Extent3D = struct {
+    width: u32,
+    height: u32,
+    depth_or_array_layers: u32 = 1,
+};
+
+pub const TextureDesc = struct {
+    label: []const u8 = "",
+    usage: TextureUsage,
+    dimension: TextureDimension = .@"2d",
+    format: TextureFormat,
+    mip_level_count: u32 = 1,
+    sample_count: u32 = 1,
 };
 
 pub const TextureUsage = packed struct {

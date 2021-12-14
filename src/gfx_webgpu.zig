@@ -11,6 +11,7 @@ const js = struct {
     const GPUColorWriteFlags = u32;
     const GPUTextureUsageFlags = u32;
     const GPUBufferUsageFlags = u32;
+    const GPUShaderStageFlags = u32;
     const GPUStencilValue = u32;
     const GPUDepthBias = i32;
     const GPUFlagsConstant = u32;
@@ -23,6 +24,7 @@ const js = struct {
     const DeviceId = ObjectId;
     const ShaderId = ObjectId;
     const BindGroupLayoutId = ObjectId;
+    const BindGroupId = ObjectId;
     const PipelineLayoutId = ObjectId;
     const RenderPipelineId = ObjectId;
     const RenderPassId = ObjectId;
@@ -30,6 +32,7 @@ const js = struct {
     const CommandBufferId = ObjectId;
     const TextureId = ObjectId;
     const TextureViewId = ObjectId;
+    const SamplerId = ObjectId;
     const QuerySetId = ObjectId;
     const BufferId = ObjectId;
 
@@ -64,6 +67,12 @@ const js = struct {
         RENDER_ATTACHMENT = 0x10,
     };
 
+    pub const GPUShaderStage = enum(GPUFlagsConstant) {
+        VERTEX = 0x01,
+        FRAGMENT = 0x02,
+        COMPUTE = 0x04,
+    };
+
     extern "webgpu" fn createContext(canvas_id: ObjectId) ContextId;
     extern "webgpu" fn destroyContext(contex_id: ContextId) void;
     extern "webgpu" fn getContextCurrentTexture(context_id: ContextId) TextureId;
@@ -96,6 +105,27 @@ const js = struct {
     ) ShaderId;
     extern "webgpu" fn destroyShader(shader_id: ShaderId) void;
     extern "webgpu" fn checkShaderCompile(shader_id: ShaderId) void;
+    extern "webgpu" fn createBindGroupLayout(
+        device_id: DeviceId,
+        json_ptr: [*]const u8,
+        json_len: usize,
+    ) BindGroupLayoutId;
+    extern "webgpu" fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
+    extern "webgpu" fn createBindGroup(
+        device_id: DeviceId,
+        bind_group_layout_id: BindGroupLayoutId,
+        resource_types_ptr: [*]const u8,
+        resource_types_len: usize,
+        resource_ids_ptr: [*]const u8,
+        resource_ids_len: usize,
+        buffer_offsets_ptr: [*]const u8,
+        buffer_offsets_len: usize,
+        buffer_sizes_ptr: [*]const u8,
+        buffer_sizes_len: usize,
+        json_ptr: [*]const u8,
+        json_len: usize,
+    ) BindGroupId;
+    extern "webgpu" fn destroyBindGroup(bind_group_id: BindGroupId) void;
     extern "webgpu" fn createPipelineLayout(
         device_id: DeviceId,
         bind_group_layout_ids_ptr: [*]const u8,
@@ -131,6 +161,13 @@ const js = struct {
         render_pass_id: RenderPassId,
         render_pipeline_id: RenderPipelineId,
     ) void;
+    extern "webgpu" fn setBindGroup(
+        render_pass_id: RenderPassId,
+        group_index: GPUIndex32,
+        bind_group_id: BindGroupId,
+        dynamic_offsets_ptr: [*]const u8,
+        dynamic_offsets_len: usize,
+    ) void;
     extern "webgpu" fn setVertexBuffer(
         render_pass_id: RenderPassId,
         slot: GPUIndex32,
@@ -146,11 +183,18 @@ const js = struct {
         first_instance: GPUSize32,
     ) void;
     extern "webgpu" fn endRenderPass(render_pass_id: RenderPassId) void;
-
     extern "webgpu" fn queueSubmit(
         device_id: DeviceId,
         command_buffers_ptr: [*]const u8,
         command_buffers_len: usize,
+    ) void;
+    extern "webgpu" fn queueWriteBuffer(
+        device_id: DeviceId,
+        buffer_id: BufferId,
+        buffer_offset: GPUSize64,
+        data_ptr: [*]const u8,
+        data_len: usize,
+        data_offset: GPUSize64,
     ) void;
     extern "webgpu" fn createBuffer(
         device_id: DeviceId,
@@ -159,6 +203,21 @@ const js = struct {
         data_ptr: [*]const u8,
         data_len: usize,
     ) BufferId;
+    extern "webgpu" fn destroyBuffer(buffer_id: BufferId) void;
+    extern "webgpu" fn createTexture(
+        device_id: DeviceId,
+        usage: GPUTextureUsageFlags,
+        dimension_ptr: [*]const u8,
+        dimension_len: usize,
+        width: GPUIntegerCoordinate,
+        height: GPUIntegerCoordinate,
+        depth_or_array_layers: GPUIntegerCoordinate,
+        format_ptr: [*]const u8,
+        format_len: usize,
+        mip_level_count: GPUIntegerCoordinate,
+        sample_count: GPUSize32,
+    ) TextureId;
+    extern "webgpu" fn destroyTexture(texture_id: TextureId) void;
     extern "webgpu" fn createTextureView(texture_id: TextureId) TextureViewId;
 };
 
@@ -166,11 +225,7 @@ pub const Instance = struct {
     pub fn init(_: *Instance) !void {}
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(
-        _: *Instance,
-        window: *app.Window,
-        comptime _: gfx.SurfaceDesc,
-    ) !Surface {
+    pub fn createSurface(_: *Instance, window: *app.Window, comptime _: gfx.SurfaceDesc) !Surface {
         return Surface{ .id = window.id };
     }
 
@@ -200,11 +255,7 @@ pub const Adapter = struct {
         js.destroyAdapter(adapter.id);
     }
 
-    pub fn requestDevice(
-        adapter: *Adapter,
-        comptime desc: gfx.DeviceDesc,
-        device: *Device,
-    ) !void {
+    pub fn requestDevice(adapter: *Adapter, comptime desc: gfx.DeviceDesc, device: *Device) !void {
         const json = comptime stringifyDeviceDescComptime(desc);
         js.requestDevice(adapter.id, json.ptr, json.len, device);
     }
@@ -260,6 +311,79 @@ pub const Device = struct {
         js.checkShaderCompile(shader.id);
     }
 
+    pub fn createBindGroupLayout(
+        device: *Device,
+        comptime desc: gfx.BindGroupLayoutDesc,
+    ) !BindGroupLayout {
+        const json = comptime stringifyBindGroupLayoutDescComptime(desc);
+        return BindGroupLayout{
+            .id = js.createBindGroupLayout(device.id, json.ptr, json.len),
+        };
+    }
+
+    pub fn destroyBindGroupLayout(_: *Device, bind_group_layout: *BindGroupLayout) void {
+        js.destroyBindGroupLayout(bind_group_layout.id);
+    }
+
+    pub fn createBindGroup(
+        device: *Device,
+        layout: *const BindGroupLayout,
+        resources: []const BindGroupResource,
+        comptime desc: gfx.BindGroupDesc,
+    ) !BindGroup {
+        comptime var resource_id_count = 0;
+        inline for (desc.entries) |entry| {
+            resource_id_count += if (entry.resource_type == .texture_view) 2 else 1;
+        }
+        var resource_types: [desc.entries.len]u32 = undefined;
+        var resource_ids: [resource_id_count]js.ObjectId = undefined;
+        var buffer_offsets: [desc.entries.len]usize = undefined;
+        var buffer_sizes: [desc.entries.len]usize = undefined;
+        comptime var resource_id_index = 0;
+        inline for (desc.entries) |entry, i| {
+            resource_types[i] = @enumToInt(entry.resource_type);
+            switch (entry.resource_type) {
+                .buffer => {
+                    resource_ids[resource_id_index] = resources[i].buffer.resource.id;
+                    buffer_offsets[i] = resources[i].buffer.offset;
+                    buffer_sizes[i] = resources[i].buffer.size;
+                    resource_id_index += 1;
+                },
+                .sampler => {
+                    resource_ids[resource_id_index] = resources[i].sampler.id;
+                    resource_id_index += 1;
+                },
+                .texture_view => {
+                    resource_ids[resource_id_index] = resources[i].texture_view.tex_id;
+                    resource_ids[resource_id_index + 1] = resources[i].texture_view.view_id;
+                    resource_id_index += 2;
+                },
+            }
+        }
+        const resource_types_bytes = std.mem.sliceAsBytes(&resource_types);
+        const resource_ids_bytes = std.mem.sliceAsBytes(&resource_ids);
+        const buffer_offsets_bytes = std.mem.sliceAsBytes(&buffer_offsets);
+        const buffer_sizes_bytes = std.mem.sliceAsBytes(&buffer_sizes);
+
+        const json = comptime stringifyBindGroupDescComptime(desc);
+        return BindGroup{
+            .id = js.createBindGroup(
+                device.id,
+                layout.id,
+                resource_types_bytes.ptr,
+                resource_types_bytes.len,
+                resource_ids_bytes.ptr,
+                resource_ids_bytes.len,
+                buffer_offsets_bytes.ptr,
+                buffer_offsets_bytes.len,
+                buffer_sizes_bytes.ptr,
+                buffer_sizes_bytes.len,
+                json.ptr,
+                json.len,
+            ),
+        };
+    }
+
     pub fn createPipelineLayout(
         device: *Device,
         bind_group_layouts: []const BindGroupLayout,
@@ -313,7 +437,7 @@ pub const Device = struct {
         size: usize,
         comptime desc: gfx.BufferDesc,
     ) !Buffer {
-        const init_data = if (data) |init_data| init_data else &.{};
+        const init_data = if (data) |init_data| init_data else &[_]u8{};
         return Buffer{
             .id = js.createBuffer(
                 device.id,
@@ -321,6 +445,30 @@ pub const Device = struct {
                 comptime getBufferUsageFlags(desc.usage),
                 init_data.ptr,
                 init_data.len,
+            ),
+        };
+    }
+
+    pub fn createTexture(
+        device: *Device,
+        size: gfx.Extent3D,
+        comptime desc: gfx.TextureDesc,
+    ) !Texture {
+        const dimension = comptime getTextureDimensionString(desc.dimension);
+        const format = comptime getTextureFormatString(desc.format);
+        return Texture{
+            .id = js.createTexture(
+                device.id,
+                comptime getTextureUsageFlags(desc.usage),
+                dimension.ptr,
+                dimension.len,
+                size.width,
+                size.height,
+                size.depth_or_array_layers,
+                format.ptr,
+                format.len,
+                desc.mip_level_count,
+                desc.sample_count,
             ),
         };
     }
@@ -340,9 +488,24 @@ pub const Buffer = packed struct {
     id: js.BufferId,
 };
 
+pub const Texture = packed struct {
+    id: js.TextureId,
+
+    pub fn createView(texture: *Texture) TextureView {
+        return TextureView{
+            .tex_id = texture.id,
+            .view_id = js.createTextureView(texture.id),
+        };
+    }
+};
+
 pub const TextureView = packed struct {
     tex_id: js.TextureId,
     view_id: js.TextureViewId,
+};
+
+pub const Sampler = packed struct {
+    id: js.SamplerId,
 };
 
 pub const Shader = packed struct {
@@ -373,6 +536,22 @@ pub const BindGroupLayout = packed struct {
     id: js.BindGroupLayoutId,
 };
 
+pub const BufferBinding = struct {
+    resource: *Buffer,
+    offset: usize = 0,
+    size: usize = gfx.whole_size,
+};
+
+pub const BindGroupResource = union(gfx.BindType) {
+    buffer: BufferBinding,
+    sampler: *Sampler,
+    texture_view: *TextureView,
+};
+
+pub const BindGroup = packed struct {
+    id: js.BindGroupId,
+};
+
 pub const PipelineLayout = packed struct {
     id: js.PipelineLayoutId,
 };
@@ -386,6 +565,16 @@ pub const RenderPass = packed struct {
 
     pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *RenderPipeline) void {
         js.setPipeline(render_pass.id, render_pipeline.id);
+    }
+
+    pub fn setBindGroup(
+        render_pass: *RenderPass,
+        group_index: u32,
+        group: *BindGroup,
+        dynamic_offsets: ?[]const u32,
+    ) void {
+        const offsets = if (dynamic_offsets) |offsets| std.mem.sliceAsBytes(offsets) else &[_]u8{};
+        js.setBindGroup(render_pass.id, group_index, group.id, offsets.ptr, offsets.len);
     }
 
     pub fn setVertexBuffer(
@@ -416,17 +605,17 @@ pub const RenderPass = packed struct {
 pub const CommandEncoder = packed struct {
     id: js.CommandEncoderId,
 
-    pub const BeginRenderPassArgs = struct {
+    pub const RenderPassArgs = struct {
         color_views: []const TextureView,
         color_resolve_targets: []const TextureView = &.{},
-        depth_stencil_view: ?TextureView = null,
-        occlusion_query_set: ?QuerySet = null,
+        depth_stencil_view: ?*const TextureView = null,
+        occlusion_query_set: ?*const QuerySet = null,
         timestamp_query_sets: []const QuerySet = &.{},
     };
 
     pub fn beginRenderPass(
         command_encoder: *CommandEncoder,
-        args: BeginRenderPassArgs,
+        args: RenderPassArgs,
         comptime desc: gfx.RenderPassDesc,
     ) RenderPass {
         const color_views_bytes = std.mem.sliceAsBytes(args.color_views);
@@ -481,6 +670,16 @@ pub const QuerySet = packed struct {
 
 pub const Queue = packed struct {
     id: js.DeviceId,
+
+    pub fn writeBuffer(
+        queue: *Queue,
+        buffer: *Buffer,
+        buffer_offset: usize,
+        data: []const u8,
+        data_offset: usize,
+    ) void {
+        js.queueWriteBuffer(queue.id, buffer.id, buffer_offset, data.ptr, data.len, data_offset);
+    }
 
     pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
         const bytes = std.mem.sliceAsBytes(command_buffers);
@@ -571,6 +770,138 @@ fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
         json.requiredLimits = .none;
     }
 
+    return comptime try stringifyComptime(json);
+}
+
+fn stringifyBindGroupLayoutDescComptime(comptime desc: gfx.BindGroupLayoutDesc) []const u8 {
+    const JsonBufferBindingLayout = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        @"type": JsonOptional([]const u8) = .none,
+        hasDynamicOffset: JsonOptional(bool) = .none,
+        minBindingSize: JsonOptional(js.GPUSize64) = .none,
+    };
+    const JsonSamplerBindingLayout = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        @"type": JsonOptional([]const u8) = .none,
+    };
+    const JsonTextureBindingLayout = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        sampleType: JsonOptional([]const u8) = .none,
+        viewDimension: JsonOptional([]const u8) = .none,
+        multisampled: JsonOptional(bool) = .none,
+    };
+    const JsonStorageTextureBindingLayout = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        format: []const u8 = "",
+        access: JsonOptional([]const u8) = .none,
+        viewDimension: JsonOptional([]const u8) = .none,
+    };
+    const JsonEntry = struct {
+        usingnamespace JsonOptionalStruct(@This());
+        binding: js.GPUIndex32,
+        visibility: js.GPUShaderStageFlags,
+        buffer: JsonOptional(JsonBufferBindingLayout) = .none,
+        sampler: JsonOptional(JsonSamplerBindingLayout) = .none,
+        texture: JsonOptional(JsonTextureBindingLayout) = .none,
+        storageTexture: JsonOptional(JsonStorageTextureBindingLayout) = .none,
+    };
+    const JsonDesc = struct {
+        entries: []const JsonEntry = &.{},
+    };
+
+    comptime var json: JsonDesc = .{};
+
+    inline for (desc.entries) |entry| {
+        comptime var json_entry: JsonEntry = .{
+            .binding = entry.binding,
+            .visibility = comptime getShaderStageFlags(entry.visibility),
+        };
+        switch (entry.layout) {
+            .buffer => |buffer| {
+                comptime var json_buffer: JsonBufferBindingLayout = .{};
+                comptime json_buffer.@"type".setIfNotDefault(
+                    buffer,
+                    "type",
+                    getBufferBindingTypeString(buffer.@"type"),
+                );
+                comptime json_buffer.hasDynamicOffset.setIfNotDefault(
+                    buffer,
+                    "has_dynamic_offset",
+                    buffer.has_dynamic_offset,
+                );
+                comptime json_buffer.minBindingSize.setIfNotDefault(
+                    buffer,
+                    "min_binding_size",
+                    buffer.min_binding_size,
+                );
+                json_entry.buffer = .{ .some = json_buffer };
+            },
+            .sampler => |sampler| {
+                comptime var json_sampler: JsonSamplerBindingLayout = .{};
+                comptime json_sampler.@"type".setIfNotDefault(
+                    sampler,
+                    "type",
+                    getSamplerBindingTypeString(sampler.@"type"),
+                );
+                json_entry.sampler = .{ .some = json_sampler };
+            },
+            .texture => |texture| {
+                comptime var json_texture: JsonTextureBindingLayout = .{};
+                comptime json_texture.sampleType.setIfNotDefault(
+                    texture,
+                    "sample_type",
+                    getTextureSampleTypeString(texture.sample_type),
+                );
+                comptime json_texture.viewDimension.setIfNotDefault(
+                    texture,
+                    "view_dimension",
+                    getTextureViewDimensionString(texture.view_dimension),
+                );
+                comptime json_texture.multisampled.setIfNotDefault(
+                    texture,
+                    "multisampled",
+                    texture.multisampled,
+                );
+                json_entry.texture = .{ .some = json_texture };
+            },
+            .storage_texture => |storage_texture| {
+                comptime var json_storage_texture: JsonStorageTextureBindingLayout = .{
+                    .format = comptime getTextureFormatString(storage_texture.format),
+                };
+                comptime json_storage_texture.access.setIfNotDefault(
+                    storage_texture,
+                    "access",
+                    getStorageTextureAccessString(storage_texture.access),
+                );
+                comptime json_storage_texture.viewDimension.setIfNotDefault(
+                    storage_texture,
+                    "view_dimension",
+                    getTextureViewDimensionString(storage_texture.view_dimension),
+                );
+                json_entry.storageTexture = .{ .some = json_storage_texture };
+            },
+        }
+        json.entries = json.entries ++ &[_]JsonEntry{json_entry};
+    }
+
+    return comptime try stringifyComptime(json);
+}
+
+fn stringifyBindGroupDescComptime(comptime desc: gfx.BindGroupDesc) []const u8 {
+    const JsonEntry = struct {
+        binding: js.GPUIndex32,
+    };
+    const JsonDesc = struct {
+        entries: []const JsonEntry = &.{},
+    };
+    comptime var json: JsonDesc = .{};
+    inline for (desc.entries) |entry| {
+        json.entries = json.entries ++ &[_]JsonEntry{
+            .{
+                .binding = entry.binding,
+            },
+        };
+    }
     return comptime try stringifyComptime(json);
 }
 
@@ -704,7 +1035,7 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
             "cull_mode",
             getCullModeString(desc.primitive.cull_mode),
         );
-        json.primtive = .{ .some = json_primitive };
+        json.primitive = .{ .some = json_primitive };
     }
 
     if (desc.depth_stencil) |depth_stencil| {
@@ -1193,6 +1524,30 @@ fn getRenderPassTimestampLocationString(comptime loc: gfx.RenderPassTimestampLoc
     return @tagName(loc);
 }
 
+fn getTextureDimensionString(comptime texture_dimension: gfx.TextureDimension) []const u8 {
+    return @tagName(texture_dimension);
+}
+
+fn getBufferBindingTypeString(comptime buffer_binding_type: gfx.BufferBindingType) []const u8 {
+    return replaceUnderscoreWithDash(@tagName(buffer_binding_type));
+}
+
+fn getSamplerBindingTypeString(comptime sampler_binding_type: gfx.SamplerBindingType) []const u8 {
+    return replaceUnderscoreWithDash(@tagName(sampler_binding_type));
+}
+
+fn getTextureSampleTypeString(comptime texture_sample_type: gfx.TextureSampleType) []const u8 {
+    return replaceUnderscoreWithDash(@tagName(texture_sample_type));
+}
+
+fn getTextureViewDimensionString(comptime view_dimension: gfx.TextureViewDimension) []const u8 {
+    return replaceUnderscoreWithDash(@tagName(view_dimension));
+}
+
+fn getStorageTextureAccessString(comptime access: gfx.StorageTextureAccess) []const u8 {
+    return replaceUnderscoreWithDash(@tagName(access));
+}
+
 fn replaceUnderscoreWithDash(comptime string: []const u8) []const u8 {
     comptime var buf: [string.len]u8 = undefined;
     _ = std.mem.replace(u8, string, "_", "-", buf[0..]);
@@ -1209,6 +1564,10 @@ fn getTextureUsageFlags(comptime texture_usage: gfx.TextureUsage) js.GPUTextureU
 
 fn getColorWriteFlags(comptime color_write_mask: gfx.ColorWriteMask) js.GPUColorWriteFlags {
     return getJsEnumFlags(color_write_mask, js.GPUColorWrite, js.GPUColorWriteFlags);
+}
+
+fn getShaderStageFlags(comptime shader_stage: gfx.ShaderStage) js.GPUShaderStageFlags {
+    return getJsEnumFlags(shader_stage, js.GPUShaderStage, js.GPUShaderStageFlags);
 }
 
 fn getJsEnumFlags(
