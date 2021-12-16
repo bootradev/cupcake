@@ -31,7 +31,7 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.status = .pending;
-    try example.window.init("tri", math.V2u32.init(800, 600));
+    try example.window.init("tri", math.V2u32.make(800, 600));
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);
@@ -51,15 +51,15 @@ fn onDeviceReady() void {
     );
 
     var vert_shader = try example.device.createShader(shaders.tri_vert);
-    defer example.device.destroyShader(&vert_shader);
+    defer vert_shader.destroy();
     example.device.checkShaderCompile(&vert_shader);
 
     var frag_shader = try example.device.createShader(shaders.tri_frag);
-    defer example.device.destroyShader(&frag_shader);
+    defer frag_shader.destroy();
     example.device.checkShaderCompile(&frag_shader);
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
-    defer example.device.destroyPipelineLayout(&pipeline_layout);
+    defer pipeline_layout.destroy();
 
     example.render_pipeline = try example.device.createRenderPipeline(
         &pipeline_layout,
@@ -116,11 +116,11 @@ pub fn update() !void {
 }
 
 pub fn deinit() !void {
-    example.device.destroyRenderPipeline(&example.render_pipeline);
-    example.device.destroySwapchain(&example.swapchain);
+    example.render_pipeline.destroy();
+    example.swapchain.destroy();
     example.device.destroy();
     example.adapter.destroy();
-    example.instance.destroySurface(&example.surface);
+    example.surface.destroy();
     example.instance.deinit();
     example.window.deinit();
 }

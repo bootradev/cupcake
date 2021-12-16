@@ -7,6 +7,7 @@ const js = struct {
     const GPUSize32 = u32;
     const GPUSize64 = usize;
     const GPUIndex32 = u32;
+    const GPUSignedOffset32 = i32;
     const GPUSampleMask = u32;
     const GPUColorWriteFlags = u32;
     const GPUTextureUsageFlags = u32;
@@ -175,11 +176,27 @@ const js = struct {
         offset: GPUSize64,
         size: GPUSize64,
     ) void;
+    extern "webgpu" fn setIndexBuffer(
+        render_pass_id: RenderPassId,
+        buffer_id: BufferId,
+        index_format_ptr: [*]const u8,
+        index_format_len: usize,
+        offset: usize,
+        size: usize,
+    ) void;
     extern "webgpu" fn draw(
         render_pass_id: RenderPassId,
         vertex_count: GPUSize32,
         instance_count: GPUSize32,
         first_vertex: GPUSize32,
+        first_instance: GPUSize32,
+    ) void;
+    extern "webgpu" fn drawIndexed(
+        render_pass_id: RenderPassId,
+        index_count: GPUSize32,
+        instance_count: GPUSize32,
+        first_index: GPUSize32,
+        base_vertex: GPUSignedOffset32,
         first_instance: GPUSize32,
     ) void;
     extern "webgpu" fn endRenderPass(render_pass_id: RenderPassId) void;
@@ -219,6 +236,7 @@ const js = struct {
     ) TextureId;
     extern "webgpu" fn destroyTexture(texture_id: TextureId) void;
     extern "webgpu" fn createTextureView(texture_id: TextureId) TextureViewId;
+    extern "webgpu" fn destroyTextureView(texture_id: TextureId, view_id: TextureViewId) void;
 };
 
 pub const Instance = struct {
@@ -228,8 +246,6 @@ pub const Instance = struct {
     pub fn createSurface(_: *Instance, window: *app.Window, comptime _: gfx.SurfaceDesc) !Surface {
         return Surface{ .id = window.id };
     }
-
-    pub fn destroySurface(_: *Instance, _: *Surface) void {}
 
     pub fn requestAdapter(
         _: *Instance,
@@ -295,16 +311,8 @@ pub const Device = struct {
         return swapchain;
     }
 
-    pub fn destroySwapchain(_: *Device, swapchain: *Swapchain) void {
-        js.destroyContext(swapchain.id);
-    }
-
     pub fn createShader(device: *Device, code: []const u8) !Shader {
         return Shader{ .id = js.createShader(device.id, code.ptr, code.len) };
-    }
-
-    pub fn destroyShader(_: *Device, shader: *Shader) void {
-        js.destroyShader(shader.id);
     }
 
     pub fn checkShaderCompile(_: *Device, shader: *Shader) void {
@@ -321,14 +329,10 @@ pub const Device = struct {
         };
     }
 
-    pub fn destroyBindGroupLayout(_: *Device, bind_group_layout: *BindGroupLayout) void {
-        js.destroyBindGroupLayout(bind_group_layout.id);
-    }
-
     pub fn createBindGroup(
         device: *Device,
         layout: *const BindGroupLayout,
-        resources: []const BindGroupResource,
+        resources: []const gfx.BindGroupResource,
         comptime desc: gfx.BindGroupDesc,
     ) !BindGroup {
         comptime var resource_id_count = 0;
@@ -395,10 +399,6 @@ pub const Device = struct {
         };
     }
 
-    pub fn destroyPipelineLayout(_: *Device, pipeline_layout: *PipelineLayout) void {
-        js.destroyPipelineLayout(pipeline_layout.id);
-    }
-
     pub fn createRenderPipeline(
         device: *Device,
         pipeline_layout: *const PipelineLayout,
@@ -419,10 +419,6 @@ pub const Device = struct {
         };
     }
 
-    pub fn destroyRenderPipeline(_: *Device, render_pipeline: *RenderPipeline) void {
-        js.destroyRenderPipeline(render_pipeline.id);
-    }
-
     pub fn createCommandEncoder(device: *Device) CommandEncoder {
         return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
     }
@@ -441,7 +437,7 @@ pub const Device = struct {
         return Buffer{
             .id = js.createBuffer(
                 device.id,
-                size,
+                std.mem.alignForward(size, 4),
                 comptime getBufferUsageFlags(desc.usage),
                 init_data.ptr,
                 init_data.len,
@@ -486,6 +482,10 @@ export fn runtimeError(error_code: u32) void {
 
 pub const Buffer = packed struct {
     id: js.BufferId,
+
+    pub fn destroy(buffer: *Buffer) void {
+        js.destroyBuffer(buffer.id);
+    }
 };
 
 pub const Texture = packed struct {
@@ -497,11 +497,19 @@ pub const Texture = packed struct {
             .view_id = js.createTextureView(texture.id),
         };
     }
+
+    pub fn destroy(texture: *Texture) void {
+        js.destroyTexture(texture.id);
+    }
 };
 
 pub const TextureView = packed struct {
     tex_id: js.TextureId,
     view_id: js.TextureViewId,
+
+    pub fn destroy(view: *TextureView) void {
+        js.destroyTextureView(view.tex_id, view.view_id);
+    }
 };
 
 pub const Sampler = packed struct {
@@ -510,6 +518,10 @@ pub const Sampler = packed struct {
 
 pub const Shader = packed struct {
     id: js.ShaderId,
+
+    pub fn destroy(shader: *Shader) void {
+        js.destroyShader(shader.id);
+    }
 };
 
 pub const Surface = packed struct {
@@ -518,6 +530,8 @@ pub const Surface = packed struct {
     pub fn getPreferredFormat() gfx.TextureFormat {
         return .bgra8unorm;
     }
+
+    pub fn destroy(_: *Surface) void {}
 };
 
 pub const Swapchain = packed struct {
@@ -530,34 +544,42 @@ pub const Swapchain = packed struct {
     }
 
     pub fn present(_: *Swapchain) void {}
+
+    pub fn destroy(swapchain: *Swapchain) void {
+        js.destroyContext(swapchain.id);
+    }
 };
 
 pub const BindGroupLayout = packed struct {
     id: js.BindGroupLayoutId,
-};
 
-pub const BufferBinding = struct {
-    resource: *Buffer,
-    offset: usize = 0,
-    size: usize = gfx.whole_size,
-};
-
-pub const BindGroupResource = union(gfx.BindType) {
-    buffer: BufferBinding,
-    sampler: *Sampler,
-    texture_view: *TextureView,
+    pub fn destroy(bind_group_layout: *BindGroupLayout) void {
+        js.destroyBindGroupLayout(bind_group_layout.id);
+    }
 };
 
 pub const BindGroup = packed struct {
     id: js.BindGroupId,
+
+    pub fn destroy(bind_group: *BindGroup) void {
+        js.destroyBindGroup(bind_group.id);
+    }
 };
 
 pub const PipelineLayout = packed struct {
     id: js.PipelineLayoutId,
+
+    pub fn destroy(pipeline_layout: *PipelineLayout) void {
+        js.destroyPipelineLayout(pipeline_layout.id);
+    }
 };
 
 pub const RenderPipeline = packed struct {
     id: js.RenderPipelineId,
+
+    pub fn destroy(render_pipeline: *RenderPipeline) void {
+        js.destroyRenderPipeline(render_pipeline.id);
+    }
 };
 
 pub const RenderPass = packed struct {
@@ -587,6 +609,24 @@ pub const RenderPass = packed struct {
         js.setVertexBuffer(render_pass.id, slot, buffer.id, offset, size);
     }
 
+    pub fn setIndexBuffer(
+        render_pass: *RenderPass,
+        buffer: *Buffer,
+        comptime index_format: gfx.IndexFormat,
+        offset: usize,
+        size: usize,
+    ) void {
+        const index_format_str = comptime getIndexFormatString(index_format);
+        js.setIndexBuffer(
+            render_pass.id,
+            buffer.id,
+            index_format_str.ptr,
+            index_format_str.len,
+            offset,
+            size,
+        );
+    }
+
     pub fn draw(
         render_pass: *RenderPass,
         vertex_count: usize,
@@ -597,6 +637,24 @@ pub const RenderPass = packed struct {
         js.draw(render_pass.id, vertex_count, instance_count, first_vertex, first_instance);
     }
 
+    pub fn drawIndexed(
+        render_pass: *RenderPass,
+        index_count: usize,
+        instance_count: usize,
+        first_index: usize,
+        base_vertex: i32,
+        first_instance: usize,
+    ) void {
+        js.drawIndexed(
+            render_pass.id,
+            index_count,
+            instance_count,
+            first_index,
+            base_vertex,
+            first_instance,
+        );
+    }
+
     pub fn end(render_pass: *RenderPass) void {
         js.endRenderPass(render_pass.id);
     }
@@ -605,17 +663,9 @@ pub const RenderPass = packed struct {
 pub const CommandEncoder = packed struct {
     id: js.CommandEncoderId,
 
-    pub const RenderPassArgs = struct {
-        color_views: []const TextureView,
-        color_resolve_targets: []const TextureView = &.{},
-        depth_stencil_view: ?*const TextureView = null,
-        occlusion_query_set: ?*const QuerySet = null,
-        timestamp_query_sets: []const QuerySet = &.{},
-    };
-
     pub fn beginRenderPass(
         command_encoder: *CommandEncoder,
-        args: RenderPassArgs,
+        args: gfx.RenderPassArgs,
         comptime desc: gfx.RenderPassDesc,
     ) RenderPass {
         const color_views_bytes = std.mem.sliceAsBytes(args.color_views);

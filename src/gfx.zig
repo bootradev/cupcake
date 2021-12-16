@@ -1,13 +1,32 @@
+const api = switch (cfg.gfx_backend) {
+    .webgpu => @import("gfx_webgpu.zig"),
+};
 const cfg = @import("cfg");
 const math = @import("math.zig");
 const root = @import("root");
 const std = @import("std");
 
-pub usingnamespace switch (cfg.gfx_backend) {
-    .webgpu => @import("gfx_webgpu.zig"),
-};
-
 pub const whole_size = std.math.maxInt(usize);
+
+pub const Instance = api.Instance;
+pub const Adapter = api.Adapter;
+pub const Device = api.Device;
+pub const Buffer = api.Buffer;
+pub const Texture = api.Texture;
+pub const TextureView = api.TextureView;
+pub const Sampler = api.Sampler;
+pub const Shader = api.Shader;
+pub const Surface = api.Surface;
+pub const Swapchain = api.Swapchain;
+pub const BindGroupLayout = api.BindGroupLayout;
+pub const BindGroup = api.BindGroup;
+pub const PipelineLayout = api.PipelineLayout;
+pub const RenderPipeline = api.RenderPipeline;
+pub const RenderPass = api.RenderPass;
+pub const CommandEncoder = api.CommandEncoder;
+pub const CommandBuffer = api.CommandBuffer;
+pub const QuerySet = api.QuerySet;
+pub const Queue = api.Queue;
 
 pub const GfxCbs = struct {
     adapter_ready_cb: fn () void = adapterReadyNull,
@@ -184,6 +203,18 @@ pub const BindType = enum {
     buffer,
     sampler,
     texture_view,
+};
+
+pub const BufferBinding = struct {
+    resource: *Buffer,
+    offset: usize = 0,
+    size: usize = whole_size,
+};
+
+pub const BindGroupResource = union(BindType) {
+    buffer: BufferBinding,
+    sampler: *Sampler,
+    texture_view: *TextureView,
 };
 
 pub const BindGroupEntry = struct {
@@ -452,6 +483,14 @@ pub const RenderPassDesc = struct {
     color_attachments: []const ColorAttachment,
     depth_stencil_attachment: ?DepthStencilAttachment = null,
     timestamp_writes: []const RenderPassTimestampWrite = &.{},
+};
+
+pub const RenderPassArgs = struct {
+    color_views: []const TextureView,
+    color_resolve_targets: []const TextureView = &.{},
+    depth_stencil_view: ?*const TextureView = null,
+    occlusion_query_set: ?*const QuerySet = null,
+    timestamp_query_sets: []const QuerySet = &.{},
 };
 
 pub const BufferDesc = struct {

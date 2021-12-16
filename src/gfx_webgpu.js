@@ -83,6 +83,8 @@ const webgpu = {
     },
 
     destroyDevice(deviceId) {
+        // this should be in the api?
+        //webgpu.devices[deviceId].destroy();
         utils.destroy(deviceId, webgpu.devices);
     },
 
@@ -127,7 +129,7 @@ const webgpu = {
         deviceId,
         bindGroupLayoutId,
         resourceTypesPtr,
-        resourceTypesLen, 
+        resourceTypesLen,
         resourceIdsPtr,
         resourceIdsLen,
         bufferOffsetsPtr,
@@ -142,7 +144,7 @@ const webgpu = {
 
         const resourceTypes = new Uint32Array(utils.getSlice(resourceTypesPtr, resourceTypesLen));
         const resourceIds = new Int32Array(utils.getSlice(resourceIdsPtr, resourceIdsLen));
-        const bufferOffsets = new Uint32Array(utils.getSlice(bufferOffsetsPtr, bufferOffsetsLen)); 
+        const bufferOffsets = new Uint32Array(utils.getSlice(bufferOffsetsPtr, bufferOffsetsLen));
         const bufferSizes = new Uint32Array(utils.getSlice(bufferSizesPtr, bufferSizesLen));
         let resourceIdIndex = 0;
         for (let i = 0; i < resourceTypes.length; ++i) {
@@ -295,8 +297,8 @@ const webgpu = {
         }
     },
 
-    setVertexBuffer(slot, renderPassId, bufferId, offset, size) {
-        if (size === -1) {
+    setVertexBuffer(renderPassId, slot, bufferId, offset, size) {
+        if ((size >>> 0) === WholeSize) {
             size = undefined;
         }
 
@@ -308,12 +310,36 @@ const webgpu = {
         );
     },
 
+    setIndexBuffer(renderPassId, bufferId, indexFormatPtr, indexFormatLen, offset, size) {
+        if ((size >>> 0) === WholeSize) {
+            size = undefined;
+        }
+
+        webgpu.renderPasses[renderPassId].setIndexBuffer(
+            webgpu.buffers[bufferId],
+            utils.getString(indexFormatPtr, indexFormatLen),
+            offset,
+            size
+        );
+    },
+
     draw(renderPassId, vertexCount, instanceCount, firstVertex, firstInstance) {
         webgpu.renderPasses[renderPassId].draw(
             vertexCount,
             instanceCount,
             firstVertex,
-            firstInstance);
+            firstInstance
+        );
+    },
+
+    drawIndexed(renderPassId, indexCount, instanceCount, firstIndex, baseVertex, firstInstance) {
+        webgpu.renderPasses[renderPassId].drawIndexed(
+            indexCount,
+            instanceCount,
+            firstIndex,
+            baseVertex,
+            firstInstance
+        );
     },
 
     endRenderPass(renderPassId) {
@@ -399,7 +425,8 @@ const webgpu = {
     },
 
     destroyTexture(textureId) {
-        webgpu.textures[textureId].destroy();
+        // this should be in the api?
+        //webgpu.textures[textureId].destroy();
         utils.destroy(textureId, webgpu.textures);
     },
 
@@ -407,5 +434,9 @@ const webgpu = {
         const texture = webgpu.textures[textureId];
         texture.views.push(texture.obj.createView());
         return texture.views.length - 1;
+    },
+
+    destroyTextureView(textureId, viewId) {
+        utils.destroy(viewId, webgpu.textures[textureId].views);
     },
 };

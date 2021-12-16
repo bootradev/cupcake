@@ -28,4 +28,8 @@ const app = {
         document.body.removeChild(app.canvases[canvasId]);
         utils.destroy(canvasId, app.canvases);
     },
+
+    now() {
+        return performance.now();
+    },
 };

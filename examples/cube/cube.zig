@@ -1,6 +1,5 @@
 const app = bt.app;
 const bt = @import("bootra");
-const cube_data = @import("cube_data.zig");
 const gfx = bt.gfx;
 const math = bt.math;
 const shaders = @import("shaders");
@@ -22,10 +21,12 @@ const Example = struct {
     swapchain: gfx.Swapchain,
     render_pipeline: gfx.RenderPipeline,
     vertex_buffer: gfx.Buffer,
+    index_buffer: gfx.Buffer,
     uniform_buffer: gfx.Buffer,
     depth_texture: gfx.Texture,
     depth_texture_view: gfx.TextureView,
     uniform_bind_group: gfx.BindGroup,
+    game_clock: app.Timer,
 };
 
 const Status = union(enum) {
@@ -36,17 +37,36 @@ const Status = union(enum) {
 
 var example: Example = undefined;
 
-const model_matrix = math.M44f32.identity;
-const view_matrix = math.M44f32.makeView(
-    math.V3f32.make(0, 0, -4),
-    math.V3f32.forward,
-    math.V3f32.up,
-);
-const proj_matrix = math.M44f32.makePerspective(2.0 * std.math.pi / 5.0, 800.0 / 600.0, 1, 100);
-const mvp_matrix = model_matrix.mul(view_matrix.mul(proj_matrix));
+const cube_data = struct {
+    const position_offset = 0;
+    const color_offset = 4 * 4;
+    const array_stride = 4 * 4 * 2;
+
+    // position (vec4), color (vec4),
+    const vertices: []const f32 = &.{
+        -1, -1, -1, 1, 1, 0, 0, 1,
+        1,  -1, -1, 1, 0, 0, 1, 1,
+        -1, 1,  -1, 1, 0, 1, 0, 1,
+        1,  1,  -1, 1, 1, 1, 1, 1,
+        -1, -1, 1,  1, 1, 0, 0, 1,
+        1,  -1, 1,  1, 0, 0, 1, 1,
+        -1, 1,  1,  1, 0, 1, 0, 1,
+        1,  1,  1,  1, 1, 1, 1, 1,
+    };
+
+    const indices: []const u16 = &.{
+        0, 1, 2, 2, 1, 3, // front
+        2, 3, 6, 6, 3, 7, // top
+        1, 5, 3, 3, 5, 7, // right
+        4, 5, 0, 0, 5, 1, // bottom
+        4, 0, 6, 6, 0, 2, // left
+        5, 4, 7, 7, 4, 6, // back
+    };
+};
 
 pub fn init() !void {
     example.status = .pending;
+    example.game_clock = try app.Timer.start();
     try example.window.init("cube", math.V2u32.make(800, 600));
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -58,11 +78,25 @@ fn onAdapterReady() void {
 }
 
 fn onDeviceReady() void {
+    const swapchain_format = comptime gfx.Surface.getPreferredFormat();
+
+    example.swapchain = try example.device.createSwapchain(
+        &example.surface,
+        example.window.size,
+        .{ .format = swapchain_format },
+    );
+
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
     example.vertex_buffer = try example.device.createBuffer(
         cube_vertices_bytes,
         cube_vertices_bytes.len,
         .{ .usage = .{ .vertex = true } },
+    );
+    const cube_indices_bytes = std.mem.sliceAsBytes(cube_data.indices);
+    example.index_buffer = try example.device.createBuffer(
+        cube_indices_bytes,
+        cube_indices_bytes.len,
+        .{ .usage = .{ .index = true } },
     );
     example.depth_texture = try example.device.createTexture(
         .{ .width = example.window.size.x, .height = example.window.size.y },
@@ -84,7 +118,7 @@ fn onDeviceReady() void {
             },
         },
     });
-    defer example.device.destroyBindGroupLayout(&uniform_layout);
+    defer uniform_layout.destroy();
 
     example.uniform_bind_group = try example.device.createBindGroup(
         &uniform_layout,
@@ -98,23 +132,16 @@ fn onDeviceReady() void {
         },
     );
 
-    const swapchain_format = comptime gfx.Surface.getPreferredFormat();
-
-    example.swapchain = try example.device.createSwapchain(
-        &example.surface,
-        example.window.size,
-        .{ .format = swapchain_format },
-    );
     var vert_shader = try example.device.createShader(shaders.cube_vert);
-    defer example.device.destroyShader(&vert_shader);
+    defer vert_shader.destroy();
     example.device.checkShaderCompile(&vert_shader);
 
     var frag_shader = try example.device.createShader(shaders.cube_frag);
-    defer example.device.destroyShader(&frag_shader);
+    defer frag_shader.destroy();
     example.device.checkShaderCompile(&frag_shader);
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{uniform_layout}, .{});
-    defer example.device.destroyPipelineLayout(&pipeline_layout);
+    defer pipeline_layout.destroy();
     example.render_pipeline = try example.device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
@@ -147,7 +174,7 @@ fn onDeviceReady() void {
                 .targets = &.{.{ .format = swapchain_format }},
             },
             .primitive = .{
-                .cull_mode = .none,
+                .cull_mode = .back,
             },
             .depth_stencil = .{
                 .depth_write_enabled = true,
@@ -175,9 +202,29 @@ pub fn update() !void {
 
     var queue = example.device.getQueue();
 
+    const time = app.readSeconds(example.game_clock);
+    const model_matrix = math.M44f32.makeAngleAxis(
+        1.0,
+        math.V3f32.make(std.math.sin(time), std.math.cos(time), 0.0),
+    );
+    const view_matrix = math.M44f32.makeView(
+        math.V3f32.make(0, 0, -4),
+        math.V3f32.forward,
+        math.V3f32.up,
+    );
+    const proj_matrix = math.M44f32.makePerspective(
+        2.0 * std.math.pi / 5.0,
+        @intToFloat(f32, example.window.size.x) / @intToFloat(f32, example.window.size.y),
+        1,
+        100,
+    );
+    const mvp_matrix = model_matrix.mul(view_matrix.mul(proj_matrix));
+
     queue.writeBuffer(&example.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
 
-    const swapchain_view = try example.swapchain.getCurrentTextureView();
+    var swapchain_view = try example.swapchain.getCurrentTextureView();
+    defer swapchain_view.destroy();
+
     var command_encoder = example.device.createCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
         .{
@@ -198,7 +245,8 @@ pub fn update() !void {
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.uniform_bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, gfx.whole_size);
-    render_pass.draw(cube_data.vertex_count, 1, 0, 0);
+    render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, gfx.whole_size);
+    render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
 
     render_pass.end();
 
@@ -206,4 +254,20 @@ pub fn update() !void {
     queue.submit(&.{command_buffer});
 
     example.swapchain.present();
+}
+
+pub fn deinit() !void {
+    example.uniform_bind_group.destroy();
+    example.depth_texture_view.destroy();
+    example.depth_texture.destroy();
+    example.uniform_buffer.destroy();
+    example.index_buffer.destroy();
+    example.vertex_buffer.destroy();
+    example.render_pipeline.destroy();
+    example.swapchain.destroy();
+    example.device.destroy();
+    example.adapter.destroy();
+    example.surface.destroy();
+    example.instance.deinit();
+    example.window.deinit();
 }

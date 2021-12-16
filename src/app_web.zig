@@ -4,11 +4,13 @@ const std = @import("std");
 
 const js = struct {
     const CanvasId = i32;
+    const DomHighResTimeStamp = f64;
 
     extern "app" fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
     extern "app" fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
     extern "app" fn createCanvas(width: u32, height: u32) CanvasId;
     extern "app" fn destroyCanvas(canvas_id: CanvasId) void;
+    extern "app" fn now() DomHighResTimeStamp;
 };
 
 pub fn log(
@@ -43,5 +45,33 @@ pub const Window = struct {
         const empty: []const u8 = &.{};
         js.setWindowTitle(empty.ptr, empty.len);
         js.destroyCanvas(window.id);
+    }
+};
+
+// make sure this matches the public api of std.time.Timer
+pub const Timer = struct {
+    start_time: js.DomHighResTimeStamp,
+
+    pub fn start() !Timer {
+        return Timer{ .start_time = js.now() };
+    }
+
+    pub fn read(self: Timer) u64 {
+        return timeStampToNs(js.now() - self.start_time);
+    }
+
+    pub fn reset(self: *Timer) void {
+        self.start_time = js.now();
+    }
+
+    pub fn lap(self: *Timer) u64 {
+        var now = js.now();
+        var lap_time = self.timeStampToNs(now - self.start_time);
+        self.start_time = now;
+        return lap_time;
+    }
+
+    fn timeStampToNs(duration: js.DomHighResTimeStamp) u64 {
+        return @floatToInt(u64, duration * 1000000.0);
     }
 };

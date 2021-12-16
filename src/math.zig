@@ -96,6 +96,43 @@ pub const M44f32 = packed struct {
         return @ptrCast([*]const u8, m)[0..64];
     }
 
+    pub fn makeAngleAxis(angle: f32, axis: V3f32) M44f32 {
+        var cos = std.math.cos(angle);
+        var sin = std.math.sin(angle);
+        var x = axis.x;
+        var y = axis.y;
+        var z = axis.z;
+
+        return M44f32{
+            .values = [4][4]f32{
+                [4]f32{
+                    cos + x * x * (1 - cos),
+                    x * y * (1 - cos) - z * sin,
+                    x * z * (1 - cos) + y * sin,
+                    0,
+                },
+                [4]f32{
+                    y * x * (1 - cos) + z * sin,
+                    cos + y * y * (1 - cos),
+                    y * z * (1 - cos) - x * sin,
+                    0,
+                },
+                [4]f32{
+                    z * x * (1 * cos) - y * sin,
+                    z * y * (1 - cos) + x * sin,
+                    cos + z * z * (1 - cos),
+                    0,
+                },
+                [4]f32{
+                    0,
+                    0,
+                    0,
+                    1,
+                },
+            },
+        };
+    }
+
     pub fn makeView(center: V3f32, forward: V3f32, up: V3f32) M44f32 {
         const f = forward.normalize();
         const s = V3f32.cross(up, f).normalize();
