@@ -1,7 +1,7 @@
-const app = bt.app;
-const bt = @import("bootra");
-const gfx = bt.gfx;
-const math = bt.math;
+const app = cc.app;
+const cc = @import("cupcake");
+const gfx = cc.gfx;
+const math = cc.math;
 const shaders = @import("shaders");
 const std = @import("std");
 

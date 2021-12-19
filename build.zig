@@ -110,19 +110,19 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
 
     const shader_pkg = shader_build.getPackage("shaders");
     const cfg_pkg = cfg.getPackage("cfg");
-    const bootra_pkg = std.build.Pkg{
-        .name = "bootra",
-        .path = .{ .path = "src/bootra.zig" },
+    const cupcake_pkg = std.build.Pkg{
+        .name = "cupcake",
+        .path = .{ .path = "src/cupcake.zig" },
         .dependencies = &.{cfg_pkg},
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
         .path = .{ .path = build_options.app_src_root },
-        .dependencies = &.{ cfg_pkg, bootra_pkg, shader_pkg },
+        .dependencies = &.{ cfg_pkg, cupcake_pkg, shader_pkg },
     };
 
     app_lib_exe.addPackage(cfg_pkg);
-    app_lib_exe.addPackage(bootra_pkg);
+    app_lib_exe.addPackage(cupcake_pkg);
     app_lib_exe.addPackage(app_pkg);
 
     app_lib_exe.install();
