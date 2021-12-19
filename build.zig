@@ -248,6 +248,13 @@ const ShaderBuildStep = struct {
 };
 
 const WebPackStep = struct {
+    const js_srcs: []const []const u8 = &.{
+        "main_web.js",
+        "utils.js",
+        "app_web.js",
+        "gfx_webgpu.js",
+    };
+
     builder: *std.build.Builder,
     step: std.build.Step,
     opt_level: OptLevel,
@@ -299,16 +306,12 @@ const WebPackStep = struct {
         const js_file = try lib_dir.createFile(web_pack.js_name, .{ .truncate = true });
         defer js_file.close();
 
-        var js_src_dir = try std.fs.openDirAbsolute(web_pack.js_dir, .{ .iterate = true });
+        var js_src_dir = try std.fs.openDirAbsolute(web_pack.js_dir, .{});
         defer js_src_dir.close();
 
-        var js_src_iterator = js_src_dir.iterate();
-        while (try js_src_iterator.next()) |src_file_entry| {
-            if (!std.mem.endsWith(u8, src_file_entry.name, ".js")) {
-                continue;
-            }
-
-            const src_file = try js_src_dir.openFile(src_file_entry.name, .{});
+        var js_file_contents = std.ArrayList(u8).init(web_pack.builder.allocator);
+        inline for (js_srcs) |js_src| {
+            const src_file = try js_src_dir.openFile(js_src, .{});
             defer src_file.close();
 
             const src_stat = try src_file.stat();
@@ -318,18 +321,19 @@ const WebPackStep = struct {
             );
             defer web_pack.builder.allocator.free(src_bytes);
 
-            if (web_pack.opt_level == .release) {
-                const src_bytes_min = try minifySource(
-                    src_bytes,
-                    web_pack.builder.allocator,
-                    .no_space,
-                );
-                defer web_pack.builder.allocator.free(src_bytes_min);
-                try js_file.writeAll(src_bytes_min);
-            } else {
-                try js_file.writeAll(src_bytes[0..]);
-                try js_file.writeAll("\n");
-            }
+            try js_file_contents.appendSlice(src_bytes[0..]);
+            try js_file_contents.appendSlice("\n");
+        }
+
+        if (web_pack.opt_level == .release) {
+            const src_bytes_min = try Minify.js(
+                js_file_contents.items,
+                web_pack.builder.allocator,
+            );
+            defer web_pack.builder.allocator.free(src_bytes_min);
+            try js_file.writeAll(src_bytes_min);
+        } else {
+            try js_file.writeAll(js_file_contents.items);
         }
     }
 };
@@ -417,3 +421,232 @@ fn minifySource(
 
     return src_bytes_min[0..write_index];
 }
+
+const Minify = struct {
+    const ParseState = enum {
+        sep,
+        ident,
+        whitespace,
+    };
+
+    const sep = "{}()[]=<>;:.,|/-+*!&";
+    const string = "\"'`";
+    const max_ident_size = 2;
+
+    allocator: *std.mem.Allocator,
+    src: []const u8,
+    out: std.ArrayList(u8),
+    start_index: usize,
+    end_index: usize,
+    cur_state: ParseState,
+    cur_write_state: ParseState,
+    ident_map: std.StringHashMap([]const u8),
+    next_ident: [max_ident_size]u8,
+    next_ident_size: usize,
+    keywords: []const []const u8,
+
+    pub fn js(src: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
+        const keywords: []const []const u8 = &.{
+            "document",
+            "window",
+            "WebAssembly",
+            "navigator",
+            "performance",
+            "JSON",
+            "console",
+            "function",
+            "const",
+            "let",
+            "var",
+            "undefined",
+            "catch",
+            "if",
+            "else",
+            "switch",
+            "case",
+            "break",
+            "do",
+            "while",
+            "for",
+            "return",
+            "new",
+            "true",
+            "false",
+        };
+        var ctx = Minify.init(src, allocator, keywords);
+        defer ctx.deinit();
+
+        return try ctx.minify();
+    }
+
+    fn minify(ctx: *Minify) ![]const u8 {
+        while (ctx.end_index < ctx.src.len) {
+            const byte = ctx.src[ctx.end_index];
+            if (ctx.end_index < ctx.src.len - 1 and
+                byte == '/' and
+                (ctx.src[ctx.end_index + 1] == '/' or ctx.src[ctx.end_index + 1] == '*'))
+            {
+                try ctx.handleComment();
+            } else if (std.mem.indexOfScalar(u8, sep, byte)) |_| {
+                try ctx.handleByte(.sep);
+            } else if (std.mem.indexOfScalar(u8, string, byte) != null) {
+                try ctx.handleString();
+            } else if (std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null) {
+                try ctx.handleByte(.ident);
+            } else {
+                try ctx.handleByte(.whitespace);
+            }
+        }
+
+        return ctx.out.toOwnedSlice();
+    }
+
+    fn init(src: []const u8, allocator: *std.mem.Allocator, keywords: []const []const u8) Minify {
+        var ctx = Minify{
+            .allocator = allocator,
+            .src = src,
+            .out = std.ArrayList(u8).init(allocator),
+            .start_index = 0,
+            .end_index = 0,
+            .cur_state = .whitespace,
+            .cur_write_state = .whitespace,
+            .ident_map = std.StringHashMap([]const u8).init(allocator),
+            .next_ident = [_]u8{'a'} ** max_ident_size,
+            .next_ident_size = 1,
+            .keywords = keywords,
+        };
+
+        return ctx;
+    }
+
+    fn deinit(ctx: *Minify) void {
+        var it = ctx.ident_map.iterator();
+        while (it.next()) |kv| {
+            ctx.allocator.free(kv.value_ptr.*);
+        }
+        ctx.ident_map.deinit();
+    }
+
+    fn handleByte(ctx: *Minify, state: ParseState) !void {
+        if (ctx.cur_state != state) {
+            if (ctx.cur_state == .sep) {
+                try ctx.appendSep();
+            } else if (ctx.cur_state == .ident) {
+                try ctx.appendIdent();
+            }
+
+            if (state != .whitespace) {
+                if (ctx.cur_write_state == .ident and state == .ident) {
+                    try ctx.out.append(' ');
+                }
+                ctx.cur_write_state = state;
+            }
+            ctx.cur_state = state;
+            ctx.start_index = ctx.end_index;
+        }
+        ctx.end_index += 1;
+    }
+
+    fn handleString(ctx: *Minify) !void {
+        try ctx.handleByte(.whitespace);
+
+        const byte = ctx.src[ctx.end_index - 1];
+        ctx.start_index = ctx.end_index - 1;
+        while (ctx.end_index < ctx.src.len and ctx.src[ctx.end_index] != byte) {
+            ctx.end_index += 1;
+        }
+        ctx.end_index += 1;
+
+        try ctx.out.appendSlice(ctx.src[ctx.start_index..ctx.end_index]);
+    }
+
+    fn handleComment(ctx: *Minify) !void {
+        try ctx.handleByte(.whitespace);
+        const byte = ctx.src[ctx.end_index];
+        if (byte == '/') {
+            while (ctx.src[ctx.end_index] != '\n') {
+                ctx.end_index += 1;
+            }
+        } else {
+            while (ctx.end_index < ctx.src.len - 1 and
+                ctx.src[ctx.end_index] != '*' and
+                ctx.src[ctx.end_index + 1] != '/')
+            {
+                ctx.end_index += 1;
+            }
+        }
+    }
+
+    fn appendSep(ctx: *Minify) !void {
+        try ctx.out.appendSlice(ctx.src[ctx.start_index..ctx.end_index]);
+    }
+
+    fn isKeyword(ctx: *Minify, slice: []const u8) bool {
+        var is_keyword = false;
+        for (ctx.keywords) |keyword| {
+            if (std.mem.eql(u8, keyword, slice)) {
+                is_keyword = true;
+            }
+        }
+        return is_keyword;
+    }
+
+    fn appendIdent(ctx: *Minify) !void {
+        const ident = ctx.src[ctx.start_index..ctx.end_index];
+        if (ctx.isKeyword(ident) or std.ascii.isDigit(ident[0]) or ctx.src[ctx.end_index] == '(') {
+            try ctx.out.appendSlice(ident);
+        } else if (ctx.ident_map.getEntry(ident)) |entry| {
+            try ctx.out.appendSlice(entry.value_ptr.*);
+        } else if (ctx.start_index > 0 and
+            ctx.src[ctx.start_index - 1] == '.' and
+            ctx.start_index > 1 and
+            ctx.src[ctx.start_index - 2] != '.')
+        {
+            try ctx.out.appendSlice(ident);
+        } else {
+            const new_ident = try ctx.nextPlacementIdent();
+            try ctx.ident_map.put(ident, new_ident);
+            try ctx.out.appendSlice(new_ident);
+        }
+    }
+
+    fn nextPlacementIdent(ctx: *Minify) ![]const u8 {
+        const next = ctx.allocator.dupe(u8, ctx.next_ident[0..ctx.next_ident_size]);
+        var cur_index = ctx.next_ident_size - 1;
+        if (ctx.next_ident[cur_index] == 'z') {
+            ctx.next_ident[cur_index] = 'A';
+        } else if (ctx.next_ident[cur_index] == 'Z') {
+            var no_idents = true;
+            while (true) : (cur_index -= 1) {
+                if (ctx.next_ident[cur_index] == 'Z') {
+                    ctx.next_ident[cur_index] = 'a';
+                } else {
+                    if (ctx.next_ident[cur_index] == 'z') {
+                        ctx.next_ident[cur_index] = 'A';
+                    } else {
+                        ctx.next_ident[cur_index] += 1;
+                    }
+                    while (ctx.isKeyword(ctx.next_ident[0..ctx.next_ident_size])) {
+                        ctx.next_ident[cur_index] += 1;
+                    }
+                    no_idents = false;
+                    break;
+                }
+
+                if (cur_index == 0) {
+                    break;
+                }
+            }
+
+            if (no_idents) {
+                ctx.next_ident_size += 1;
+                if (ctx.next_ident_size > max_ident_size) {
+                    return error.MaxIdentsExceeded;
+                }
+            }
+        } else {
+            ctx.next_ident[cur_index] += 1;
+        }
+        return next;
+    }
+};

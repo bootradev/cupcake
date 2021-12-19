@@ -1,25 +1,30 @@
 const main = {
-    wasm: undefined,
+    _wasm: undefined,
 
-    run(wasmPath) {
-        const imports = {
-            app,
-            webgpu,
+    run(_wasmPath) {
+        const imports = {};
+        imports.env = {
+            ...app,
+            ...webgpu,
         };
 
-        fetch(wasmPath)
+        fetch(_wasmPath)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => WebAssembly.instantiate(arrayBuffer, imports))
             .then(results => {
-                main.wasm = results.instance.exports;
-                main.wasm.init();
+                main._wasm = results.instance.exports;
+                main._wasm.init();
                 window.requestAnimationFrame(main.update);
             })
             .catch((err) => console.log(err));
     },
 
     update(timestamp) {
-        main.wasm.update();
+        main._wasm.update();
         window.requestAnimationFrame(main.update);
     },
 };
+
+function run(_wasmPath) {
+    main.run(_wasmPath);
+}

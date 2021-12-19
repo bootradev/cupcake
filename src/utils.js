@@ -1,16 +1,16 @@
+const textDecoder = new TextDecoder();
 const utils = {
-    getSlice(ptr, len) {
-        return main.wasm.memory.buffer.slice(ptr, ptr + len);
+    getSlice(_ptr, _len) {
+        return main._wasm.memory.buffer.slice(_ptr, _ptr + _len);
     },
 
-    getString(ptr, len) {
-        const textDecoder = new TextDecoder();
-        return textDecoder.decode(utils.getSlice(ptr, len));
+    getString(_ptr, _len) {
+        return textDecoder.decode(utils.getSlice(_ptr, _len));
     },
 
-    destroy(id, array) {
-        if (id == array.length - 1) {
-            array.pop();
+    destroy(_id, _array) {
+        if (_id == _array.length - 1) {
+            _array.pop();
         }
     },
 };

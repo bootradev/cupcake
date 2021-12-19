@@ -74,10 +74,10 @@ const js = struct {
         COMPUTE = 0x04,
     };
 
-    extern "webgpu" fn createContext(canvas_id: ObjectId) ContextId;
-    extern "webgpu" fn destroyContext(contex_id: ContextId) void;
-    extern "webgpu" fn getContextCurrentTexture(context_id: ContextId) TextureId;
-    extern "webgpu" fn configure(
+    extern fn createContext(canvas_id: ObjectId) ContextId;
+    extern fn destroyContext(contex_id: ContextId) void;
+    extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
+    extern fn configure(
         device_id: DeviceId,
         context_id: ContextId,
         format_ptr: [*]const u8,
@@ -86,33 +86,33 @@ const js = struct {
         width: GPUIntegerCoordinate,
         height: GPUIntegerCoordinate,
     ) void;
-    extern "webgpu" fn requestAdapter(
+    extern fn requestAdapter(
         json_ptr: [*]const u8,
         json_len: usize,
         cb: *c_void,
     ) void;
-    extern "webgpu" fn destroyAdapter(adapter_id: AdapterId) void;
-    extern "webgpu" fn requestDevice(
+    extern fn destroyAdapter(adapter_id: AdapterId) void;
+    extern fn requestDevice(
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
         cb: *c_void,
     ) void;
-    extern "webgpu" fn destroyDevice(device_id: DeviceId) void;
-    extern "webgpu" fn createShader(
+    extern fn destroyDevice(device_id: DeviceId) void;
+    extern fn createShader(
         device_id: DeviceId,
         code_ptr: [*]const u8,
         code_len: usize,
     ) ShaderId;
-    extern "webgpu" fn destroyShader(shader_id: ShaderId) void;
-    extern "webgpu" fn checkShaderCompile(shader_id: ShaderId) void;
-    extern "webgpu" fn createBindGroupLayout(
+    extern fn destroyShader(shader_id: ShaderId) void;
+    extern fn checkShaderCompile(shader_id: ShaderId) void;
+    extern fn createBindGroupLayout(
         device_id: DeviceId,
         json_ptr: [*]const u8,
         json_len: usize,
     ) BindGroupLayoutId;
-    extern "webgpu" fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
-    extern "webgpu" fn createBindGroup(
+    extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
+    extern fn createBindGroup(
         device_id: DeviceId,
         bind_group_layout_id: BindGroupLayoutId,
         resource_types_ptr: [*]const u8,
@@ -126,14 +126,14 @@ const js = struct {
         json_ptr: [*]const u8,
         json_len: usize,
     ) BindGroupId;
-    extern "webgpu" fn destroyBindGroup(bind_group_id: BindGroupId) void;
-    extern "webgpu" fn createPipelineLayout(
+    extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
+    extern fn createPipelineLayout(
         device_id: DeviceId,
         bind_group_layout_ids_ptr: [*]const u8,
         bind_group_layout_ids_len: usize,
     ) PipelineLayoutId;
-    extern "webgpu" fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
-    extern "webgpu" fn createRenderPipeline(
+    extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
+    extern fn createRenderPipeline(
         device_id: DeviceId,
         pipeline_layout_id: PipelineLayoutId,
         vert_shader_id: ShaderId,
@@ -141,10 +141,10 @@ const js = struct {
         json_ptr: [*]const u8,
         json_len: usize,
     ) RenderPipelineId;
-    extern "webgpu" fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
-    extern "webgpu" fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
-    extern "webgpu" fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
-    extern "webgpu" fn beginRenderPass(
+    extern fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
+    extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
+    extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
+    extern fn beginRenderPass(
         command_encoder_id: CommandEncoderId,
         color_view_ids_ptr: [*]const u8,
         color_view_ids_len: usize,
@@ -158,25 +158,25 @@ const js = struct {
         json_ptr: [*]const u8,
         json_len: usize,
     ) RenderPassId;
-    extern "webgpu" fn setPipeline(
+    extern fn setPipeline(
         render_pass_id: RenderPassId,
         render_pipeline_id: RenderPipelineId,
     ) void;
-    extern "webgpu" fn setBindGroup(
+    extern fn setBindGroup(
         render_pass_id: RenderPassId,
         group_index: GPUIndex32,
         bind_group_id: BindGroupId,
         dynamic_offsets_ptr: [*]const u8,
         dynamic_offsets_len: usize,
     ) void;
-    extern "webgpu" fn setVertexBuffer(
+    extern fn setVertexBuffer(
         render_pass_id: RenderPassId,
         slot: GPUIndex32,
         buffer: BufferId,
         offset: GPUSize64,
         size: GPUSize64,
     ) void;
-    extern "webgpu" fn setIndexBuffer(
+    extern fn setIndexBuffer(
         render_pass_id: RenderPassId,
         buffer_id: BufferId,
         index_format_ptr: [*]const u8,
@@ -184,14 +184,14 @@ const js = struct {
         offset: usize,
         size: usize,
     ) void;
-    extern "webgpu" fn draw(
+    extern fn draw(
         render_pass_id: RenderPassId,
         vertex_count: GPUSize32,
         instance_count: GPUSize32,
         first_vertex: GPUSize32,
         first_instance: GPUSize32,
     ) void;
-    extern "webgpu" fn drawIndexed(
+    extern fn drawIndexed(
         render_pass_id: RenderPassId,
         index_count: GPUSize32,
         instance_count: GPUSize32,
@@ -199,13 +199,13 @@ const js = struct {
         base_vertex: GPUSignedOffset32,
         first_instance: GPUSize32,
     ) void;
-    extern "webgpu" fn endRenderPass(render_pass_id: RenderPassId) void;
-    extern "webgpu" fn queueSubmit(
+    extern fn endRenderPass(render_pass_id: RenderPassId) void;
+    extern fn queueSubmit(
         device_id: DeviceId,
         command_buffers_ptr: [*]const u8,
         command_buffers_len: usize,
     ) void;
-    extern "webgpu" fn queueWriteBuffer(
+    extern fn queueWriteBuffer(
         device_id: DeviceId,
         buffer_id: BufferId,
         buffer_offset: GPUSize64,
@@ -213,15 +213,15 @@ const js = struct {
         data_len: usize,
         data_offset: GPUSize64,
     ) void;
-    extern "webgpu" fn createBuffer(
+    extern fn createBuffer(
         device_id: DeviceId,
         size: GPUSize64,
         usage: GPUBufferUsageFlags,
         data_ptr: [*]const u8,
         data_len: usize,
     ) BufferId;
-    extern "webgpu" fn destroyBuffer(buffer_id: BufferId) void;
-    extern "webgpu" fn createTexture(
+    extern fn destroyBuffer(buffer_id: BufferId) void;
+    extern fn createTexture(
         device_id: DeviceId,
         usage: GPUTextureUsageFlags,
         dimension_ptr: [*]const u8,
@@ -234,9 +234,9 @@ const js = struct {
         mip_level_count: GPUIntegerCoordinate,
         sample_count: GPUSize32,
     ) TextureId;
-    extern "webgpu" fn destroyTexture(texture_id: TextureId) void;
-    extern "webgpu" fn createTextureView(texture_id: TextureId) TextureViewId;
-    extern "webgpu" fn destroyTextureView(texture_id: TextureId, view_id: TextureViewId) void;
+    extern fn destroyTexture(texture_id: TextureId) void;
+    extern fn createTextureView(texture_id: TextureId) TextureViewId;
+    extern fn destroyTextureView(texture_id: TextureId, view_id: TextureViewId) void;
 };
 
 pub const Instance = struct {

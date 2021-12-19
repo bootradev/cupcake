@@ -6,11 +6,11 @@ const js = struct {
     const CanvasId = i32;
     const DomHighResTimeStamp = f64;
 
-    extern "app" fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
-    extern "app" fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
-    extern "app" fn createCanvas(width: u32, height: u32) CanvasId;
-    extern "app" fn destroyCanvas(canvas_id: CanvasId) void;
-    extern "app" fn now() DomHighResTimeStamp;
+    extern fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
+    extern fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
+    extern fn createCanvas(width: u32, height: u32) CanvasId;
+    extern fn destroyCanvas(canvas_id: CanvasId) void;
+    extern fn now() DomHighResTimeStamp;
 };
 
 pub fn log(
