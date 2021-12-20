@@ -1,7 +1,7 @@
 const baseWindowTitle = document.title;
 
 const app = {
-    _canvases: [],
+    _canvases: [null],
 
     logConsole(_msgPtr, _msgLen) {
         console.log(utils.getString(_msgPtr, _msgLen));

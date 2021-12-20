@@ -3,7 +3,7 @@ const math = @import("math.zig");
 const std = @import("std");
 
 const js = struct {
-    const CanvasId = i32;
+    const CanvasId = u32;
     const DomHighResTimeStamp = f64;
 
     extern fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;

@@ -18,7 +18,7 @@ const js = struct {
     const GPUFlagsConstant = u32;
     const GPUIntegerCoordinate = u32;
 
-    const ObjectId = i32;
+    const ObjectId = u32;
     const CanvasId = ObjectId;
     const ContextId = ObjectId;
     const AdapterId = ObjectId;
@@ -37,7 +37,7 @@ const js = struct {
     const QuerySetId = ObjectId;
     const BufferId = ObjectId;
 
-    const invalid_id: ObjectId = -1;
+    const invalid_id: ObjectId = 0;
 
     pub const GPUColorWrite = enum(GPUFlagsConstant) {
         RED = 0x1,
@@ -150,8 +150,7 @@ const js = struct {
         color_view_ids_len: usize,
         color_resolve_target_ids_ptr: [*]const u8,
         color_resolve_target_ids_len: usize,
-        depth_stencil_view_tex_id: TextureId,
-        depth_stencil_view_view_id: TextureViewId,
+        depth_stencil_view_id: TextureViewId,
         occlusion_query_set_id: QuerySetId,
         timestamp_query_set_ids_ptr: [*]const u8,
         timestamp_query_set_ids_len: usize,
@@ -236,7 +235,7 @@ const js = struct {
     ) TextureId;
     extern fn destroyTexture(texture_id: TextureId) void;
     extern fn createTextureView(texture_id: TextureId) TextureViewId;
-    extern fn destroyTextureView(texture_id: TextureId, view_id: TextureViewId) void;
+    extern fn destroyTextureView(texture_view_id: TextureViewId) void;
 };
 
 pub const Instance = struct {
@@ -335,32 +334,23 @@ pub const Device = struct {
         resources: []const gfx.BindGroupResource,
         comptime desc: gfx.BindGroupDesc,
     ) !BindGroup {
-        comptime var resource_id_count = 0;
-        inline for (desc.entries) |entry| {
-            resource_id_count += if (entry.resource_type == .texture_view) 2 else 1;
-        }
         var resource_types: [desc.entries.len]u32 = undefined;
-        var resource_ids: [resource_id_count]js.ObjectId = undefined;
+        var resource_ids: [desc.entries.len]js.ObjectId = undefined;
         var buffer_offsets: [desc.entries.len]usize = undefined;
         var buffer_sizes: [desc.entries.len]usize = undefined;
-        comptime var resource_id_index = 0;
         inline for (desc.entries) |entry, i| {
             resource_types[i] = @enumToInt(entry.resource_type);
             switch (entry.resource_type) {
                 .buffer => {
-                    resource_ids[resource_id_index] = resources[i].buffer.resource.id;
+                    resource_ids[i] = resources[i].buffer.resource.id;
                     buffer_offsets[i] = resources[i].buffer.offset;
                     buffer_sizes[i] = resources[i].buffer.size;
-                    resource_id_index += 1;
                 },
                 .sampler => {
-                    resource_ids[resource_id_index] = resources[i].sampler.id;
-                    resource_id_index += 1;
+                    resource_ids[i] = resources[i].sampler.id;
                 },
                 .texture_view => {
-                    resource_ids[resource_id_index] = resources[i].texture_view.tex_id;
-                    resource_ids[resource_id_index + 1] = resources[i].texture_view.view_id;
-                    resource_id_index += 2;
+                    resource_ids[i] = resources[i].texture_view.id;
                 },
             }
         }
@@ -493,8 +483,7 @@ pub const Texture = packed struct {
 
     pub fn createView(texture: *Texture) TextureView {
         return TextureView{
-            .tex_id = texture.id,
-            .view_id = js.createTextureView(texture.id),
+            .id = js.createTextureView(texture.id),
         };
     }
 
@@ -504,11 +493,10 @@ pub const Texture = packed struct {
 };
 
 pub const TextureView = packed struct {
-    tex_id: js.TextureId,
-    view_id: js.TextureViewId,
+    id: js.TextureViewId,
 
     pub fn destroy(view: *TextureView) void {
-        js.destroyTextureView(view.tex_id, view.view_id);
+        js.destroyTextureView(view.id);
     }
 };
 
@@ -540,7 +528,7 @@ pub const Swapchain = packed struct {
     pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
         const tex_id = js.getContextCurrentTexture(swapchain.id);
         const view_id = js.createTextureView(tex_id);
-        return TextureView{ .tex_id = tex_id, .view_id = view_id };
+        return TextureView{ .id = view_id };
     }
 
     pub fn present(_: *Swapchain) void {}
@@ -670,12 +658,8 @@ pub const CommandEncoder = packed struct {
     ) RenderPass {
         const color_views_bytes = std.mem.sliceAsBytes(args.color_views);
         const color_resolve_targets_bytes = std.mem.sliceAsBytes(args.color_resolve_targets);
-        const depth_stencil_view_tex_id = if (args.depth_stencil_view) |depth_stencil_view|
-            depth_stencil_view.tex_id
-        else
-            js.invalid_id;
-        const depth_stencil_view_view_id = if (args.depth_stencil_view) |depth_stencil_view|
-            depth_stencil_view.view_id
+        const depth_stencil_view_id = if (args.depth_stencil_view) |depth_stencil_view|
+            depth_stencil_view.id
         else
             js.invalid_id;
         const occlusion_query_set_id = if (args.occlusion_query_set) |occlusion_query_set|
@@ -691,8 +675,7 @@ pub const CommandEncoder = packed struct {
                 color_views_bytes.len,
                 color_resolve_targets_bytes.ptr,
                 color_resolve_targets_bytes.len,
-                depth_stencil_view_tex_id,
-                depth_stencil_view_view_id,
+                depth_stencil_view_id,
                 occlusion_query_set_id,
                 timestamp_query_set_ids.ptr,
                 timestamp_query_set_ids.len,

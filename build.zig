@@ -377,6 +377,7 @@ const Minify = struct {
         "for",
         "return",
         "new",
+        "null",
         "true",
         "false",
     };
@@ -444,7 +445,7 @@ const Minify = struct {
                 (ctx.src[ctx.end_index + 1] == '/' or ctx.src[ctx.end_index + 1] == '*'))
             {
                 try ctx.handleComment();
-            } else if (std.mem.indexOfScalar(u8, sep, byte)) |_| {
+            } else if (std.mem.indexOfScalar(u8, sep, byte) != null) {
                 try ctx.handleByte(.sep);
             } else if (std.mem.indexOfScalar(u8, string, byte) != null) {
                 try ctx.handleString();
