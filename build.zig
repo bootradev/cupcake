@@ -92,7 +92,7 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
         builder,
         app_options.shader_dir,
         app_options.shader_names,
-        build_options.gfx_backend,
+        &build_options,
     );
     app_lib_exe.step.dependOn(&shader_build.step);
 
@@ -157,13 +157,14 @@ const ShaderBuildStep = struct {
     dir: []const u8,
     names: []const []const u8,
     gfx_backend: GfxBackend,
+    opt_level: OptLevel,
     generated_file: std.build.GeneratedFile,
 
     pub fn create(
         builder: *std.build.Builder,
         dir: []const u8,
         names: []const []const u8,
-        gfx_backend: GfxBackend,
+        build_options: *const BuildOptions,
     ) !*ShaderBuildStep {
         const shader_build = try builder.allocator.create(ShaderBuildStep);
         shader_build.* = .{
@@ -172,7 +173,8 @@ const ShaderBuildStep = struct {
             .contents = std.ArrayList(u8).init(builder.allocator),
             .dir = dir,
             .names = names,
-            .gfx_backend = gfx_backend,
+            .gfx_backend = build_options.gfx_backend,
+            .opt_level = build_options.opt_level,
             .generated_file = undefined,
         };
         shader_build.generated_file = .{ .step = &shader_build.step };
@@ -210,10 +212,10 @@ const ShaderBuildStep = struct {
                 shader_build.builder.allocator,
                 shader_stat.size,
             );
-            const shader_bytes_min = try minifySource(
+            const shader_bytes_min = try Minify.wgsl(
                 shader_bytes,
                 shader_build.builder.allocator,
-                .single_space,
+                shader_build.opt_level,
             );
             try writer.print("pub const {s} = \"{s}\";\n", .{ name, shader_bytes_min });
         }
@@ -329,6 +331,7 @@ const WebPackStep = struct {
             const src_bytes_min = try Minify.js(
                 js_file_contents.items,
                 web_pack.builder.allocator,
+                .release,
             );
             defer web_pack.builder.allocator.free(src_bytes_min);
             try js_file.writeAll(src_bytes_min);
@@ -338,95 +341,68 @@ const WebPackStep = struct {
     }
 };
 
-const MinifyMode = enum {
-    single_space,
-    no_space,
-};
-
-fn minifySource(
-    src_bytes: []const u8,
-    allocator: *std.mem.Allocator,
-    comptime mode: MinifyMode,
-) ![]const u8 {
-    const src_bytes_min = try allocator.alloc(u8, src_bytes.len);
-
-    const ParseState = union(enum) {
-        normal,
-        line_comment,
-        block_comment,
-        string: u8,
-    };
-    var parse_state: ParseState = .normal;
-
-    var write_index: usize = 0;
-    for (src_bytes) |byte, read_index| {
-        var write_byte = false;
-
-        switch (parse_state) {
-            .line_comment => {
-                if (byte == '\n') {
-                    parse_state = .normal;
-                }
-            },
-            .block_comment => {
-                if (byte == '/' and src_bytes[read_index - 1] == '*') {
-                    parse_state = .normal;
-                }
-            },
-            .string => |char| {
-                if (byte == char and src_bytes[read_index - 1] != '\\') {
-                    parse_state = .normal;
-                }
-                write_byte = true;
-            },
-            .normal => {
-                if (byte == '/' and
-                    read_index < src_bytes.len - 1 and
-                    src_bytes[read_index + 1] == '/')
-                {
-                    parse_state = .line_comment;
-                } else if (byte == '/' and
-                    read_index < src_bytes.len - 1 and
-                    src_bytes[read_index + 1] == '*')
-                {
-                    parse_state = .block_comment;
-                } else if (std.mem.indexOfScalar(u8, "\"'`", byte) != null) {
-                    parse_state = ParseState{ .string = byte };
-                    write_byte = true;
-                } else if (byte == ' ' and write_index > 0 and read_index < src_bytes.len - 1) {
-                    const last_byte = src_bytes_min[write_index - 1];
-                    const next_byte = src_bytes[read_index + 1];
-                    switch (mode) {
-                        .single_space => {
-                            write_byte = last_byte != ' ' and next_byte != ' ';
-                        },
-                        .no_space => {
-                            const symbols = "{}()[]=<>;,:|/-+*!& ";
-                            const write_prev = std.mem.indexOfScalar(u8, symbols, last_byte);
-                            const write_next = std.mem.indexOfScalar(u8, symbols, next_byte);
-                            write_byte = write_prev == null and write_next == null;
-                        },
-                    }
-                } else {
-                    write_byte = std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null;
-                }
-            },
-        }
-
-        if (write_byte) {
-            src_bytes_min[write_index] = byte;
-            write_index += 1;
-        }
-    }
-
-    return src_bytes_min[0..write_index];
-}
-
 const Minify = struct {
+    const Language = enum {
+        js,
+        wgsl,
+    };
+
     const ParseState = enum {
         sep,
         ident,
         whitespace,
+    };
+
+    const keywords_js: []const []const u8 = &.{
+        "document",
+        "window",
+        "WebAssembly",
+        "navigator",
+        "performance",
+        "JSON",
+        "console",
+        "function",
+        "const",
+        "let",
+        "var",
+        "undefined",
+        "catch",
+        "if",
+        "else",
+        "switch",
+        "case",
+        "break",
+        "do",
+        "while",
+        "for",
+        "return",
+        "new",
+        "true",
+        "false",
+    };
+
+    const keywords_wgsl: []const []const u8 = &.{
+        "block",
+        "binding",
+        "group",
+        "uniform",
+        "builtin",
+        "position",
+        "location",
+        "stage",
+        "vertex",
+        "fragment",
+        "vertex_index",
+        "struct",
+        "fn",
+        "var",
+        "let",
+        "return",
+        "i32",
+        "u32",
+        "f32",
+        "vec4",
+        "mat4x4",
     };
 
     const sep = "{}()[]=<>;:.,|/-+*!&";
@@ -443,37 +419,18 @@ const Minify = struct {
     ident_map: std.StringHashMap([]const u8),
     next_ident: [max_ident_size]u8,
     next_ident_size: usize,
-    keywords: []const []const u8,
+    language: Language,
+    opt_level: OptLevel,
 
-    pub fn js(src: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
-        const keywords: []const []const u8 = &.{
-            "document",
-            "window",
-            "WebAssembly",
-            "navigator",
-            "performance",
-            "JSON",
-            "console",
-            "function",
-            "const",
-            "let",
-            "var",
-            "undefined",
-            "catch",
-            "if",
-            "else",
-            "switch",
-            "case",
-            "break",
-            "do",
-            "while",
-            "for",
-            "return",
-            "new",
-            "true",
-            "false",
-        };
-        var ctx = Minify.init(src, allocator, keywords);
+    pub fn js(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
+        var ctx = Minify.init(src, allocator, .js, opt_level);
+        defer ctx.deinit();
+
+        return try ctx.minify();
+    }
+
+    pub fn wgsl(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
+        var ctx = Minify.init(src, allocator, .wgsl, opt_level);
         defer ctx.deinit();
 
         return try ctx.minify();
@@ -501,7 +458,12 @@ const Minify = struct {
         return ctx.out.toOwnedSlice();
     }
 
-    fn init(src: []const u8, allocator: *std.mem.Allocator, keywords: []const []const u8) Minify {
+    fn init(
+        src: []const u8,
+        allocator: *std.mem.Allocator,
+        language: Language,
+        opt_level: OptLevel,
+    ) Minify {
         var ctx = Minify{
             .allocator = allocator,
             .src = src,
@@ -513,7 +475,8 @@ const Minify = struct {
             .ident_map = std.StringHashMap([]const u8).init(allocator),
             .next_ident = [_]u8{'a'} ** max_ident_size,
             .next_ident_size = 1,
-            .keywords = keywords,
+            .language = language,
+            .opt_level = opt_level,
         };
 
         return ctx;
@@ -538,6 +501,15 @@ const Minify = struct {
             if (state != .whitespace) {
                 if (ctx.cur_write_state == .ident and state == .ident) {
                     try ctx.out.append(' ');
+                }
+
+                // chrome wgsl parser is broken, this works around the issue...
+                if (ctx.language == .wgsl and ctx.cur_write_state == .sep and state == .ident) {
+                    const wgsl_skip = "{([]<>=:;,.";
+                    const last_write_byte = ctx.out.items[ctx.out.items.len - 1];
+                    if (std.mem.indexOfScalar(u8, wgsl_skip, last_write_byte) == null) {
+                        try ctx.out.append(' ');
+                    }
                 }
                 ctx.cur_write_state = state;
             }
@@ -582,8 +554,12 @@ const Minify = struct {
     }
 
     fn isKeyword(ctx: *Minify, slice: []const u8) bool {
+        const keywords = switch (ctx.language) {
+            .js => keywords_js,
+            .wgsl => keywords_wgsl,
+        };
         var is_keyword = false;
-        for (ctx.keywords) |keyword| {
+        for (keywords) |keyword| {
             if (std.mem.eql(u8, keyword, slice)) {
                 is_keyword = true;
             }
@@ -593,7 +569,11 @@ const Minify = struct {
 
     fn appendIdent(ctx: *Minify) !void {
         const ident = ctx.src[ctx.start_index..ctx.end_index];
-        if (ctx.isKeyword(ident) or std.ascii.isDigit(ident[0]) or ctx.src[ctx.end_index] == '(') {
+        if (ctx.opt_level == .debug or
+            ctx.isKeyword(ident) or
+            std.ascii.isDigit(ident[0]) or
+            ctx.src[ctx.end_index] == '(')
+        {
             try ctx.out.appendSlice(ident);
         } else if (ctx.ident_map.getEntry(ident)) |entry| {
             try ctx.out.appendSlice(entry.value_ptr.*);
