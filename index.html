@@ -2,8 +2,89 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <style>
+            body {
+                font-family: monospace;
+                font-size: 1.2em;
+                margin: auto;
+                padding: 20px;
+                max-width: 700px;
+                text-align: left;
+                background-color: #ffb5bf;
+                color: #4f192e;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                line-height: 1.5;
+            }
+            a {
+                color: #4f192e;
+            }
+            hr {
+                border: 0;
+                background-color: #4f192e;
+                height: 1px;
+            }
+            img, video {
+                max-width: 100%;
+                border-color: #4f192e;
+                border: 0px solid;
+            }
+            table {
+                width: 100%;
+            }
+            footer {
+                padding: 25px;
+                text-align: center;
+            }
+            @media(prefers-color-scheme:dark) {
+                body {
+                    background-color: #4f192e;
+                    color: #ffb5bf;
+                }
+                a {
+                    color: #ffb5bf;
+                }
+                hr {
+                    background-color: #ffb5bf;
+                }
+                img, video {
+                    border-color: #ffb5bf;
+                }
+            }
+        </style>
     </head>
     <body>
-        <p>Hello, world!</p>
+        <header>
+            <h1>cupcake</h1>
+        </header>
+        <main>
+            <h3>an app framework for making small and delicious games!</h3>
+            <p>well, it will be eventually... :) at the moment, it's just my personal place to doodle around with game development in zig. don't expect any sort of usability, documentation, or code quality!</p>
+            <h3>goals</h3>
+            <h4>web first</h4>
+            <p>web pages are easily sharable, work on most devices, and are one of the most constrained platforms for applications. porting to other platforms later on should be easier.</p>
+            <h4>small binaries</h4>
+            <p>small binary size is important for the web because it improves the responsiveness of page loads and reduces bandwidth costs. the application binary should only include what is needed to run the app.</p>
+            <h4>simple code</h4>
+            <p>the best way to end up with a small binary is to focus on simple code. when complexity is necessary, try to move it to compile time or build time.</p>
+            <h4>minimal dependencies</h4>
+            <p>external dependencies are one of the biggest contributors to large binary sizes. replace complex third party libraries with simpler pieces of handwritten code when reasonable.</p>
+            <h3>examples</h3>
+            <p>these examples require a webgpu-enabled browser to view. currently, chrome canary is the browser with the most complete implementation of webgpu. make sure to enable webgpu in the browser settings!</p>
+            <p>in addition to the wasm and data sizes below, the examples use the cupcake javascript bindings. these bindings are currently <b>6.58 KB</b> uncompressed after minification.</p>
+
+            <hr>
+            <h4><a href="/site/tri.html">tri</a>: draws a simple triangle</h4>
+            <p><b>wasm size:</b> 2.75 KB</p>
+            <p><b>data size:</b> 0 KB</p>
+
+            <hr>
+            <h4><a href="/site/cube.html">cube</a>: spinning cube with vertex colors</p></h4>
+            <p><b>wasm size:</b> 7.24 KB</p>
+            <p><b>data size:</b> 0 KB</p>
+        </main>
+        <footer>
+            <small><i>made by bootra</i> | <a href="https://github.com/bootradev/cupcake">view the code</a></small>
+        </footer>
     </body>
 </html>

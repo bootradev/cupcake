@@ -8,13 +8,13 @@ well, it will be eventually... :) at the moment, it's just my personal place to 
 web pages are easily sharable, work on most devices, and are one of the most constrained platforms for applications. porting to other platforms later on should be easier.
 
 ##### small binaries
-small binary size is important for the web because it improves responsiveness of the page load and reduces bandwidth costs. the application binary should only include what is needed to run the app.
+small binary size is important for the web because it improves the responsiveness of page loads and reduces bandwidth costs. the application binary should only include what is needed to run the app.
 
 ##### simple code
 the best way to end up with a small binary is to focus on simple code. when complexity is necessary, try to move it to compile time or build time. 
 
 ##### minimal dependencies
-external dependencies are one of the biggest contributors to large binary sizes. replace complex third party libraries with simpler pieces of handwritten code when possible.  
+external dependencies are one of the biggest contributors to large binary sizes. replace complex third party libraries with simpler pieces of handwritten code when reasonable.  
 
 ### build
 

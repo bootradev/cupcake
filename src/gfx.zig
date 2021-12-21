@@ -454,7 +454,7 @@ pub const StoreOp = enum {
 pub const ColorAttachment = struct {
     load_op: LoadOp,
     store_op: StoreOp,
-    clear_color: math.V4f64 = math.V4f64.make(0, 0, 0, 1),
+    clear_color: math.V4f64 = math.V4f64.make(0.31, 0.1, 0.18, 1.0),
 };
 
 pub const DepthStencilAttachment = struct {
