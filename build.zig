@@ -251,8 +251,8 @@ const ShaderBuildStep = struct {
 
 const WebPackStep = struct {
     const js_srcs: []const []const u8 = &.{
-        "main_web.js",
         "utils.js",
+        "main_web.js",
         "app_web.js",
         "gfx_webgpu.js",
     };
@@ -361,6 +361,8 @@ const Minify = struct {
         "performance",
         "JSON",
         "console",
+        "class",
+        "this",
         "function",
         "const",
         "let",
@@ -380,6 +382,7 @@ const Minify = struct {
         "null",
         "true",
         "false",
+        "Objs",
     };
 
     const keywords_wgsl: []const []const u8 = &.{

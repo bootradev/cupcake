@@ -1,15 +1,15 @@
 const baseWindowTitle = document.title;
 
 const app = {
-    _canvases: [null],
+    _canvases: new Objs(),
 
     logConsole(_msgPtr, _msgLen) {
-        console.log(utils.getString(_msgPtr, _msgLen));
+        console.log(main.getString(_msgPtr, _msgLen));
     },
 
     setWindowTitle(_titlePtr, _titleLen) {
         if (_titleLen > 0) {
-            document.title = utils.getString(_titlePtr, _titleLen);
+            document.title = main.getString(_titlePtr, _titleLen);
         } else {
             document.title = baseWindowTitle;
         }
@@ -20,13 +20,12 @@ const app = {
         canvas.width = _width;
         canvas.height = _height;
         document.body.appendChild(canvas);
-        app._canvases.push(canvas);
-        return app._canvases.length - 1;
+        return app._canvases.insert(canvas);
     },
     
     destroyCanvas(_canvasId) {
-        document.body.removeChild(app._canvases[_canvasId]);
-        utils.destroy(_canvasId, app._canvases);
+        document.body.removeChild(app._canvases.get(_canvasId));
+        app._canvases.remove(_canvasId);
     },
 
     now() {

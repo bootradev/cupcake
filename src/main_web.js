@@ -1,3 +1,5 @@
+const textDecoder = new TextDecoder();
+
 const main = {
     _wasm: undefined,
 
@@ -22,6 +24,14 @@ const main = {
     update(timestamp) {
         main._wasm.update();
         window.requestAnimationFrame(main.update);
+    },
+
+    getSlice(_ptr, _len) {
+        return main._wasm.memory.buffer.slice(_ptr, _ptr + _len);
+    },
+
+    getString(_ptr, _len) {
+        return textDecoder.decode(main.getSlice(_ptr, _len));
     },
 };
 
