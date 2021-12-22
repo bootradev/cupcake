@@ -31,7 +31,7 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.status = .pending;
-    try example.window.init("tri", math.V2u32.make(800, 600));
+    try example.window.init(math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);

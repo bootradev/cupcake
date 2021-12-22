@@ -29,4 +29,20 @@ class Objs {
     set(_obj, _objId) {
         this._objs[_objId] = _obj;
     }
+
+    begin() {
+        return 1;
+    }
+
+    end() {
+        return this._objs.length;
+    }
+
+    next(_objId) {
+        _objId++;
+        while (_objId < this._objs.length && this._objs[_objId] == null) {
+            _objId++;
+        }
+        return _objId;
+    }
 };

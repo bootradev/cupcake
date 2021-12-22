@@ -1,9 +1,8 @@
-const textDecoder = new TextDecoder();
-
 const main = {
-    _wasm: undefined,
+    _wasms: new Objs(),
+    _textDecoder: new TextDecoder(),
 
-    run(_wasmPath) {
+    run(_wasmPath, _canvasParent) {
         const imports = {};
         imports.env = {
             ...app,
@@ -14,27 +13,35 @@ const main = {
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => WebAssembly.instantiate(arrayBuffer, imports))
             .then(results => {
-                main._wasm = results.instance.exports;
-                main._wasm.init();
+                app.setCanvasParent(_canvasParent);
+                const wasmId = main._wasms.insert({
+                    _obj: results.instance.exports,
+                    _canUpdate: true,
+                });
+                main._wasms.get(wasmId)._obj.init(wasmId);
                 window.requestAnimationFrame(main.update);
             })
             .catch((err) => console.log(err));
     },
 
     update(timestamp) {
-        main._wasm.update();
+        for (let i = main._wasms.begin(); i < main._wasms.end(); i = main._wasms.next(i)) {
+            if (main._wasms.get(i)._canUpdate) {
+                main._wasms.get(i)._obj.update();
+            }
+        }
         window.requestAnimationFrame(main.update);
     },
 
-    getSlice(_ptr, _len) {
-        return main._wasm.memory.buffer.slice(_ptr, _ptr + _len);
+    getSlice(_wasmId, _ptr, _len) {
+        return main._wasms.get(_wasmId)._obj.memory.buffer.slice(_ptr, _ptr + _len);
     },
 
-    getString(_ptr, _len) {
-        return textDecoder.decode(main.getSlice(_ptr, _len));
+    getString(_wasmId, _ptr, _len) {
+        return main._textDecoder.decode(main.getSlice(_wasmId, _ptr, _len));
     },
 };
 
-function run(_wasmPath) {
-    main.run(_wasmPath);
+function run(_wasmPath, _canvasParent) {
+    main.run(_wasmPath, _canvasParent);
 }

@@ -2,6 +2,7 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <title>cupcake!</title>
         <style>
             body {
                 font-family: monospace;
@@ -24,7 +25,7 @@
                 background-color: #4f192e;
                 height: 1px;
             }
-            img, video {
+            canvas, img, video {
                 max-width: 100%;
                 border-color: #4f192e;
                 border: 0px solid;
@@ -54,6 +55,7 @@
         </style>
     </head>
     <body>
+        <script src="site/cupcake.js"></script>
         <header>
             <h1>cupcake</h1>
         </header>
@@ -74,14 +76,21 @@
             <p>in addition to the wasm and data sizes below, the examples use the cupcake javascript bindings. these bindings are currently <b>6.58 KB</b> uncompressed after minification.</p>
 
             <hr>
-            <h4><a href="/site/tri.html">tri</a>: draws a simple triangle</h4>
+            <h4>tri: draws a simple triangle</h4>
             <p><b>wasm size:</b> 2.75 KB</p>
             <p><b>data size:</b> 0 KB</p>
+            <div id="tri_canvas_parent"></div>
 
             <hr>
-            <h4><a href="/site/cube.html">cube</a>: spinning cube with vertex colors</p></h4>
+            <h4>cube: spinning cube with vertex colors</p></h4>
             <p><b>wasm size:</b> 7.24 KB</p>
             <p><b>data size:</b> 0 KB</p>
+            <div id="cube_canvas_parent"></div>
+
+            <script>
+                run("site/cube.wasm", "cube_canvas_parent");
+                run("site/tri.wasm", "tri_canvas_parent");
+            </script>
         </main>
         <footer>
             <small><i>made by bootra</i> | <a href="https://github.com/bootradev/cupcake">view the code</a></small>

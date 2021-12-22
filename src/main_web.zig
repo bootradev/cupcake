@@ -1,7 +1,12 @@
 const app = @import("app");
+const cc = @import("cupcake");
 const std = @import("std");
 
-pub export fn init() void {
+pub const WasmId = u32;
+pub var wasm_id: WasmId = undefined;
+
+pub export fn init(id: u32) void {
+    wasm_id = id;
     app.init() catch |err| handleError(err);
 }
 

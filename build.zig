@@ -279,8 +279,8 @@ const WebPackStep = struct {
             .opt_level = build_options.opt_level,
             .gfx_backend = build_options.gfx_backend,
             .html_name = try std.mem.concat(builder.allocator, u8, &.{ name, ".html" }),
-            .js_name = try std.mem.concat(builder.allocator, u8, &.{ name, ".js" }),
             .wasm_name = try std.mem.concat(builder.allocator, u8, &.{ name, ".wasm" }),
+            .js_name = "cupcake.js",
             .js_dir = try builder.allocator.dupe(u8, js_dir),
         };
 
@@ -302,8 +302,8 @@ const WebPackStep = struct {
         const html_file = try lib_dir.createFile(web_pack.html_name, .{ .truncate = true });
         defer html_file.close();
 
-        const html_fmt = @embedFile("src/template.html");
-        try std.fmt.format(html_file.writer(), html_fmt, .{ web_pack.js_name, web_pack.wasm_name });
+        const html_fmt = @embedFile("examples/template.html");
+        try std.fmt.format(html_file.writer(), html_fmt, .{web_pack.wasm_name});
 
         const js_file = try lib_dir.createFile(web_pack.js_name, .{ .truncate = true });
         defer js_file.close();

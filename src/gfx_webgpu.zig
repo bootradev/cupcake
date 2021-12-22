@@ -1,5 +1,6 @@
 const app = @import("app.zig");
 const gfx = @import("gfx.zig");
+const main = @import("main.zig");
 const math = @import("math.zig");
 const std = @import("std");
 
@@ -78,6 +79,7 @@ const js = struct {
     extern fn destroyContext(contex_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern fn configure(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         context_id: ContextId,
         format_ptr: [*]const u8,
@@ -87,12 +89,14 @@ const js = struct {
         height: GPUIntegerCoordinate,
     ) void;
     extern fn requestAdapter(
+        wasm_id: main.WasmId,
         json_ptr: [*]const u8,
         json_len: usize,
         cb: *c_void,
     ) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
     extern fn requestDevice(
+        wasm_id: main.WasmId,
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
@@ -100,19 +104,22 @@ const js = struct {
     ) void;
     extern fn destroyDevice(device_id: DeviceId) void;
     extern fn createShader(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         code_ptr: [*]const u8,
         code_len: usize,
     ) ShaderId;
     extern fn destroyShader(shader_id: ShaderId) void;
-    extern fn checkShaderCompile(shader_id: ShaderId) void;
+    extern fn checkShaderCompile(wasm_id: main.WasmId, shader_id: ShaderId) void;
     extern fn createBindGroupLayout(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         json_ptr: [*]const u8,
         json_len: usize,
     ) BindGroupLayoutId;
     extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
     extern fn createBindGroup(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         bind_group_layout_id: BindGroupLayoutId,
         resource_types_ptr: [*]const u8,
@@ -128,12 +135,14 @@ const js = struct {
     ) BindGroupId;
     extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
     extern fn createPipelineLayout(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         bind_group_layout_ids_ptr: [*]const u8,
         bind_group_layout_ids_len: usize,
     ) PipelineLayoutId;
     extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
     extern fn createRenderPipeline(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         pipeline_layout_id: PipelineLayoutId,
         vert_shader_id: ShaderId,
@@ -145,6 +154,7 @@ const js = struct {
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
     extern fn beginRenderPass(
+        wasm_id: main.WasmId,
         command_encoder_id: CommandEncoderId,
         color_view_ids_ptr: [*]const u8,
         color_view_ids_len: usize,
@@ -162,6 +172,7 @@ const js = struct {
         render_pipeline_id: RenderPipelineId,
     ) void;
     extern fn setBindGroup(
+        wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         group_index: GPUIndex32,
         bind_group_id: BindGroupId,
@@ -176,6 +187,7 @@ const js = struct {
         size: GPUSize64,
     ) void;
     extern fn setIndexBuffer(
+        wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         buffer_id: BufferId,
         index_format_ptr: [*]const u8,
@@ -200,11 +212,13 @@ const js = struct {
     ) void;
     extern fn endRenderPass(render_pass_id: RenderPassId) void;
     extern fn queueSubmit(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         command_buffers_ptr: [*]const u8,
         command_buffers_len: usize,
     ) void;
     extern fn queueWriteBuffer(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         buffer_id: BufferId,
         buffer_offset: GPUSize64,
@@ -213,6 +227,7 @@ const js = struct {
         data_offset: GPUSize64,
     ) void;
     extern fn createBuffer(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         size: GPUSize64,
         usage: GPUBufferUsageFlags,
@@ -221,6 +236,7 @@ const js = struct {
     ) BufferId;
     extern fn destroyBuffer(buffer_id: BufferId) void;
     extern fn createTexture(
+        wasm_id: main.WasmId,
         device_id: DeviceId,
         usage: GPUTextureUsageFlags,
         dimension_ptr: [*]const u8,
@@ -253,7 +269,7 @@ pub const Instance = struct {
         adapter: *Adapter,
     ) !void {
         const json = comptime stringifyAdapterDescComptime(desc);
-        js.requestAdapter(json.ptr, json.len, adapter);
+        js.requestAdapter(main.wasm_id, json.ptr, json.len, adapter);
     }
 
     export fn requestAdapterComplete(adapter_id: js.AdapterId, adapter_c: *c_void) void {
@@ -272,7 +288,7 @@ pub const Adapter = struct {
 
     pub fn requestDevice(adapter: *Adapter, comptime desc: gfx.DeviceDesc, device: *Device) !void {
         const json = comptime stringifyDeviceDescComptime(desc);
-        js.requestDevice(adapter.id, json.ptr, json.len, device);
+        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len, device);
     }
 
     export fn requestDeviceComplete(device_id: js.DeviceId, device_c: *c_void) void {
@@ -299,6 +315,7 @@ pub const Device = struct {
         const texture_format = comptime getTextureFormatString(desc.format);
         const texture_usage = comptime getTextureUsageFlags(desc.usage);
         js.configure(
+            main.wasm_id,
             device.id,
             swapchain.id,
             texture_format.ptr,
@@ -311,11 +328,11 @@ pub const Device = struct {
     }
 
     pub fn createShader(device: *Device, code: []const u8) !Shader {
-        return Shader{ .id = js.createShader(device.id, code.ptr, code.len) };
+        return Shader{ .id = js.createShader(main.wasm_id, device.id, code.ptr, code.len) };
     }
 
     pub fn checkShaderCompile(_: *Device, shader: *Shader) void {
-        js.checkShaderCompile(shader.id);
+        js.checkShaderCompile(main.wasm_id, shader.id);
     }
 
     pub fn createBindGroupLayout(
@@ -324,7 +341,7 @@ pub const Device = struct {
     ) !BindGroupLayout {
         const json = comptime stringifyBindGroupLayoutDescComptime(desc);
         return BindGroupLayout{
-            .id = js.createBindGroupLayout(device.id, json.ptr, json.len),
+            .id = js.createBindGroupLayout(main.wasm_id, device.id, json.ptr, json.len),
         };
     }
 
@@ -362,6 +379,7 @@ pub const Device = struct {
         const json = comptime stringifyBindGroupDescComptime(desc);
         return BindGroup{
             .id = js.createBindGroup(
+                main.wasm_id,
                 device.id,
                 layout.id,
                 resource_types_bytes.ptr,
@@ -385,7 +403,7 @@ pub const Device = struct {
     ) !PipelineLayout {
         const bytes = std.mem.sliceAsBytes(bind_group_layouts);
         return PipelineLayout{
-            .id = js.createPipelineLayout(device.id, bytes.ptr, bytes.len),
+            .id = js.createPipelineLayout(main.wasm_id, device.id, bytes.ptr, bytes.len),
         };
     }
 
@@ -399,6 +417,7 @@ pub const Device = struct {
         const json = comptime stringifyRenderPipelineDescComptime(desc);
         return RenderPipeline{
             .id = js.createRenderPipeline(
+                main.wasm_id,
                 device.id,
                 pipeline_layout.id,
                 vert_shader.id,
@@ -426,6 +445,7 @@ pub const Device = struct {
         const init_data = if (data) |init_data| init_data else &[_]u8{};
         return Buffer{
             .id = js.createBuffer(
+                main.wasm_id,
                 device.id,
                 std.mem.alignForward(size, 4),
                 comptime getBufferUsageFlags(desc.usage),
@@ -444,6 +464,7 @@ pub const Device = struct {
         const format = comptime getTextureFormatString(desc.format);
         return Texture{
             .id = js.createTexture(
+                main.wasm_id,
                 device.id,
                 comptime getTextureUsageFlags(desc.usage),
                 dimension.ptr,
@@ -584,7 +605,14 @@ pub const RenderPass = packed struct {
         dynamic_offsets: ?[]const u32,
     ) void {
         const offsets = if (dynamic_offsets) |offsets| std.mem.sliceAsBytes(offsets) else &[_]u8{};
-        js.setBindGroup(render_pass.id, group_index, group.id, offsets.ptr, offsets.len);
+        js.setBindGroup(
+            main.wasm_id,
+            render_pass.id,
+            group_index,
+            group.id,
+            offsets.ptr,
+            offsets.len,
+        );
     }
 
     pub fn setVertexBuffer(
@@ -606,6 +634,7 @@ pub const RenderPass = packed struct {
     ) void {
         const index_format_str = comptime getIndexFormatString(index_format);
         js.setIndexBuffer(
+            main.wasm_id,
             render_pass.id,
             buffer.id,
             index_format_str.ptr,
@@ -670,6 +699,7 @@ pub const CommandEncoder = packed struct {
         const json = comptime try stringifyRenderPassDescComptime(desc);
         return RenderPass{
             .id = js.beginRenderPass(
+                main.wasm_id,
                 command_encoder.id,
                 color_views_bytes.ptr,
                 color_views_bytes.len,
@@ -711,12 +741,20 @@ pub const Queue = packed struct {
         data: []const u8,
         data_offset: usize,
     ) void {
-        js.queueWriteBuffer(queue.id, buffer.id, buffer_offset, data.ptr, data.len, data_offset);
+        js.queueWriteBuffer(
+            main.wasm_id,
+            queue.id,
+            buffer.id,
+            buffer_offset,
+            data.ptr,
+            data.len,
+            data_offset,
+        );
     }
 
     pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
         const bytes = std.mem.sliceAsBytes(command_buffers);
-        js.queueSubmit(queue.id, bytes.ptr, bytes.len);
+        js.queueSubmit(main.wasm_id, queue.id, bytes.ptr, bytes.len);
     }
 };
 

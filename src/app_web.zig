@@ -1,4 +1,6 @@
+const app = @import("app.zig");
 const cfg = @import("cfg");
+const main = @import("main.zig");
 const math = @import("math.zig");
 const std = @import("std");
 
@@ -6,9 +8,9 @@ const js = struct {
     const CanvasId = u32;
     const DomHighResTimeStamp = f64;
 
-    extern fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
-    extern fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
-    extern fn createCanvas(width: u32, height: u32) CanvasId;
+    extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
+    extern fn setWindowTitle(wasm_id: main.WasmId, title_ptr: [*]const u8, title_len: usize) void;
+    extern fn createCanvas(wasm_id: main.WasmId, width: u32, height: u32) CanvasId;
     extern fn destroyCanvas(canvas_id: CanvasId) void;
     extern fn now() DomHighResTimeStamp;
 };
@@ -26,24 +28,26 @@ pub fn log(
     var buf: [2048]u8 = undefined;
     const msg_buf = std.fmt.bufPrint(buf[0..], msg, args) catch return;
 
-    js.logConsole(msg_buf.ptr, msg_buf.len);
+    js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
 }
 
 pub const Window = struct {
     size: math.V2u32,
     id: js.CanvasId,
 
-    pub fn init(window: *Window, name: []const u8, size: math.V2u32) !void {
-        js.setWindowTitle(name.ptr, name.len);
+    pub fn init(window: *Window, size: math.V2u32, comptime desc: app.WindowDesc) !void {
+        if (desc.name.len > 0) {
+            js.setWindowTitle(main.wasm_id, desc.name.ptr, desc.name.len);
+        }
         window.* = .{
-            .id = js.createCanvas(size.x, size.y),
+            .id = js.createCanvas(main.wasm_id, size.x, size.y),
             .size = size,
         };
     }
 
     pub fn deinit(window: *Window) void {
         const empty: []const u8 = &.{};
-        js.setWindowTitle(empty.ptr, empty.len);
+        js.setWindowTitle(main.wasm_id, empty.ptr, empty.len);
         js.destroyCanvas(window.id);
     }
 };
