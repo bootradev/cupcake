@@ -5,7 +5,7 @@ class Objs {
     insert(_obj) {
         if (this._free.length > 0) {
             const objId = this._free.pop();
-            this._objs[id] = _obj;
+            this._objs[objId] = _obj;
             return objId;
         } else {
             this._objs.push(_obj);

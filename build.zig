@@ -1,5 +1,38 @@
 const std = @import("std");
 
+const Example = enum {
+    tri,
+    cube,
+};
+
+pub const AppOptions = struct {
+    app_name: []const u8,
+    app_root: []const u8,
+    shader_dir: []const u8 = "",
+    shader_names: []const []const u8 = &.{},
+};
+
+pub fn build(builder: *std.build.Builder) !void {
+    const example = builder.option(Example, "example", "example project") orelse .cube;
+
+    var app_options: AppOptions = switch (example) {
+        .tri => .{
+            .app_name = "tri",
+            .app_root = "examples/tri/tri.zig",
+            .shader_names = &.{ "tri_vert", "tri_frag" },
+            .shader_dir = "examples/tri",
+        },
+        .cube => .{
+            .app_name = "cube",
+            .app_root = "examples/cube/cube.zig",
+            .shader_names = &.{ "cube_vert", "cube_frag" },
+            .shader_dir = "examples/cube",
+        },
+    };
+
+    try buildApp(builder, &app_options);
+}
+
 const Platform = enum {
     web,
 };
@@ -9,53 +42,20 @@ const OptLevel = enum {
     release,
 };
 
-const GfxBackend = enum {
+const GfxApi = enum {
     webgpu,
-};
-
-const Example = enum {
-    tri,
-    cube,
 };
 
 const BuildOptions = struct {
     app_name: []const u8,
-    app_src_root: []const u8,
+    app_root: []const u8,
     platform: Platform,
     opt_level: OptLevel,
-    gfx_backend: GfxBackend,
-};
-
-pub const AppOptions = struct {
-    app_name: []const u8,
-    app_src_root: []const u8,
-    shader_dir: []const u8 = "",
-    shader_names: []const []const u8 = &.{},
+    gfx_api: GfxApi,
 };
 
 const default_platform = .web;
-const default_gfx_backend = .webgpu;
-
-pub fn build(builder: *std.build.Builder) !void {
-    const example = builder.option(Example, "example", "example project") orelse .cube;
-
-    var app_options: AppOptions = switch (example) {
-        .tri => .{
-            .app_name = "tri",
-            .app_src_root = "examples/tri/tri.zig",
-            .shader_names = &.{ "tri_vert", "tri_frag" },
-            .shader_dir = "examples/tri",
-        },
-        .cube => .{
-            .app_name = "cube",
-            .app_src_root = "examples/cube/cube.zig",
-            .shader_names = &.{ "cube_vert", "cube_frag" },
-            .shader_dir = "examples/cube",
-        },
-    };
-
-    try buildApp(builder, &app_options);
-}
+const default_gfx_api = .webgpu;
 
 pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !void {
     const platform = builder.option(
@@ -70,18 +70,18 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
         "optimization level",
     ) orelse .debug;
 
-    const gfx_backend = builder.option(
-        GfxBackend,
+    const gfx_api = builder.option(
+        GfxApi,
         "gfx",
         "graphics backend",
-    ) orelse default_gfx_backend;
+    ) orelse default_gfx_api;
 
     const build_options = BuildOptions{
         .app_name = app_options.app_name,
-        .app_src_root = app_options.app_src_root,
+        .app_root = app_options.app_root,
         .platform = platform,
         .opt_level = opt_level,
-        .gfx_backend = gfx_backend,
+        .gfx_api = gfx_api,
     };
 
     const app_lib_exe = switch (build_options.platform) {
@@ -104,7 +104,7 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
 
     const cfg = builder.addOptions();
     cfg.addOption(Platform, "platform", build_options.platform);
-    cfg.addOption(GfxBackend, "gfx_backend", build_options.gfx_backend);
+    cfg.addOption(GfxApi, "gfx_api", build_options.gfx_api);
     cfg.addOption(bool, "log_enabled", build_options.opt_level != .release);
     app_lib_exe.step.dependOn(&cfg.step);
 
@@ -117,7 +117,7 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
-        .path = .{ .path = build_options.app_src_root },
+        .path = .{ .path = build_options.app_root },
         .dependencies = &.{ cfg_pkg, cupcake_pkg, shader_pkg },
     };
 
@@ -141,10 +141,7 @@ fn buildWeb(
     const target = try std.zig.CrossTarget.parse(.{ .arch_os_abi = "wasm32-freestanding" });
     app_lib_exe.setTarget(target);
 
-    const js_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "src" });
-    defer builder.allocator.free(js_dir);
-
-    const web_pack = try WebPackStep.create(builder, build_options, js_dir);
+    const web_pack = try WebPackStep.create(builder, build_options, "src");
     builder.getInstallStep().dependOn(&web_pack.step);
 
     return app_lib_exe;
@@ -156,7 +153,8 @@ const ShaderBuildStep = struct {
     contents: std.ArrayList(u8),
     dir: []const u8,
     names: []const []const u8,
-    gfx_backend: GfxBackend,
+    app_name: []const u8,
+    gfx_api: GfxApi,
     opt_level: OptLevel,
     generated_file: std.build.GeneratedFile,
 
@@ -173,7 +171,8 @@ const ShaderBuildStep = struct {
             .contents = std.ArrayList(u8).init(builder.allocator),
             .dir = dir,
             .names = names,
-            .gfx_backend = build_options.gfx_backend,
+            .app_name = build_options.app_name,
+            .gfx_api = build_options.gfx_api,
             .opt_level = build_options.opt_level,
             .generated_file = undefined,
         };
@@ -185,60 +184,81 @@ const ShaderBuildStep = struct {
     fn make(step: *std.build.Step) !void {
         const shader_build = @fieldParentPtr(ShaderBuildStep, "step", step);
 
-        var shader_dir = try std.fs.openDirAbsolute(
-            shader_build.builder.pathFromRoot(
-                try std.fs.path.join(
-                    shader_build.builder.allocator,
-                    &.{shader_build.dir},
-                ),
-            ),
-            .{},
+        const shader_dir_path = try std.fs.path.join(
+            shader_build.builder.allocator,
+            &.{ shader_build.builder.build_root, shader_build.dir },
         );
+        defer shader_build.builder.allocator.free(shader_dir_path);
+
+        var shader_dir = try std.fs.openDirAbsolute(shader_dir_path, .{});
         defer shader_dir.close();
 
         const writer = shader_build.contents.writer();
-        for (shader_build.names) |name| {
-            const shader_name = try std.mem.concat(
+        for (shader_build.names) |shader_name| {
+            const shader_ext = switch (shader_build.gfx_api) {
+                .webgpu => ".wgsl",
+            };
+
+            const shader_path = try std.mem.concat(
                 shader_build.builder.allocator,
                 u8,
-                &.{ name, ".wgsl" },
+                &.{ shader_name, shader_ext },
             );
+            defer shader_build.builder.allocator.free(shader_path);
 
-            const shader_file = try shader_dir.openFile(shader_name, .{});
+            const shader_file = try shader_dir.openFile(shader_path, .{});
             defer shader_file.close();
 
-            const shader_stat = try shader_file.stat();
             const shader_bytes = try shader_file.readToEndAlloc(
                 shader_build.builder.allocator,
-                shader_stat.size,
+                (try shader_file.stat()).size,
             );
-            const shader_bytes_min = try Minify.wgsl(
+            defer shader_build.builder.allocator.free(shader_bytes);
+
+            const shader_bytes_min = try Minify.shader(
                 shader_bytes,
                 shader_build.builder.allocator,
                 shader_build.opt_level,
+                shader_build.gfx_api,
             );
-            try writer.print("pub const {s} = \"{s}\";\n", .{ name, shader_bytes_min });
+            defer shader_build.builder.allocator.free(shader_bytes_min);
+
+            try writer.print("pub const {s} = \"{s}\";\n", .{ shader_name, shader_bytes_min });
         }
 
-        const shader_build_dir = shader_build.builder.pathFromRoot(
-            try std.fs.path.join(
-                shader_build.builder.allocator,
-                &.{ shader_build.builder.cache_root, "shader_build" },
-            ),
-        );
-
-        try std.fs.cwd().makePath(shader_build_dir);
-
-        const shader_build_src_file_name = @tagName(shader_build.gfx_backend);
-
-        const shader_build_src_file = try std.fs.path.join(
+        const shader_build_dir_path = try std.fs.path.join(
             shader_build.builder.allocator,
-            &.{ shader_build_dir, shader_build_src_file_name },
+            &.{
+                shader_build.builder.build_root,
+                shader_build.builder.cache_root,
+                "shader_build",
+            },
         );
+        defer shader_build.builder.allocator.free(shader_build_dir_path);
 
-        try std.fs.cwd().writeFile(shader_build_src_file, shader_build.contents.items);
+        try std.fs.cwd().makePath(shader_build_dir_path);
 
-        shader_build.generated_file.path = shader_build_src_file;
+        const shader_build_src_file_name = try std.mem.concat(
+            shader_build.builder.allocator,
+            u8,
+            &.{ shader_build.app_name, "_", @tagName(shader_build.gfx_api) },
+        );
+        defer shader_build.builder.allocator.free(shader_build_src_file_name);
+
+        const shader_build_src_file_path = try std.fs.path.join(
+            shader_build.builder.allocator,
+            &.{ shader_build_dir_path, shader_build_src_file_name },
+        );
+        defer shader_build.builder.allocator.free(shader_build_src_file_path);
+
+        try std.fs.cwd().writeFile(shader_build_src_file_path, shader_build.contents.items);
+        shader_build.contents.deinit();
+
+        shader_build.generated_file.path = try std.mem.dupe(
+            shader_build.builder.allocator,
+            u8,
+            shader_build_src_file_path,
+        );
     }
 
     pub fn getPackage(shader_build: ShaderBuildStep, package_name: []const u8) std.build.Pkg {
@@ -250,19 +270,20 @@ const ShaderBuildStep = struct {
 };
 
 const WebPackStep = struct {
+    // intentional ordering to prevent dependency issues
     const js_srcs: []const []const u8 = &.{
         "utils.js",
         "main_web.js",
         "app_web.js",
         "gfx_webgpu.js",
     };
+    const js_name = "cupcake.js";
 
     builder: *std.build.Builder,
     step: std.build.Step,
     opt_level: OptLevel,
-    gfx_backend: GfxBackend,
+    gfx_api: GfxApi,
     html_name: []const u8,
-    js_name: []const u8,
     wasm_name: []const u8,
     js_dir: []const u8,
 
@@ -277,15 +298,14 @@ const WebPackStep = struct {
             .builder = builder,
             .step = std.build.Step.init(.custom, "web pack", builder.allocator, make),
             .opt_level = build_options.opt_level,
-            .gfx_backend = build_options.gfx_backend,
+            .gfx_api = build_options.gfx_api,
             .html_name = try std.mem.concat(builder.allocator, u8, &.{ name, ".html" }),
             .wasm_name = try std.mem.concat(builder.allocator, u8, &.{ name, ".wasm" }),
-            .js_name = "cupcake.js",
             .js_dir = try builder.allocator.dupe(u8, js_dir),
         };
 
         builder.pushInstalledFile(.lib, web_pack.html_name);
-        builder.pushInstalledFile(.lib, web_pack.js_name);
+        builder.pushInstalledFile(.lib, js_name);
 
         return web_pack;
     }
@@ -293,22 +313,28 @@ const WebPackStep = struct {
     fn make(step: *std.build.Step) !void {
         const web_pack = @fieldParentPtr(WebPackStep, "step", step);
 
-        var root_dir = try std.fs.openDirAbsolute(web_pack.builder.build_root, .{});
-        defer root_dir.close();
-
-        var lib_dir = try root_dir.makeOpenPath(web_pack.builder.lib_dir, .{});
+        var lib_dir = try std.fs.cwd().makeOpenPath(web_pack.builder.lib_dir, .{});
         defer lib_dir.close();
 
         const html_file = try lib_dir.createFile(web_pack.html_name, .{ .truncate = true });
         defer html_file.close();
 
-        const html_fmt = @embedFile("examples/template.html");
-        try std.fmt.format(html_file.writer(), html_fmt, .{web_pack.wasm_name});
+        try std.fmt.format(
+            html_file.writer(),
+            @embedFile("examples/template.html"),
+            .{web_pack.wasm_name},
+        );
 
-        const js_file = try lib_dir.createFile(web_pack.js_name, .{ .truncate = true });
+        const js_file = try lib_dir.createFile(js_name, .{ .truncate = true });
         defer js_file.close();
 
-        var js_src_dir = try std.fs.openDirAbsolute(web_pack.js_dir, .{});
+        const js_src_dir_path = try std.fs.path.join(
+            web_pack.builder.allocator,
+            &.{ web_pack.builder.build_root, web_pack.js_dir },
+        );
+        defer web_pack.builder.allocator.free(js_src_dir_path);
+
+        var js_src_dir = try std.fs.openDirAbsolute(js_src_dir_path, .{});
         defer js_src_dir.close();
 
         var js_file_contents = std.ArrayList(u8).init(web_pack.builder.allocator);
@@ -316,10 +342,9 @@ const WebPackStep = struct {
             const src_file = try js_src_dir.openFile(js_src, .{});
             defer src_file.close();
 
-            const src_stat = try src_file.stat();
             const src_bytes = try src_file.readToEndAlloc(
                 web_pack.builder.allocator,
-                src_stat.size,
+                (try src_file.stat()).size,
             );
             defer web_pack.builder.allocator.free(src_bytes);
 
@@ -338,6 +363,7 @@ const WebPackStep = struct {
         } else {
             try js_file.writeAll(js_file_contents.items);
         }
+        js_file_contents.deinit();
     }
 };
 
@@ -345,12 +371,6 @@ const Minify = struct {
     const Language = enum {
         js,
         wgsl,
-    };
-
-    const ParseState = enum {
-        sep,
-        ident,
-        whitespace,
     };
 
     const keywords_js: []const []const u8 = &.{
@@ -409,58 +429,30 @@ const Minify = struct {
         "mat4x4",
     };
 
-    const sep = "{}()[]=<>;:.,|/-+*!&";
-    const string = "\"'`";
+    const ParseChar = enum {
+        symbol, // a non-whitespace, non-identifier character. see symbols, below
+        ident, // a non-whitespce, non-symbol character (an identifier)
+        whitespace, // a whitespace character
+    };
+
+    const symbols = "{}()[]=<>;:.,|/-+*!&?";
+    const str_symbols = "\"'`";
     const max_ident_size = 2;
+    const next_ident_symbols = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     allocator: *std.mem.Allocator,
     src: []const u8,
     out: std.ArrayList(u8),
     start_index: usize,
     end_index: usize,
-    cur_state: ParseState,
-    cur_write_state: ParseState,
+    cur_char: ParseChar,
+    cur_write_char: ParseChar,
     ident_map: std.StringHashMap([]const u8),
     next_ident: [max_ident_size]u8,
+    next_ident_index: [max_ident_size]usize,
     next_ident_size: usize,
     language: Language,
     opt_level: OptLevel,
-
-    pub fn js(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
-        var ctx = Minify.init(src, allocator, .js, opt_level);
-        defer ctx.deinit();
-
-        return try ctx.minify();
-    }
-
-    pub fn wgsl(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
-        var ctx = Minify.init(src, allocator, .wgsl, opt_level);
-        defer ctx.deinit();
-
-        return try ctx.minify();
-    }
-
-    fn minify(ctx: *Minify) ![]const u8 {
-        while (ctx.end_index < ctx.src.len) {
-            const byte = ctx.src[ctx.end_index];
-            if (ctx.end_index < ctx.src.len - 1 and
-                byte == '/' and
-                (ctx.src[ctx.end_index + 1] == '/' or ctx.src[ctx.end_index + 1] == '*'))
-            {
-                try ctx.handleComment();
-            } else if (std.mem.indexOfScalar(u8, sep, byte) != null) {
-                try ctx.handleByte(.sep);
-            } else if (std.mem.indexOfScalar(u8, string, byte) != null) {
-                try ctx.handleString();
-            } else if (std.mem.indexOfScalar(u8, &std.ascii.spaces, byte) == null) {
-                try ctx.handleByte(.ident);
-            } else {
-                try ctx.handleByte(.whitespace);
-            }
-        }
-
-        return ctx.out.toOwnedSlice();
-    }
 
     fn init(
         src: []const u8,
@@ -474,10 +466,11 @@ const Minify = struct {
             .out = std.ArrayList(u8).init(allocator),
             .start_index = 0,
             .end_index = 0,
-            .cur_state = .whitespace,
-            .cur_write_state = .whitespace,
+            .cur_char = .whitespace,
+            .cur_write_char = .whitespace,
             .ident_map = std.StringHashMap([]const u8).init(allocator),
             .next_ident = [_]u8{'a'} ** max_ident_size,
+            .next_ident_index = [_]usize{0} ** max_ident_size,
             .next_ident_size = 1,
             .language = language,
             .opt_level = opt_level,
@@ -494,41 +487,88 @@ const Minify = struct {
         ctx.ident_map.deinit();
     }
 
-    fn handleByte(ctx: *Minify, state: ParseState) !void {
-        if (ctx.cur_state != state) {
-            if (ctx.cur_state == .sep) {
-                try ctx.appendSep();
-            } else if (ctx.cur_state == .ident) {
+    pub fn js(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
+        var ctx = Minify.init(src, allocator, .js, opt_level);
+        defer ctx.deinit();
+
+        return try ctx.minify();
+    }
+
+    pub fn shader(
+        src: []const u8,
+        allocator: *std.mem.Allocator,
+        opt_level: OptLevel,
+        gfx_api: GfxApi,
+    ) ![]const u8 {
+        const lang = switch (gfx_api) {
+            .webgpu => .wgsl,
+        };
+
+        var ctx = Minify.init(src, allocator, lang, opt_level);
+        defer ctx.deinit();
+
+        return try ctx.minify();
+    }
+
+    fn minify(ctx: *Minify) ![]const u8 {
+        while (ctx.end_index < ctx.src.len) {
+            const char = ctx.src[ctx.end_index];
+            if (ctx.end_index < ctx.src.len - 1 and
+                char == '/' and
+                (ctx.src[ctx.end_index + 1] == '/' or ctx.src[ctx.end_index + 1] == '*'))
+            {
+                try ctx.handleComment();
+            } else if (std.mem.indexOfScalar(u8, symbols, char) != null) {
+                try ctx.handleChar(.symbol);
+            } else if (std.mem.indexOfScalar(u8, str_symbols, char) != null) {
+                try ctx.handleString();
+            } else if (std.mem.indexOfScalar(u8, &std.ascii.spaces, char) == null) {
+                try ctx.handleChar(.ident);
+            } else {
+                try ctx.handleChar(.whitespace);
+            }
+        }
+
+        return ctx.out.toOwnedSlice();
+    }
+
+    fn handleChar(ctx: *Minify, char: ParseChar) !void {
+        if (ctx.cur_char != char) {
+            if (ctx.cur_char == .symbol) {
+                try ctx.appendSymbol();
+            } else if (ctx.cur_char == .ident) {
                 try ctx.appendIdent();
             }
 
-            if (state != .whitespace) {
-                if (ctx.cur_write_state == .ident and state == .ident) {
+            if (char != .whitespace) {
+                // append a space between two different identifiers
+                if (ctx.cur_write_char == .ident and char == .ident) {
                     try ctx.out.append(' ');
                 }
 
                 // chrome wgsl parser is broken, this works around the issue...
-                if (ctx.language == .wgsl and ctx.cur_write_state == .sep and state == .ident) {
+                if (ctx.language == .wgsl and ctx.cur_write_char == .symbol and char == .ident) {
                     const wgsl_skip = "{([]<>=:;,.";
-                    const last_write_byte = ctx.out.items[ctx.out.items.len - 1];
-                    if (std.mem.indexOfScalar(u8, wgsl_skip, last_write_byte) == null) {
+                    const last_write_char = ctx.out.items[ctx.out.items.len - 1];
+                    if (std.mem.indexOfScalar(u8, wgsl_skip, last_write_char) == null) {
                         try ctx.out.append(' ');
                     }
                 }
-                ctx.cur_write_state = state;
+
+                ctx.cur_write_char = char;
             }
-            ctx.cur_state = state;
+            ctx.cur_char = char;
             ctx.start_index = ctx.end_index;
         }
         ctx.end_index += 1;
     }
 
     fn handleString(ctx: *Minify) !void {
-        try ctx.handleByte(.whitespace);
+        try ctx.handleChar(.whitespace);
 
-        const byte = ctx.src[ctx.end_index - 1];
+        const char = ctx.src[ctx.end_index - 1];
         ctx.start_index = ctx.end_index - 1;
-        while (ctx.end_index < ctx.src.len and ctx.src[ctx.end_index] != byte) {
+        while (ctx.end_index < ctx.src.len and ctx.src[ctx.end_index] != char) {
             ctx.end_index += 1;
         }
         ctx.end_index += 1;
@@ -537,9 +577,9 @@ const Minify = struct {
     }
 
     fn handleComment(ctx: *Minify) !void {
-        try ctx.handleByte(.whitespace);
-        const byte = ctx.src[ctx.end_index];
-        if (byte == '/') {
+        try ctx.handleChar(.whitespace);
+        const char = ctx.src[ctx.end_index];
+        if (char == '/') {
             while (ctx.src[ctx.end_index] != '\n') {
                 ctx.end_index += 1;
             }
@@ -553,22 +593,8 @@ const Minify = struct {
         }
     }
 
-    fn appendSep(ctx: *Minify) !void {
+    fn appendSymbol(ctx: *Minify) !void {
         try ctx.out.appendSlice(ctx.src[ctx.start_index..ctx.end_index]);
-    }
-
-    fn isKeyword(ctx: *Minify, slice: []const u8) bool {
-        const keywords = switch (ctx.language) {
-            .js => keywords_js,
-            .wgsl => keywords_wgsl,
-        };
-        var is_keyword = false;
-        for (keywords) |keyword| {
-            if (std.mem.eql(u8, keyword, slice)) {
-                is_keyword = true;
-            }
-        }
-        return is_keyword;
     }
 
     fn appendIdent(ctx: *Minify) !void {
@@ -588,49 +614,57 @@ const Minify = struct {
         {
             try ctx.out.appendSlice(ident);
         } else {
-            const new_ident = try ctx.nextPlacementIdent();
-            try ctx.ident_map.put(ident, new_ident);
-            try ctx.out.appendSlice(new_ident);
+            const next_ident = try ctx.nextIdent();
+            try ctx.ident_map.put(ident, next_ident);
+            try ctx.out.appendSlice(next_ident);
         }
     }
 
-    fn nextPlacementIdent(ctx: *Minify) ![]const u8 {
+    fn nextIdent(ctx: *Minify) ![]const u8 {
         const next = ctx.allocator.dupe(u8, ctx.next_ident[0..ctx.next_ident_size]);
-        var cur_index = ctx.next_ident_size - 1;
-        if (ctx.next_ident[cur_index] == 'z') {
-            ctx.next_ident[cur_index] = 'A';
-        } else if (ctx.next_ident[cur_index] == 'Z') {
-            var no_idents = true;
-            while (true) : (cur_index -= 1) {
-                if (ctx.next_ident[cur_index] == 'Z') {
-                    ctx.next_ident[cur_index] = 'a';
-                } else {
-                    if (ctx.next_ident[cur_index] == 'z') {
-                        ctx.next_ident[cur_index] = 'A';
-                    } else {
-                        ctx.next_ident[cur_index] += 1;
-                    }
-                    while (ctx.isKeyword(ctx.next_ident[0..ctx.next_ident_size])) {
-                        ctx.next_ident[cur_index] += 1;
-                    }
-                    no_idents = false;
-                    break;
-                }
 
-                if (cur_index == 0) {
+        var cur_index = ctx.next_ident_size - 1;
+        if (ctx.next_ident_index[cur_index] == next_ident_symbols.len - 1) {
+            ctx.setNextIdent(cur_index, 0);
+            var out_of_idents = true;
+            while (cur_index != 0) {
+                cur_index -= 1;
+                if (ctx.next_ident_index[cur_index] == next_ident_symbols.len - 1) {
+                    ctx.setNextIdent(cur_index, 0);
+                } else {
+                    ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
+                    out_of_idents = false;
                     break;
                 }
             }
 
-            if (no_idents) {
+            if (out_of_idents) {
                 ctx.next_ident_size += 1;
                 if (ctx.next_ident_size > max_ident_size) {
                     return error.MaxIdentsExceeded;
                 }
             }
         } else {
-            ctx.next_ident[cur_index] += 1;
+            ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
         }
+
         return next;
+    }
+
+    fn setNextIdent(ctx: *Minify, ident_index: usize, symbol_index: usize) void {
+        ctx.next_ident_index[ident_index] = symbol_index;
+        ctx.next_ident[ident_index] = next_ident_symbols[symbol_index];
+    }
+
+    fn isKeyword(ctx: *Minify, slice: []const u8) bool {
+        const keywords = switch (ctx.language) {
+            .js => keywords_js,
+            .wgsl => keywords_wgsl,
+        };
+        return for (keywords) |keyword| {
+            if (std.mem.eql(u8, keyword, slice)) {
+                return true;
+            }
+        } else false;
     }
 };

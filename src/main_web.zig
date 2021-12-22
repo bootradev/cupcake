@@ -2,7 +2,11 @@ const app = @import("app");
 const cc = @import("cupcake");
 const std = @import("std");
 
-pub const WasmId = u32;
+const js = struct {
+    const WasmId = u32;
+};
+
+pub const WasmId = js.WasmId;
 pub var wasm_id: WasmId = undefined;
 
 pub export fn init(id: u32) void {

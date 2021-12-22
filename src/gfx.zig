@@ -1,4 +1,4 @@
-const api = switch (cfg.gfx_backend) {
+const api = switch (cfg.gfx_api) {
     .webgpu => @import("gfx_webgpu.zig"),
 };
 const cfg = @import("cfg");

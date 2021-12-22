@@ -88,8 +88,7 @@ const webgpu = {
     },
 
     destroyDevice(_deviceId) {
-        // this should be in the api?
-        //webgpu._devices[_deviceId].destroy();
+        // device destroy should be in the api, but it's not available in chrome canary yet...
         webgpu._devices.remove(_deviceId);
     },
 
@@ -191,13 +190,13 @@ const webgpu = {
         const bindGroupLayoutIds = new Uint32Array(
             main.getSlice(_wasmId, _layoutIdsPtr, _layoutIdsLen)
         );
-        const layouts = [];
+        const _bindGroupLayouts = [];
         for (let i = 0; i < bindGroupLayoutIds.length; ++i) {
-            layouts.push(webgpu._bindGroupLayouts.get(bindGroupLayoutIds[i]));
+            _bindGroupLayouts.push(webgpu._bindGroupLayouts.get(bindGroupLayoutIds[i]));
         }
 
         const desc = {};
-        desc.bindGroupLayouts = layouts; 
+        desc.bindGroupLayouts = _bindGroupLayouts;
         return webgpu._pipelineLayouts.insert(
             webgpu._devices.get(_deviceId).createPipelineLayout(desc)
         );
@@ -315,16 +314,16 @@ const webgpu = {
         _dynamicOffsetsPtr,
         _dynamicOffsetsLen
     ) {
-        const offsets = [];
+        const dynamicOffsets = [];
         if (_dynamicOffsetsLen > 0) {
-            offsets = new Uint32Array(
+            dynamicOffsets = new Uint32Array(
                 main.getSlice(_wasmId, _dynamicOffsetsPtr, _dynamicOffsetsLen)
             );
         }
         webgpu._renderPasses.get(_renderPassId).setBindGroup(
             _groupIndex,
             webgpu._bindGroups.get(_bindGroupId),
-            offsets
+            dynamicOffsets
         );
     },
 
@@ -476,8 +475,7 @@ const webgpu = {
     },
 
     destroyTexture(_textureId) {
-        // this should be in the api?
-        //webgpu._textures[textureId].destroy();
+        // texture destroy should be in the api, but it's not available in chrome canary yet...
         webgpu._textures.remove(_textureId);
     },
 

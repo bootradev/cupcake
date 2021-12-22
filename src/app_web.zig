@@ -52,7 +52,7 @@ pub const Window = struct {
     }
 };
 
-// make sure this matches the public api of std.time.Timer
+// matches the public api of std.time.Timer
 pub const Timer = struct {
     start_time: js.DomHighResTimeStamp,
 
