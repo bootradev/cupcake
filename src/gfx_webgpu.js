@@ -22,6 +22,7 @@ const webgpu = {
     _samplers: new Objs(),
     _commandEncoders: new Objs(),
     _commandBuffers: new Objs(),
+    _renderPassDescs: new Objs(),
     _renderPasses: new Objs(),
     _querySets: new Objs(),
 
@@ -245,6 +246,7 @@ const webgpu = {
     },
 
     beginRenderPass(
+        _hash,
         _wasmId,
         _commandEncoderId,
         _colorViewIdsPtr,
@@ -258,45 +260,54 @@ const webgpu = {
         _jsonPtr,
         _jsonLen
     ) {
-        const desc = JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen));
+        let cache = webgpu._renderPassDescs.get(_hash);
+        if (cache === undefined) {
+            cache = {
+                _desc: JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen)),
+                _colorViewIds: new Uint32Array(
+                    main.getSlice(_wasmId, _colorViewIdsPtr, _colorViewIdsLen)
+                ),
+                _colorResolveTargetIds: new Uint32Array(
+                    main.getSlice(_wasmId, _colorResolveTargetsPtr, _colorResolveTargetsLen)
+                ),
+                _depthStencilViewId: _depthStencilViewId,
+                _occlusionQuerySetId: _occlusionQuerySetId,
+                _timestampQuerySetIds: new Uint32Array(
+                    main.getSlice(_wasmId, _timestampQuerySetIdsPtr, _timestampQuerySetIdsLen)
+                ),
+            };
 
-        const colorViewIds = new Uint32Array(
-            main.getSlice(_wasmId, _colorViewIdsPtr, _colorViewIdsLen)
-        );
-        for (let i = 0; i < colorViewIds.length; ++i) {
-            desc.colorAttachments[i].view = webgpu.getTextureView(colorViewIds[i]);
+            webgpu._renderPassDescs.set(cache, _hash);
         }
 
-        if (_colorResolveTargetsLen > 0) {
-            const colorResolveTargetIds = new Uint32Array(
-                main.getSlice(_wasmId, _colorResolveTargetsPtr, _colorResolveTargetsLen)
+        for (let i = 0; i < cache._colorViewIds.length; ++i) {
+            cache._desc.colorAttachments[i].view = webgpu.getTextureView(cache._colorViewIds[i]);
+        }
+
+        for (let i = 0; i < cache._colorResolveTargetIds.length; ++i) {
+            cache._desc.colorAttachments[i].resolveTarget = webgpu.getTextureView(
+                cache._colorResolveTargetIds[i]
             );
-            for (let i = 0; i < colorResolveTargetIds.length; ++i) {
-                desc.colorAttachments[i].resolveTarget = webgpu.getTextureView(
-                    colorResolveTargetIds[i]
-                );
-            }
         }
 
-        if (_depthStencilViewId != InvalidId) {
-            desc.depthStencilAttachment.view = webgpu.getTextureView(_depthStencilViewId);
-        }
-
-        if (_occlusionQuerySetId != InvalidId) {
-            desc.occlusionQuerySet = webgpu._querySets.get(_occlusionQuerySetId);
-        }
-
-        if (_timestampQuerySetIdsLen > 0) {
-            let timestampQuerySetIds = new Uint32Array(
-                main.getSlice(_wasmId, _timestampQuerySetIdsPtr, _timestampQuerySetIdsLen)
+        if (cache._depthStencilViewId != InvalidId) {
+            cache._desc.depthStencilAttachment.view = webgpu.getTextureView(
+                cache._depthStencilViewId
             );
-            for (let i = 0; i < desc.timestampWrites.length; ++i) {
-                desc.timestampWrites[i].querySet = webgpu._querySets.get(timestampQuerySetIds[i]);
-            }
+        }
+
+        if (cache._occlusionQuerySetId != InvalidId) {
+            cache._desc.occlusionQuerySet = webgpu._querySets.get(cache._occlusionQuerySetId);
+        }
+
+        for (let i = 0; i < cache._timestampQuerySetIds.length; ++i) {
+            cache._desc.timestampWrites[i].querySet = webgpu._querySets.get(
+                cache._timestampQuerySetIds[i]
+            );
         }
 
         return webgpu._renderPasses.insert(
-            webgpu._commandEncoders.get(_commandEncoderId).beginRenderPass(desc)
+            webgpu._commandEncoders.get(_commandEncoderId).beginRenderPass(cache._desc)
         );
     },
 
@@ -344,8 +355,7 @@ const webgpu = {
         _wasmId,
         _renderPassId,
         _bufferId,
-        _indexFormatPtr,
-        _indexFormatLen,
+        _indexFormatId,
         _offset,
         _size
     ) {
@@ -355,7 +365,7 @@ const webgpu = {
 
         webgpu._renderPasses.get(_renderPassId).setIndexBuffer(
             webgpu._buffers.get(_bufferId),
-            main.getString(_wasmId, _indexFormatPtr, _indexFormatLen),
+            _indexFormatId === 1 ? "uint16" : "uint32",
             _offset,
             _size
         );
@@ -392,30 +402,19 @@ const webgpu = {
         webgpu._renderPasses.remove(_renderPassId);
     },
 
-    queueSubmit(_wasmId, _deviceId, _commandBuffersPtr, _commandBuffersLen) {
-        const commandBufferIds = new Uint32Array(
-            main.getSlice(_wasmId, _commandBuffersPtr, _commandBuffersLen)
+    queueSubmit(_wasmId, _deviceId, _commandBufferId) {
+        webgpu._devices.get(_deviceId).queue.submit(
+            [webgpu._commandBuffers.get(_commandBufferId)]
         );
-
-        let commandBuffers = [];
-        for (let i = 0; i < commandBufferIds.length; ++i) {
-            commandBuffers.push(webgpu._commandBuffers.get(commandBufferIds[i]));
-        }
-
-        webgpu._devices.get(_deviceId).queue.submit(commandBuffers);
-
-        commandBufferIds.sort();
-        for (let i = commandBufferIds.length - 1; i >= 0; --i) {
-            webgpu._commandBuffers.remove(commandBufferIds[i]);
-        }
+        webgpu._commandBuffers.remove(_commandBufferId);
     },
 
     queueWriteBuffer(_wasmId, _deviceId, _bufferId, _bufferOffset, _dataPtr, _dataLen, _dataOffset) {
         webgpu._devices.get(_deviceId).queue.writeBuffer(
             webgpu._buffers.get(_bufferId),
             _bufferOffset,
-            new Uint8Array(main.getSlice(_wasmId, _dataPtr, _dataLen)),
-            _dataOffset,
+            main._wasms.get(_wasmId)._obj.memory.buffer,
+            _dataPtr + _dataOffset,
             _dataLen
         );
     },

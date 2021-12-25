@@ -154,6 +154,7 @@ const js = struct {
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
     extern fn beginRenderPass(
+        hash: u32,
         wasm_id: main.WasmId,
         command_encoder_id: CommandEncoderId,
         color_view_ids_ptr: [*]const u8,
@@ -190,8 +191,7 @@ const js = struct {
         wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         buffer_id: BufferId,
-        index_format_ptr: [*]const u8,
-        index_format_len: usize,
+        index_format_id: u32,
         offset: usize,
         size: usize,
     ) void;
@@ -214,8 +214,7 @@ const js = struct {
     extern fn queueSubmit(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        command_buffers_ptr: [*]const u8,
-        command_buffers_len: usize,
+        command_buffer_id: CommandBufferId,
     ) void;
     extern fn queueWriteBuffer(
         wasm_id: main.WasmId,
@@ -632,13 +631,11 @@ pub const RenderPass = packed struct {
         offset: usize,
         size: usize,
     ) void {
-        const index_format_str = comptime getIndexFormatString(index_format);
         js.setIndexBuffer(
             main.wasm_id,
             render_pass.id,
             buffer.id,
-            index_format_str.ptr,
-            index_format_str.len,
+            @enumToInt(index_format),
             offset,
             size,
         );
@@ -697,8 +694,18 @@ pub const CommandEncoder = packed struct {
             js.invalid_id;
         const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
         const json = comptime try stringifyRenderPassDescComptime(desc);
+
+        var crc = std.hash.Fnv1a_32.init();
+        crc.update(color_views_bytes);
+        crc.update(color_resolve_targets_bytes);
+        crc.update(std.mem.asBytes(&depth_stencil_view_id));
+        crc.update(std.mem.asBytes(&occlusion_query_set_id));
+        crc.update(timestamp_query_set_ids);
+        crc.update(json);
+
         return RenderPass{
             .id = js.beginRenderPass(
+                crc.final(),
                 main.wasm_id,
                 command_encoder.id,
                 color_views_bytes.ptr,
@@ -753,8 +760,9 @@ pub const Queue = packed struct {
     }
 
     pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
-        const bytes = std.mem.sliceAsBytes(command_buffers);
-        js.queueSubmit(main.wasm_id, queue.id, bytes.ptr, bytes.len);
+        for (command_buffers) |command_buffer| {
+            js.queueSubmit(main.wasm_id, queue.id, command_buffer.id);
+        }
     }
 };
 
