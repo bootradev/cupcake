@@ -24,7 +24,7 @@ External dependencies are one of the biggest contributors to large binary sizes.
 
 Right now cupcake only supports building for wasm with webgpu rendering.
 
-Build examples by calling `zig build -Dexample=triangle`, and you can replace `triangle` with any of the example names.
+Build examples by calling `zig build -Dexample=triangle`, and you can replace `triangle` with any of the examples.
 
 Build with optimizations by adding `-Dopt=release` to your command line.
 
