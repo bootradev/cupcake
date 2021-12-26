@@ -50,11 +50,11 @@ fn onDeviceReady() void {
         .{ .format = swapchain_format },
     );
 
-    var vert_shader = try example.device.createShader(shaders.tri_vert);
+    var vert_shader = try example.device.createShader(shaders.triangle_vert);
     defer vert_shader.destroy();
     example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(shaders.tri_frag);
+    var frag_shader = try example.device.createShader(shaders.triangle_frag);
     defer frag_shader.destroy();
     example.device.checkShaderCompile(&frag_shader);
 

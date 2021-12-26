@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Example = enum {
-    tri,
+    triangle,
     cube,
 };
 
@@ -16,11 +16,11 @@ pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .cube;
 
     var app_options: AppOptions = switch (example) {
-        .tri => .{
-            .app_name = "tri",
-            .app_root = "examples/tri/tri.zig",
-            .shader_names = &.{ "tri_vert", "tri_frag" },
-            .shader_dir = "examples/tri",
+        .triangle => .{
+            .app_name = "triangle",
+            .app_root = "examples/triangle/triangle.zig",
+            .shader_names = &.{ "triangle_vert", "triangle_frag" },
+            .shader_dir = "examples/triangle",
         },
         .cube => .{
             .app_name = "cube",

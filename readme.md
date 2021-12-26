@@ -22,7 +22,11 @@ External dependencies are one of the biggest contributors to large binary sizes.
 
 ### build
 
-Right now cupcake only supports building for wasm with webgpu rendering. Build examples by calling `zig build -Dexample=tri`, and you can replace `tri` with any of the example names. Build with optimizations by adding `-Dopt=release` to your command line.
+Right now cupcake only supports building for wasm with webgpu rendering.
+
+Build examples by calling `zig build -Dexample=triangle`, and you can replace `triangle` with any of the example names.
+
+Build with optimizations by adding `-Dopt=release` to your command line.
 
 ### examples
 
@@ -30,8 +34,8 @@ View the examples on the [website](https://bootradev.github.io/cupcake).
 
 | example | description |
 | --- | --- |
-| tri | a simple triangle |
-| cube | a spinning cube with vertex color |
+| triangle | simple triangle |
+| cube | spinning cube with vertex color |
 
 ### contact
 if you have any questions or comments, contact me on the zig discord. i am happy to chat!
