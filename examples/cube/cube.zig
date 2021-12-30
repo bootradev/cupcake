@@ -203,11 +203,12 @@ pub fn update() !void {
     var queue = example.device.getQueue();
 
     const time = app.readSeconds(example.game_clock);
+
     const model_matrix = math.M44f32.makeAngleAxis(
         1.0,
-        math.V3f32.make(std.math.sin(time), std.math.cos(time), 0.0),
+        math.V3f32.make(math.sinFast(time), math.cosFast(time), 0.0),
     );
-    const view_matrix = math.M44f32.makeView(
+    const view_matrix = comptime math.M44f32.makeView(
         math.V3f32.make(0, 0, -4),
         math.V3f32.forward,
         math.V3f32.up,

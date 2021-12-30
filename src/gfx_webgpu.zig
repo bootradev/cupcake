@@ -92,7 +92,7 @@ const js = struct {
         wasm_id: main.WasmId,
         json_ptr: [*]const u8,
         json_len: usize,
-        cb: *c_void,
+        cb: *anyopaque,
     ) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
     extern fn requestDevice(
@@ -100,7 +100,7 @@ const js = struct {
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
-        cb: *c_void,
+        cb: *anyopaque,
     ) void;
     extern fn destroyDevice(device_id: DeviceId) void;
     extern fn createShader(
@@ -271,7 +271,7 @@ pub const Instance = struct {
         js.requestAdapter(main.wasm_id, json.ptr, json.len, adapter);
     }
 
-    export fn requestAdapterComplete(adapter_id: js.AdapterId, adapter_c: *c_void) void {
+    export fn requestAdapterComplete(adapter_id: js.AdapterId, adapter_c: *anyopaque) void {
         var adapter = @ptrCast(*Adapter, @alignCast(@alignOf(*Adapter), adapter_c));
         adapter.id = adapter_id;
         gfx.cbs.adapter_ready_cb();
@@ -290,7 +290,7 @@ pub const Adapter = struct {
         js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len, device);
     }
 
-    export fn requestDeviceComplete(device_id: js.DeviceId, device_c: *c_void) void {
+    export fn requestDeviceComplete(device_id: js.DeviceId, device_c: *anyopaque) void {
         var device = @ptrCast(*Device, @alignCast(@alignOf(*Device), device_c));
         device.id = device_id;
         gfx.cbs.device_ready_cb();
@@ -768,20 +768,16 @@ pub const Queue = packed struct {
 
 fn stringifyAdapterDescComptime(comptime desc: gfx.AdapterDesc) []const u8 {
     const JsonDesc = struct {
-        usingnamespace JsonOptionalStruct(@This());
-
-        powerPreference: JsonOptional([]const u8) = .none,
-        forceFallbackAdapter: JsonOptional(bool) = .none,
+        powerPreference: ?[]const u8 = null,
+        forceFallbackAdapter: ?bool = null,
     };
 
     comptime var json: JsonDesc = .{};
     if (desc.power_preference != .@"undefined") {
-        json.powerPreference = .{
-            .some = comptime getPowerPreferenceString(desc.power_preference),
-        };
+        json.powerPreference = comptime getPowerPreferenceString(desc.power_preference);
     }
     if (desc.force_fallback_adapter) {
-        json.forceFallbackAdapter = .{ .some = true };
+        json.forceFallbackAdapter = true;
     }
 
     return comptime try stringifyComptime(json);
@@ -789,38 +785,36 @@ fn stringifyAdapterDescComptime(comptime desc: gfx.AdapterDesc) []const u8 {
 
 fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
     const JsonLimits = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        maxTextureDimension1D: JsonOptional(js.GPUSize32) = .none,
-        maxTextureDimension2D: JsonOptional(js.GPUSize32) = .none,
-        maxTextureDimension3D: JsonOptional(js.GPUSize32) = .none,
-        maxTextureArrayLayers: JsonOptional(js.GPUSize32) = .none,
-        maxBindGroups: JsonOptional(js.GPUSize32) = .none,
-        maxDynamicUniformBuffersPerPipelineLayout: JsonOptional(js.GPUSize32) = .none,
-        maxDynamicStorageBuffersPerPipelineLayout: JsonOptional(js.GPUSize32) = .none,
-        maxSampledTexturesPerShaderStage: JsonOptional(js.GPUSize32) = .none,
-        maxSamplersPerShaderStage: JsonOptional(js.GPUSize32) = .none,
-        maxStorageBuffersPerShaderStage: JsonOptional(js.GPUSize32) = .none,
-        maxStorageTexturesPerShaderStage: JsonOptional(js.GPUSize32) = .none,
-        maxUniformBuffersPerShaderStage: JsonOptional(js.GPUSize32) = .none,
-        maxUniformBufferBindingSize: JsonOptional(js.GPUSize64) = .none,
-        maxStorageBufferBindingSize: JsonOptional(js.GPUSize64) = .none,
-        minUniformBufferOffsetAlignment: JsonOptional(js.GPUSize32) = .none,
-        minStorageBufferOffsetAlignment: JsonOptional(js.GPUSize32) = .none,
-        maxVertexBuffers: JsonOptional(js.GPUSize32) = .none,
-        maxVertexAttributes: JsonOptional(js.GPUSize32) = .none,
-        maxVertexBufferArrayStride: JsonOptional(js.GPUSize32) = .none,
-        maxInterStageShaderComponents: JsonOptional(js.GPUSize32) = .none,
-        maxComputeWorkgroupStorageSize: JsonOptional(js.GPUSize32) = .none,
-        maxComputeInvocationsPerWorkgroup: JsonOptional(js.GPUSize32) = .none,
-        maxComputeWorkgroupSizeX: JsonOptional(js.GPUSize32) = .none,
-        maxComputeWorkgroupSizeY: JsonOptional(js.GPUSize32) = .none,
-        maxComputeWorkgroupSizeZ: JsonOptional(js.GPUSize32) = .none,
-        maxComputeWorkgroupsPerDimension: JsonOptional(js.GPUSize32) = .none,
+        maxTextureDimension1D: ?js.GPUSize32 = null,
+        maxTextureDimension2D: ?js.GPUSize32 = null,
+        maxTextureDimension3D: ?js.GPUSize32 = null,
+        maxTextureArrayLayers: ?js.GPUSize32 = null,
+        maxBindGroups: ?js.GPUSize32 = null,
+        maxDynamicUniformBuffersPerPipelineLayout: ?js.GPUSize32 = null,
+        maxDynamicStorageBuffersPerPipelineLayout: ?js.GPUSize32 = null,
+        maxSampledTexturesPerShaderStage: ?js.GPUSize32 = null,
+        maxSamplersPerShaderStage: ?js.GPUSize32 = null,
+        maxStorageBuffersPerShaderStage: ?js.GPUSize32 = null,
+        maxStorageTexturesPerShaderStage: ?js.GPUSize32 = null,
+        maxUniformBuffersPerShaderStage: ?js.GPUSize32 = null,
+        maxUniformBufferBindingSize: ?js.GPUSize64 = null,
+        maxStorageBufferBindingSize: ?js.GPUSize64 = null,
+        minUniformBufferOffsetAlignment: ?js.GPUSize32 = null,
+        minStorageBufferOffsetAlignment: ?js.GPUSize32 = null,
+        maxVertexBuffers: ?js.GPUSize32 = null,
+        maxVertexAttributes: ?js.GPUSize32 = null,
+        maxVertexBufferArrayStride: ?js.GPUSize32 = null,
+        maxInterStageShaderComponents: ?js.GPUSize32 = null,
+        maxComputeWorkgroupStorageSize: ?js.GPUSize32 = null,
+        maxComputeInvocationsPerWorkgroup: ?js.GPUSize32 = null,
+        maxComputeWorkgroupSizeX: ?js.GPUSize32 = null,
+        maxComputeWorkgroupSizeY: ?js.GPUSize32 = null,
+        maxComputeWorkgroupSizeZ: ?js.GPUSize32 = null,
+        maxComputeWorkgroupsPerDimension: ?js.GPUSize32 = null,
     };
     const JsonDesc = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        requiredFeatures: JsonOptional([]const []const u8) = .none,
-        requiredLimits: JsonOptional(JsonLimits) = .{ .some = .{} },
+        requiredFeatures: ?[]const []const u8 = null,
+        requiredLimits: ?JsonLimits = .{},
     };
 
     comptime var json: JsonDesc = .{};
@@ -831,7 +825,7 @@ fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
                 comptime getFeatureNameString(required_feature),
             };
         }
-        json.requiredFeatures = .{ .some = required_features };
+        json.requiredFeatures = required_features;
     }
 
     const default_limits: gfx.Limits = .{};
@@ -841,12 +835,12 @@ fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
         if (limit != @field(default_limits, field.name)) {
             all_default_limits = false;
             const json_field_name = @typeInfo(JsonLimits).Struct.fields[i].name;
-            @field(json.requiredLimits.some, json_field_name) = .{ .some = limit };
+            @field(json.requiredLimits, json_field_name) = limit;
         }
     }
 
     if (all_default_limits) {
-        json.requiredLimits = .none;
+        json.requiredLimits = null;
     }
 
     return comptime try stringifyComptime(json);
@@ -854,35 +848,30 @@ fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
 
 fn stringifyBindGroupLayoutDescComptime(comptime desc: gfx.BindGroupLayoutDesc) []const u8 {
     const JsonBufferBindingLayout = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        @"type": JsonOptional([]const u8) = .none,
-        hasDynamicOffset: JsonOptional(bool) = .none,
-        minBindingSize: JsonOptional(js.GPUSize64) = .none,
+        @"type": ?[]const u8 = null,
+        hasDynamicOffset: ?bool = null,
+        minBindingSize: ?js.GPUSize64 = null,
     };
     const JsonSamplerBindingLayout = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        @"type": JsonOptional([]const u8) = .none,
+        @"type": ?[]const u8 = null,
     };
     const JsonTextureBindingLayout = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        sampleType: JsonOptional([]const u8) = .none,
-        viewDimension: JsonOptional([]const u8) = .none,
-        multisampled: JsonOptional(bool) = .none,
+        sampleType: ?[]const u8 = null,
+        viewDimension: ?[]const u8 = null,
+        multisampled: ?bool = null,
     };
     const JsonStorageTextureBindingLayout = struct {
-        usingnamespace JsonOptionalStruct(@This());
         format: []const u8 = "",
-        access: JsonOptional([]const u8) = .none,
-        viewDimension: JsonOptional([]const u8) = .none,
+        access: ?[]const u8 = null,
+        viewDimension: ?[]const u8 = null,
     };
     const JsonEntry = struct {
-        usingnamespace JsonOptionalStruct(@This());
         binding: js.GPUIndex32,
         visibility: js.GPUShaderStageFlags,
-        buffer: JsonOptional(JsonBufferBindingLayout) = .none,
-        sampler: JsonOptional(JsonSamplerBindingLayout) = .none,
-        texture: JsonOptional(JsonTextureBindingLayout) = .none,
-        storageTexture: JsonOptional(JsonStorageTextureBindingLayout) = .none,
+        buffer: ?JsonBufferBindingLayout = null,
+        sampler: ?JsonSamplerBindingLayout = null,
+        texture: ?JsonTextureBindingLayout = null,
+        storageTexture: ?JsonStorageTextureBindingLayout = null,
     };
     const JsonDesc = struct {
         entries: []const JsonEntry = &.{},
@@ -898,66 +887,75 @@ fn stringifyBindGroupLayoutDescComptime(comptime desc: gfx.BindGroupLayoutDesc) 
         switch (entry.layout) {
             .buffer => |buffer| {
                 comptime var json_buffer: JsonBufferBindingLayout = .{};
-                comptime json_buffer.@"type".setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_buffer.@"type",
                     buffer,
                     "type",
                     getBufferBindingTypeString(buffer.@"type"),
                 );
-                comptime json_buffer.hasDynamicOffset.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_buffer.hasDynamicOffset,
                     buffer,
                     "has_dynamic_offset",
                     buffer.has_dynamic_offset,
                 );
-                comptime json_buffer.minBindingSize.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_buffer.minBindingSize,
                     buffer,
                     "min_binding_size",
                     buffer.min_binding_size,
                 );
-                json_entry.buffer = .{ .some = json_buffer };
+                json_entry.buffer = json_buffer;
             },
             .sampler => |sampler| {
                 comptime var json_sampler: JsonSamplerBindingLayout = .{};
-                comptime json_sampler.@"type".setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_sampler.@"type",
                     sampler,
                     "type",
                     getSamplerBindingTypeString(sampler.@"type"),
                 );
-                json_entry.sampler = .{ .some = json_sampler };
+                json_entry.sampler = json_sampler;
             },
             .texture => |texture| {
                 comptime var json_texture: JsonTextureBindingLayout = .{};
-                comptime json_texture.sampleType.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_texture.sampleType,
                     texture,
                     "sample_type",
                     getTextureSampleTypeString(texture.sample_type),
                 );
-                comptime json_texture.viewDimension.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_texture.viewDimension,
                     texture,
                     "view_dimension",
                     getTextureViewDimensionString(texture.view_dimension),
                 );
-                comptime json_texture.multisampled.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_texture.multisampled,
                     texture,
                     "multisampled",
                     texture.multisampled,
                 );
-                json_entry.texture = .{ .some = json_texture };
+                json_entry.texture = json_texture;
             },
             .storage_texture => |storage_texture| {
                 comptime var json_storage_texture: JsonStorageTextureBindingLayout = .{
                     .format = comptime getTextureFormatString(storage_texture.format),
                 };
-                comptime json_storage_texture.access.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_storage_texture.access,
                     storage_texture,
                     "access",
                     getStorageTextureAccessString(storage_texture.access),
                 );
-                comptime json_storage_texture.viewDimension.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_storage_texture.viewDimension,
                     storage_texture,
                     "view_dimension",
                     getTextureViewDimensionString(storage_texture.view_dimension),
                 );
-                json_entry.storageTexture = .{ .some = json_storage_texture };
+                json_entry.storageTexture = json_storage_texture;
             },
         }
         json.entries = json.entries ++ &[_]JsonEntry{json_entry};
@@ -991,77 +989,68 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
         shaderLocation: js.GPUIndex32,
     };
     const JsonVertLayout = struct {
-        usingnamespace JsonOptionalStruct(@This());
         arrayStride: js.GPUSize64 = 0,
-        stepMode: JsonOptional([]const u8) = .none,
+        stepMode: ?[]const u8 = null,
         attributes: []const JsonVertAttr = &.{},
     };
     const JsonVertState = struct {
-        usingnamespace JsonOptionalStruct(@This());
         entryPoint: []const u8 = "",
-        buffers: JsonOptional([]const JsonVertLayout) = .none,
+        buffers: ?[]const JsonVertLayout = null,
     };
     const JsonPrimState = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        topology: JsonOptional([]const u8) = .none,
-        stripIndexFormat: JsonOptional([]const u8) = .none,
-        frontFace: JsonOptional([]const u8) = .none,
-        cullMode: JsonOptional([]const u8) = .none,
-        unclippedDepth: JsonOptional(bool) = .none,
+        topology: ?[]const u8 = null,
+        stripIndexFormat: ?[]const u8 = null,
+        frontFace: ?[]const u8 = null,
+        cullMode: ?[]const u8 = null,
+        unclippedDepth: ?bool = null,
     };
     const JsonStencilFaceState = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        compare: JsonOptional([]const u8) = .none,
-        failOp: JsonOptional([]const u8) = .none,
-        depthFailOp: JsonOptional([]const u8) = .none,
-        passOp: JsonOptional([]const u8) = .none,
+        compare: ?[]const u8 = null,
+        failOp: ?[]const u8 = null,
+        depthFailOp: ?[]const u8 = null,
+        passOp: ?[]const u8 = null,
     };
     const JsonDepthStencilState = struct {
-        usingnamespace JsonOptionalStruct(@This());
         format: []const u8 = "",
-        depthWriteEnabled: JsonOptional(bool) = .none,
-        depthCompare: JsonOptional([]const u8) = .none,
-        stencilFront: JsonOptional(JsonStencilFaceState) = .none,
-        stencilBack: JsonOptional(JsonStencilFaceState) = .none,
-        stencilReadMask: JsonOptional(js.GPUStencilValue) = .none,
-        stencilWriteMask: JsonOptional(js.GPUStencilValue) = .none,
-        depthBias: JsonOptional(js.GPUDepthBias) = .none,
-        depthBiasSlopeScale: JsonOptional(f32) = .none,
-        depthBiasClamp: JsonOptional(f32) = .none,
+        depthWriteEnabled: ?bool = null,
+        depthCompare: ?[]const u8 = null,
+        stencilFront: ?JsonStencilFaceState = null,
+        stencilBack: ?JsonStencilFaceState = null,
+        stencilReadMask: ?js.GPUStencilValue = null,
+        stencilWriteMask: ?js.GPUStencilValue = null,
+        depthBias: ?js.GPUDepthBias = null,
+        depthBiasSlopeScale: ?f32 = null,
+        depthBiasClamp: ?f32 = null,
     };
     const JsonMultiState = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        count: JsonOptional(js.GPUSize32) = .none,
-        mask: JsonOptional(js.GPUSampleMask) = .none,
-        alphaToCoverageEnabled: JsonOptional(bool) = .none,
+        count: ?js.GPUSize32 = null,
+        mask: ?js.GPUSampleMask = null,
+        alphaToCoverageEnabled: ?bool = null,
     };
     const JsonBlendComp = struct {
-        usingnamespace JsonOptionalStruct(@This());
-        operation: JsonOptional([]const u8) = .none,
-        srcFactor: JsonOptional([]const u8) = .none,
-        dstFactor: JsonOptional([]const u8) = .none,
+        operation: ?[]const u8 = null,
+        srcFactor: ?[]const u8 = null,
+        dstFactor: ?[]const u8 = null,
     };
     const JsonBlend = struct {
         color: JsonBlendComp = .{},
         alpha: JsonBlendComp = .{},
     };
     const JsonTarget = struct {
-        usingnamespace JsonOptionalStruct(@This());
         format: []const u8 = "",
-        blend: JsonOptional(JsonBlend) = .none,
-        writeMask: JsonOptional(js.GPUColorWriteFlags) = .none,
+        blend: ?JsonBlend = null,
+        writeMask: ?js.GPUColorWriteFlags = null,
     };
     const JsonFragState = struct {
         entryPoint: []const u8 = "",
         targets: []const JsonTarget = &.{},
     };
     const JsonDesc = struct {
-        usingnamespace JsonOptionalStruct(@This());
         vertex: JsonVertState = .{},
-        primitive: JsonOptional(JsonPrimState) = .none,
-        depthStencil: JsonOptional(JsonDepthStencilState) = .none,
-        multisample: JsonOptional(JsonMultiState) = .none,
-        fragment: JsonOptional(JsonFragState) = .none,
+        primitive: ?JsonPrimState = null,
+        depthStencil: ?JsonDepthStencilState = null,
+        multisample: ?JsonMultiState = null,
+        fragment: ?JsonFragState = null,
     };
 
     comptime var json: JsonDesc = .{};
@@ -1071,7 +1060,8 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
         inline for (desc.vertex.buffers) |buffer| {
             comptime var json_buffer: JsonVertLayout = .{};
             json_buffer.arrayStride = buffer.array_stride;
-            comptime json_buffer.stepMode.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_buffer.stepMode,
                 buffer,
                 "step_mode",
                 getStepModeString(buffer.step_mode),
@@ -1089,43 +1079,49 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
 
             vert_buffers = vert_buffers ++ [_]JsonVertLayout{json_buffer};
         }
-        json.vertex.buffers = .{ .some = vert_buffers };
+        json.vertex.buffers = vert_buffers;
     }
 
     if (comptime hasNonDefaultFields(desc.primitive)) {
         comptime var json_primitive: JsonPrimState = .{};
-        comptime json_primitive.topology.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_primitive.topology,
             desc.primitive,
             "topology",
             getPrimitiveTopologyString(desc.primitive.topology),
         );
-        comptime json_primitive.stripIndexFormat.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_primitive.stripIndexFormat,
             desc.primitive,
             "strip_index_format",
             getIndexFormatString(desc.primitive.strip_index_format),
         );
-        comptime json_primitive.frontFace.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_primitive.frontFace,
             desc.primitive,
             "front_face",
             getFrontFaceString(desc.primitive.front_face),
         );
-        comptime json_primitive.cullMode.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_primitive.cullMode,
             desc.primitive,
             "cull_mode",
             getCullModeString(desc.primitive.cull_mode),
         );
-        json.primitive = .{ .some = json_primitive };
+        json.primitive = json_primitive;
     }
 
     if (desc.depth_stencil) |depth_stencil| {
         comptime var json_depth_stencil: JsonDepthStencilState = .{};
         json_depth_stencil.format = comptime getTextureFormatString(depth_stencil.format);
-        json_depth_stencil.depthWriteEnabled.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.depthWriteEnabled,
             depth_stencil,
             "depth_write_enabled",
             depth_stencil.depth_write_enabled,
         );
-        json_depth_stencil.depthCompare.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.depthCompare,
             depth_stencil,
             "depth_compare",
             getCompareFunctionString(depth_stencil.depth_compare),
@@ -1133,109 +1129,125 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
 
         if (comptime hasNonDefaultFields(depth_stencil.stencil_front)) {
             comptime var json_stencil_front: JsonStencilFaceState = .{};
-            comptime json_stencil_front.compare.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_front.compare,
                 depth_stencil.stencil_front,
                 "compare",
                 getCompareFunctionString(depth_stencil.stencil_front.compare),
             );
-            comptime json_stencil_front.failOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_front.failOp,
                 depth_stencil.stencil_front,
                 "fail_op",
                 getStencilOperationString(depth_stencil.stencil_front.fail_op),
             );
-            comptime json_stencil_front.depthFailOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_front.depthFailOp,
                 depth_stencil.stencil_front,
                 "depth_fail_op",
                 getStencilOperationString(depth_stencil.stencil_front.depth_fail_op),
             );
-            comptime json_stencil_front.passOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_front.passOp,
                 depth_stencil.stencil_front,
                 "pass_op",
                 getStencilOperationString(depth_stencil.stencil_front.pass_op),
             );
-            json_depth_stencil.stencilFront = .{ .some = json_stencil_front };
+            json_depth_stencil.stencilFront = json_stencil_front;
         }
 
         if (comptime hasNonDefaultFields(depth_stencil.stencil_back)) {
             comptime var json_stencil_back: JsonStencilFaceState = .{};
-            comptime json_stencil_back.compare.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_back.compare,
                 depth_stencil.stencil_back,
                 "compare",
                 getCompareFunctionString(depth_stencil.stencil_back.compare),
             );
-            comptime json_stencil_back.failOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_back.failOp,
                 depth_stencil.stencil_back,
                 "fail_op",
                 getStencilOperationString(depth_stencil.stencil_back.fail_op),
             );
-            comptime json_stencil_back.depthFailOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_back.depthFailOp,
                 depth_stencil.stencil_back,
                 "depth_fail_op",
                 getStencilOperationString(depth_stencil.stencil_back.depth_fail_op),
             );
-            comptime json_stencil_back.passOp.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_stencil_back.passOp,
                 depth_stencil.stencil_back,
                 "pass_op",
                 getStencilOperationString(depth_stencil.stencil_back.pass_op),
             );
-            json_depth_stencil.stencilBack = .{ .some = json_stencil_back };
+            json_depth_stencil.stencilBack = json_stencil_back;
         }
 
-        json_depth_stencil.stencilReadMask.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.stencilReadMask,
             depth_stencil,
             "stencil_read_mask",
             depth_stencil.stencil_read_mask,
         );
 
-        json_depth_stencil.stencilWriteMask.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.stencilWriteMask,
             depth_stencil,
             "stencil_write_mask",
             depth_stencil.stencil_write_mask,
         );
 
-        json_depth_stencil.depthBias.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.depthBias,
             depth_stencil,
             "depth_bias",
             depth_stencil.depth_bias,
         );
 
-        json_depth_stencil.depthBiasSlopeScale.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.depthBiasSlopeScale,
             depth_stencil,
             "depth_bias_slope_scale",
             depth_stencil.depth_bias_slope_scale,
         );
 
-        json_depth_stencil.depthBiasClamp.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_depth_stencil.depthBiasClamp,
             depth_stencil,
             "depth_bias_clamp",
             depth_stencil.depth_bias_clamp,
         );
 
-        json.depthStencil = .{ .some = json_depth_stencil };
+        json.depthStencil = json_depth_stencil;
     }
 
     if (comptime hasNonDefaultFields(desc.multisample)) {
         comptime var json_multisample: JsonMultiState = .{};
 
-        comptime json_multisample.count.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_multisample.count,
             desc.multisample,
             "count",
             desc.multisample.count,
         );
 
-        comptime json_multisample.mask.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_multisample.mask,
             desc.multisample,
             "mask",
             desc.multisample.mask,
         );
 
-        comptime json_multisample.alphaToCoverageEnabled.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json_multisample.alphaToCoverageEnabled,
             desc.multisample,
             "alpha_to_coverage_enabled",
             desc.multisample.alpha_to_coverage_enabled,
         );
 
-        json.multisample = .{ .some = json_multisample };
+        json.multisample = json_multisample;
     }
 
     if (desc.fragment) |fragment| {
@@ -1246,46 +1258,53 @@ fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []
             json_target.format = comptime getTextureFormatString(target.format);
             if (target.blend) |blend| {
                 comptime var json_blend: JsonBlend = .{};
-                comptime json_blend.color.operation.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.color.operation,
                     blend.color,
                     "operation",
                     getBlendOperationString(blend.color.operation),
                 );
-                comptime json_blend.color.srcFactor.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.color.srcFactor,
                     blend.color,
                     "src_factor",
                     getBlendFactorString(blend.color.src_factor),
                 );
-                comptime json_blend.color.dstFactor.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.color.dstFactor,
                     blend.color,
                     "dst_factor",
                     getBlendFactorString(blend.color.dst_factor),
                 );
-                comptime json_blend.alpha.operation.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.alpha.operation,
                     blend.alpha,
                     "operation",
                     getBlendOperationString(blend.alpha.operation),
                 );
-                comptime json_blend.alpha.srcFactor.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.alpha.srcFactor,
                     blend.alpha,
                     "src_factor",
                     getBlendFactorString(blend.alpha.src_factor),
                 );
-                comptime json_blend.alpha.dstFactor.setIfNotDefault(
+                comptime setIfNotDefault(
+                    &json_blend.alpha.dstFactor,
                     blend.alpha,
                     "dst_factor",
                     getBlendFactorString(blend.alpha.dst_factor),
                 );
-                json_target.blend = .{ .some = json_blend };
+                json_target.blend = json_blend;
             }
-            comptime json_target.writeMask.setIfNotDefault(
+            comptime setIfNotDefault(
+                &json_target.writeMask,
                 target,
                 "write_mask",
                 getColorWriteFlags(target.write_mask),
             );
             json_fragment.targets = json_fragment.targets ++ &[_]JsonTarget{json_target};
         }
-        json.fragment = .{ .some = json_fragment };
+        json.fragment = json_fragment;
     }
 
     return comptime try stringifyComptime(json);
@@ -1309,23 +1328,21 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
         storeOp: []const u8,
     };
     const JsonDepthStencilAttachment = struct {
-        usingnamespace JsonOptionalStruct(@This());
         depthLoadValue: JsonDepthLoadValue,
         depthStoreOp: []const u8,
-        depthReadOnly: JsonOptional(bool) = .none,
+        depthReadOnly: ?bool = null,
         stencilLoadValue: JsonStencilLoadValue,
         stencilStoreOp: []const u8,
-        stencilReadOnly: JsonOptional(bool) = .none,
+        stencilReadOnly: ?bool = null,
     };
     const JsonTimestampWrite = struct {
         queryIndex: js.GPUSize32,
         location: []const u8,
     };
     const JsonDesc = struct {
-        usingnamespace JsonOptionalStruct(@This());
         colorAttachments: []const JsonColorAttachment = &.{},
-        depthStencilAttachment: JsonOptional(JsonDepthStencilAttachment) = .none,
-        timestampWrites: JsonOptional([]const JsonTimestampWrite) = .none,
+        depthStencilAttachment: ?JsonDepthStencilAttachment = null,
+        timestampWrites: ?[]const JsonTimestampWrite = null,
     };
     comptime var json: JsonDesc = .{};
     inline for (desc.color_attachments) |color_attachment| {
@@ -1348,34 +1365,34 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
     }
     if (desc.depth_stencil_attachment) |depth_stencil_attachment| {
         json.depthStencilAttachment = .{
-            .some = .{
-                .depthLoadValue = switch (depth_stencil_attachment.depth_load_op) {
-                    .clear => .{
-                        .clearDepth = depth_stencil_attachment.clear_depth,
-                    },
-                    .load => .{ .loadOp = "load" },
+            .depthLoadValue = switch (depth_stencil_attachment.depth_load_op) {
+                .clear => .{
+                    .clearDepth = depth_stencil_attachment.clear_depth,
                 },
-                .depthStoreOp = comptime getStoreOpString(
-                    depth_stencil_attachment.depth_store_op,
-                ),
-                .stencilLoadValue = switch (depth_stencil_attachment.stencil_load_op) {
-                    .clear => .{
-                        .clearStencil = depth_stencil_attachment.clear_stencil,
-                    },
-                    .load => .{ .loadOp = "load" },
-                },
-                .stencilStoreOp = comptime getStoreOpString(
-                    depth_stencil_attachment.stencil_store_op,
-                ),
+                .load => .{ .loadOp = "load" },
             },
+            .depthStoreOp = comptime getStoreOpString(
+                depth_stencil_attachment.depth_store_op,
+            ),
+            .stencilLoadValue = switch (depth_stencil_attachment.stencil_load_op) {
+                .clear => .{
+                    .clearStencil = depth_stencil_attachment.clear_stencil,
+                },
+                .load => .{ .loadOp = "load" },
+            },
+            .stencilStoreOp = comptime getStoreOpString(
+                depth_stencil_attachment.stencil_store_op,
+            ),
         };
 
-        comptime json.depthStencilAttachment.some.depthReadOnly.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json.depthStencilAttachment.?.depthReadOnly,
             depth_stencil_attachment,
             "depth_read_only",
             depth_stencil_attachment.depth_read_only,
         );
-        comptime json.depthStencilAttachment.some.stencilReadOnly.setIfNotDefault(
+        comptime setIfNotDefault(
+            &json.depthStencilAttachment.?.stencilReadOnly,
             depth_stencil_attachment,
             "stencil_read_only",
             depth_stencil_attachment.stencil_read_only,
@@ -1394,7 +1411,7 @@ fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u
                 },
             };
         }
-        json.timestampWrites = .{ .some = json_timestamp_writes };
+        json.timestampWrites = json_timestamp_writes;
     }
 
     return comptime try stringifyComptime(json);
@@ -1434,104 +1451,30 @@ fn stringifyComptime(value: anytype) ![]const u8 {
     @setEvalBranchQuota(100000);
     comptime var json: [2048]u8 = undefined;
     comptime var buffer_stream = FixedBufferStream.init(json[0..]);
-    comptime try std.json.stringify(value, .{}, buffer_stream.writer());
+    comptime try std.json.stringify(
+        value,
+        .{
+            .emit_null_optional_fields = false,
+        },
+        buffer_stream.writer(),
+    );
     return &[_]u8{} ++ json[0..buffer_stream.write_index];
 }
 
-const JsonOptionalTag = enum {
-    none,
-    some,
-};
-
-fn JsonOptional(comptime Type: type) type {
-    return union(JsonOptionalTag) {
-        const Self = @This();
-
-        none,
-        some: Type,
-
-        pub fn jsonStringify(
-            optional: *const Self,
-            options: std.json.StringifyOptions,
-            out_stream: anytype,
-        ) @TypeOf(out_stream).Error!void {
-            return switch (optional.*) {
-                .none => {},
-                .some => |value| std.json.stringify(value, options, out_stream),
-            };
+fn setIfNotDefault(
+    optional: anytype,
+    check: anytype,
+    comptime check_field_name: []const u8,
+    value: anytype,
+) void {
+    inline for (@typeInfo(@TypeOf(check)).Struct.fields) |field| {
+        if (std.mem.eql(u8, field.name, check_field_name) and
+            !std.meta.eql(field.default_value.?, @field(check, check_field_name)))
+        {
+            optional.* = value;
+            break;
         }
-
-        pub fn setIfNotDefault(
-            optional: *Self,
-            check: anytype,
-            comptime check_field_name: []const u8,
-            value: Type,
-        ) void {
-            inline for (@typeInfo(@TypeOf(check)).Struct.fields) |field| {
-                if (std.mem.eql(u8, field.name, check_field_name) and
-                    !std.meta.eql(field.default_value.?, @field(check, check_field_name)))
-                {
-                    optional.* = .{ .some = value };
-                }
-            }
-        }
-    };
-}
-
-fn JsonOptionalStruct(comptime Type: type) type {
-    return struct {
-        // most of this code is lifted from std.json,
-        // except for the code checking for the optional tag
-        pub fn jsonStringify(
-            value: *const Type,
-            options: std.json.StringifyOptions,
-            out_stream: anytype,
-        ) @TypeOf(out_stream).Error!void {
-            try out_stream.writeByte('{');
-            comptime var field_output = false;
-            var child_options = options;
-            if (child_options.whitespace) |*child_whitespace| {
-                child_whitespace.indent_level += 1;
-            }
-            inline for (@typeInfo(Type).Struct.fields) |Field| {
-                // don't include void fields
-                if (Field.field_type == void) continue;
-
-                const field_info = @typeInfo(Field.field_type);
-                if (field_info == .Union and
-                    field_info.Union.tag_type == JsonOptionalTag and
-                    @field(value, Field.name) == .none)
-                {
-                    continue;
-                }
-
-                if (!field_output) {
-                    field_output = true;
-                } else {
-                    try out_stream.writeByte(',');
-                }
-                if (child_options.whitespace) |child_whitespace| {
-                    try out_stream.writeByte('\n');
-                    try child_whitespace.outputIndent(out_stream);
-                }
-                try std.json.stringify(Field.name, options, out_stream);
-                try out_stream.writeByte(':');
-                if (child_options.whitespace) |child_whitespace| {
-                    if (child_whitespace.separator) {
-                        try out_stream.writeByte(' ');
-                    }
-                }
-                try std.json.stringify(@field(value, Field.name), child_options, out_stream);
-            }
-            if (field_output) {
-                if (options.whitespace) |whitespace| {
-                    try out_stream.writeByte('\n');
-                    try whitespace.outputIndent(out_stream);
-                }
-            }
-            try out_stream.writeByte('}');
-        }
-    };
+    }
 }
 
 fn hasNonDefaultFields(value: anytype) bool {

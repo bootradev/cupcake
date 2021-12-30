@@ -76,6 +76,21 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
         "graphics backend",
     ) orelse default_gfx_api;
 
+    const log_enabled = builder.option(
+        bool,
+        "log_enabled",
+        "logging enabled",
+    ) orelse (opt_level == .debug);
+
+    const log_level = builder.option(
+        std.log.Level,
+        "log_level",
+        "log level",
+    ) orelse switch (opt_level) {
+        .debug => std.log.Level.debug,
+        .release => std.log.Level.err,
+    };
+
     const build_options = BuildOptions{
         .app_name = app_options.app_name,
         .app_root = app_options.app_root,
@@ -105,7 +120,8 @@ pub fn buildApp(builder: *std.build.Builder, app_options: *const AppOptions) !vo
     const cfg = builder.addOptions();
     cfg.addOption(Platform, "platform", build_options.platform);
     cfg.addOption(GfxApi, "gfx_api", build_options.gfx_api);
-    cfg.addOption(bool, "log_enabled", build_options.opt_level != .release);
+    cfg.addOption(std.log.Level, "log_level", log_level);
+    cfg.addOption(bool, "log_enabled", log_enabled);
     app_lib_exe.step.dependOn(&cfg.step);
 
     const shader_pkg = shader_build.getPackage("shaders");
@@ -254,7 +270,7 @@ const ShaderBuildStep = struct {
         try std.fs.cwd().writeFile(shader_build_src_file_path, shader_build.contents.items);
         shader_build.contents.deinit();
 
-        shader_build.generated_file.path = try std.mem.dupe(
+        shader_build.generated_file.path = try std.mem.Allocator.dupe(
             shader_build.builder.allocator,
             u8,
             shader_build_src_file_path,
@@ -440,7 +456,7 @@ const Minify = struct {
     const max_ident_size = 2;
     const next_ident_symbols = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
     src: []const u8,
     out: std.ArrayList(u8),
     start_index: usize,
@@ -456,7 +472,7 @@ const Minify = struct {
 
     fn init(
         src: []const u8,
-        allocator: *std.mem.Allocator,
+        allocator: std.mem.Allocator,
         language: Language,
         opt_level: OptLevel,
     ) Minify {
@@ -487,7 +503,7 @@ const Minify = struct {
         ctx.ident_map.deinit();
     }
 
-    pub fn js(src: []const u8, allocator: *std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
+    pub fn js(src: []const u8, allocator: std.mem.Allocator, opt_level: OptLevel) ![]const u8 {
         var ctx = Minify.init(src, allocator, .js, opt_level);
         defer ctx.deinit();
 
@@ -496,7 +512,7 @@ const Minify = struct {
 
     pub fn shader(
         src: []const u8,
-        allocator: *std.mem.Allocator,
+        allocator: std.mem.Allocator,
         opt_level: OptLevel,
         gfx_api: GfxApi,
     ) ![]const u8 {

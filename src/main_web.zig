@@ -24,5 +24,5 @@ pub export fn deinit() void {
 
 fn handleError(err: anyerror) noreturn {
     std.log.err("{}", .{err});
-    @panic("error!");
+    @panic("");
 }

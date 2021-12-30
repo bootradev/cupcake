@@ -180,3 +180,49 @@ pub const M44f32 = packed struct {
         return result;
     }
 };
+
+pub fn sinFast(val: f32) f32 {
+    const rad = val / std.math.tau;
+    var x = (rad - @intToFloat(f32, @floatToInt(i32, rad))) * std.math.tau;
+    if (x < -std.math.pi) {
+        x += std.math.tau;
+    } else if (x > std.math.pi) {
+        x -= std.math.tau;
+    }
+
+    const a = 1.27323954;
+    const b = 0.405284735;
+    if (x < 0) {
+        return x * (a + b * x);
+    } else {
+        return x * (a - b * x);
+    }
+}
+
+pub fn cosFast(val: f32) f32 {
+    return sinFast(val + std.math.pi / 2.0);
+}
+
+test "sinFast" {
+    const start = -5.0;
+    const end = 5.0;
+    const steps = 1000;
+    const step = (end - start) / @intToFloat(f32, steps);
+    var i: u32 = 0;
+    while (i < steps) : (i += 1) {
+        const rad = start + @intToFloat(f32, i) * step;
+        try std.testing.expectApproxEqAbs(sinFast(rad), std.math.sin(rad), 0.1);
+    }
+}
+
+test "cosFast" {
+    const start = -5.0;
+    const end = 5.0;
+    const steps = 1000;
+    const step = (end - start) / @intToFloat(f32, steps);
+    var i: u32 = 0;
+    while (i < steps) : (i += 1) {
+        const rad = start + @intToFloat(f32, i) * step;
+        try std.testing.expectApproxEqAbs(cosFast(rad), std.math.cos(rad), 0.1);
+    }
+}
