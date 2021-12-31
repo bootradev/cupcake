@@ -1,7 +1,4 @@
-const app = cc.app;
 const cc = @import("cupcake");
-const gfx = cc.gfx;
-const math = cc.math;
 const shaders = @import("shaders");
 const std = @import("std");
 
@@ -13,20 +10,20 @@ pub const gfx_cbs = .{
 
 const Example = struct {
     status: Status,
-    window: app.Window,
-    instance: gfx.Instance,
-    adapter: gfx.Adapter,
-    device: gfx.Device,
-    surface: gfx.Surface,
-    swapchain: gfx.Swapchain,
-    render_pipeline: gfx.RenderPipeline,
-    vertex_buffer: gfx.Buffer,
-    index_buffer: gfx.Buffer,
-    uniform_buffer: gfx.Buffer,
-    depth_texture: gfx.Texture,
-    depth_texture_view: gfx.TextureView,
-    uniform_bind_group: gfx.BindGroup,
-    game_clock: app.Timer,
+    window: cc.app.Window,
+    instance: cc.gfx.Instance,
+    adapter: cc.gfx.Adapter,
+    device: cc.gfx.Device,
+    surface: cc.gfx.Surface,
+    swapchain: cc.gfx.Swapchain,
+    render_pipeline: cc.gfx.RenderPipeline,
+    vertex_buffer: cc.gfx.Buffer,
+    index_buffer: cc.gfx.Buffer,
+    uniform_buffer: cc.gfx.Buffer,
+    depth_texture: cc.gfx.Texture,
+    depth_texture_view: cc.gfx.TextureView,
+    uniform_bind_group: cc.gfx.BindGroup,
+    game_clock: cc.app.Timer,
 };
 
 const Status = union(enum) {
@@ -66,8 +63,8 @@ const cube_data = struct {
 
 pub fn init() !void {
     example.status = .pending;
-    example.game_clock = try app.Timer.start();
-    try example.window.init(math.V2u32.make(800, 600), .{});
+    example.game_clock = try cc.app.Timer.start();
+    try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);
@@ -78,7 +75,7 @@ fn onAdapterReady() void {
 }
 
 fn onDeviceReady() void {
-    const swapchain_format = comptime gfx.Surface.getPreferredFormat();
+    const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
     example.swapchain = try example.device.createSwapchain(
         &example.surface,
@@ -202,18 +199,18 @@ pub fn update() !void {
 
     var queue = example.device.getQueue();
 
-    const time = app.readSeconds(example.game_clock);
+    const time = cc.app.readSeconds(example.game_clock);
 
-    const model_matrix = math.M44f32.makeAngleAxis(
+    const model_matrix = cc.math.M44f32.makeAngleAxis(
         1.0,
-        math.V3f32.make(math.sinFast(time), math.cosFast(time), 0.0),
+        cc.math.V3f32.make(cc.math.sinFast(time), cc.math.cosFast(time), 0.0),
     );
-    const view_matrix = comptime math.M44f32.makeView(
-        math.V3f32.make(0, 0, -4),
-        math.V3f32.forward,
-        math.V3f32.up,
+    const view_matrix = comptime cc.math.M44f32.makeView(
+        cc.math.V3f32.make(0, 0, -4),
+        cc.math.V3f32.forward,
+        cc.math.V3f32.up,
     );
-    const proj_matrix = math.M44f32.makePerspective(
+    const proj_matrix = cc.math.M44f32.makePerspective(
         2.0 * std.math.pi / 5.0,
         @intToFloat(f32, example.window.size.x) / @intToFloat(f32, example.window.size.y),
         1,
@@ -245,8 +242,8 @@ pub fn update() !void {
 
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.uniform_bind_group, null);
-    render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, gfx.whole_size);
-    render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, gfx.whole_size);
+    render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
+    render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, cc.gfx.whole_size);
     render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
 
     render_pass.end();

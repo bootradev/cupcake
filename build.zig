@@ -3,6 +3,7 @@ const std = @import("std");
 const Example = enum {
     triangle,
     cube,
+    texture,
 };
 
 pub const AppOptions = struct {
@@ -27,6 +28,12 @@ pub fn build(builder: *std.build.Builder) !void {
             .app_root = "examples/cube/cube.zig",
             .shader_names = &.{ "cube_vert", "cube_frag" },
             .shader_dir = "examples/cube",
+        },
+        .texture => .{
+            .app_name = "texture",
+            .app_root = "examples/texture/texture.zig",
+            .shader_names = &.{ "texture_vert", "texture_frag" },
+            .shader_dir = "examples/texture",
         },
     };
 
