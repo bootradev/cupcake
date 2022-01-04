@@ -8,28 +8,11 @@ const js = struct {
     const CanvasId = u32;
     const DomHighResTimeStamp = f64;
 
-    extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
     extern fn setWindowTitle(wasm_id: main.WasmId, title_ptr: [*]const u8, title_len: usize) void;
     extern fn createCanvas(wasm_id: main.WasmId, width: u32, height: u32) CanvasId;
     extern fn destroyCanvas(canvas_id: CanvasId) void;
     extern fn now() DomHighResTimeStamp;
 };
-
-pub fn log(
-    comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const level_txt = comptime message_level.asText();
-    const prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-    const msg = level_txt ++ prefix ++ format;
-
-    var buf: [2048]u8 = undefined;
-    const msg_buf = std.fmt.bufPrint(buf[0..], msg, args) catch return;
-
-    js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
-}
 
 pub const Window = struct {
     size: math.V2u32,

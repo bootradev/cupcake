@@ -56,12 +56,13 @@ const webgpu = {
         webgpu._contexts.get(_contextId)._obj.configure(desc);
     },
 
-    requestAdapter(_wasmId, _jsonPtr, _jsonLen, _cb) {
+    requestAdapter(_wasmId, _jsonPtr, _jsonLen, _adapter, _userData) {
         navigator.gpu.requestAdapter(JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen)))
             .then(adapter => {
                 main._wasms.get(_wasmId)._obj.requestAdapterComplete(
                     webgpu._adapters.insert(adapter),
-                    _cb
+                    _adapter,
+                    _userData
                 );
             })
             .catch((err) => {
@@ -74,12 +75,12 @@ const webgpu = {
         webgpu._adapters.remove(_adapterId);
     },
 
-    requestDevice(_wasmId, _adapterId, _jsonPtr, _jsonLen, _cb) {
+    requestDevice(_wasmId, _adapterId, _jsonPtr, _jsonLen, _device, _userData) {
         const desc = JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen));
         webgpu._adapters.get(_adapterId).requestDevice(desc)
             .then(dev => {
                 main._wasms.get(_wasmId)._obj.requestDeviceComplete(
-                    webgpu._devices.insert(dev), _cb
+                    webgpu._devices.insert(dev), _device, _userData
                 );
             })
             .catch((err) => {

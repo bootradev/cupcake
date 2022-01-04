@@ -92,7 +92,8 @@ const js = struct {
         wasm_id: main.WasmId,
         json_ptr: [*]const u8,
         json_len: usize,
-        cb: *anyopaque,
+        adapter: *Adapter,
+        user_data: ?*anyopaque,
     ) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
     extern fn requestDevice(
@@ -100,7 +101,8 @@ const js = struct {
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
-        cb: *anyopaque,
+        device: *Device,
+        user_data: ?*anyopaque,
     ) void;
     extern fn destroyDevice(device_id: DeviceId) void;
     extern fn createShader(
@@ -266,15 +268,19 @@ pub const Instance = struct {
         _: *const Surface,
         comptime desc: gfx.AdapterDesc,
         adapter: *Adapter,
+        user_data: ?*anyopaque,
     ) !void {
         const json = comptime stringifyAdapterDescComptime(desc);
-        js.requestAdapter(main.wasm_id, json.ptr, json.len, adapter);
+        js.requestAdapter(main.wasm_id, json.ptr, json.len, adapter, user_data);
     }
 
-    export fn requestAdapterComplete(adapter_id: js.AdapterId, adapter_c: *anyopaque) void {
-        var adapter = @ptrCast(*Adapter, @alignCast(@alignOf(*Adapter), adapter_c));
+    export fn requestAdapterComplete(
+        adapter_id: js.AdapterId,
+        adapter: *Adapter,
+        user_data: ?*anyopaque,
+    ) void {
         adapter.id = adapter_id;
-        gfx.cbs.adapter_ready_cb();
+        gfx.cbs.adapter_ready_cb(adapter, user_data);
     }
 };
 
@@ -285,15 +291,23 @@ pub const Adapter = struct {
         js.destroyAdapter(adapter.id);
     }
 
-    pub fn requestDevice(adapter: *Adapter, comptime desc: gfx.DeviceDesc, device: *Device) !void {
+    pub fn requestDevice(
+        adapter: *Adapter,
+        comptime desc: gfx.DeviceDesc,
+        device: *Device,
+        user_data: ?*anyopaque,
+    ) !void {
         const json = comptime stringifyDeviceDescComptime(desc);
-        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len, device);
+        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len, device, user_data);
     }
 
-    export fn requestDeviceComplete(device_id: js.DeviceId, device_c: *anyopaque) void {
-        var device = @ptrCast(*Device, @alignCast(@alignOf(*Device), device_c));
+    export fn requestDeviceComplete(
+        device_id: js.DeviceId,
+        device: *Device,
+        user_data: ?*anyopaque,
+    ) void {
         device.id = device_id;
-        gfx.cbs.device_ready_cb();
+        gfx.cbs.device_ready_cb(device, user_data);
     }
 };
 

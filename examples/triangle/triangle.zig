@@ -31,34 +31,34 @@ pub fn init() !void {
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
-    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);
+    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
 }
 
-fn onAdapterReady() void {
-    try example.adapter.requestDevice(.{}, &example.device);
+fn onAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
+    try adapter.requestDevice(.{}, &example.device, null);
 }
 
-fn onDeviceReady() void {
+fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
-    example.swapchain = try example.device.createSwapchain(
+    example.swapchain = try device.createSwapchain(
         &example.surface,
         example.window.size,
         .{ .format = swapchain_format },
     );
 
-    var vert_shader = try example.device.createShader(shaders.triangle_vert);
+    var vert_shader = try device.createShader(shaders.triangle_vert);
     defer vert_shader.destroy();
-    example.device.checkShaderCompile(&vert_shader);
+    device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(shaders.triangle_frag);
+    var frag_shader = try device.createShader(shaders.triangle_frag);
     defer frag_shader.destroy();
-    example.device.checkShaderCompile(&frag_shader);
+    device.checkShaderCompile(&frag_shader);
 
-    var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
+    var pipeline_layout = try device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
 
-    example.render_pipeline = try example.device.createRenderPipeline(
+    example.render_pipeline = try device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
         &frag_shader,

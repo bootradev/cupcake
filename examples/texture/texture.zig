@@ -50,46 +50,46 @@ pub fn init() !void {
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
-    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter);
+    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
 }
 
-fn onAdapterReady() void {
-    try example.adapter.requestDevice(.{}, &example.device);
+fn onAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
+    try adapter.requestDevice(.{}, &example.device, null);
 }
 
-fn onDeviceReady() void {
+fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
-    example.swapchain = try example.device.createSwapchain(
+    example.swapchain = try device.createSwapchain(
         &example.surface,
         example.window.size,
         .{ .format = swapchain_format },
     );
 
     const quad_vertices_bytes = std.mem.sliceAsBytes(quad_data.vertices);
-    example.vertex_buffer = try example.device.createBuffer(
+    example.vertex_buffer = try device.createBuffer(
         quad_vertices_bytes,
         quad_vertices_bytes.len,
         .{ .usage = .{ .vertex = true } },
     );
     const quad_indices_bytes = std.mem.sliceAsBytes(quad_data.indices);
-    example.index_buffer = try example.device.createBuffer(
+    example.index_buffer = try device.createBuffer(
         quad_indices_bytes,
         quad_indices_bytes.len,
         .{ .usage = .{ .index = true } },
     );
 
-    var vert_shader = try example.device.createShader(shaders.texture_vert);
+    var vert_shader = try device.createShader(shaders.texture_vert);
     defer vert_shader.destroy();
-    example.device.checkShaderCompile(&vert_shader);
+    device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(shaders.texture_frag);
+    var frag_shader = try device.createShader(shaders.texture_frag);
     defer frag_shader.destroy();
-    example.device.checkShaderCompile(&frag_shader);
+    device.checkShaderCompile(&frag_shader);
 
-    var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
+    var pipeline_layout = try device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
-    example.render_pipeline = try example.device.createRenderPipeline(
+    example.render_pipeline = try device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
         &frag_shader,
