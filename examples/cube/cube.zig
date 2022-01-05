@@ -5,7 +5,7 @@ const std = @import("std");
 pub const gfx_cbs = .{
     .adapter_ready_cb = onAdapterReady,
     .device_ready_cb = onDeviceReady,
-    .error_cb = onGfxError,
+    .gfx_error_cb = onGfxError,
 };
 
 const Example = struct {
@@ -23,7 +23,7 @@ const Example = struct {
     depth_texture: cc.gfx.Texture,
     depth_texture_view: cc.gfx.TextureView,
     uniform_bind_group: cc.gfx.BindGroup,
-    game_clock: cc.app.Timer,
+    game_clock: cc.time.Timer,
 };
 
 const Status = union(enum) {
@@ -63,7 +63,7 @@ const cube_data = struct {
 
 pub fn init() !void {
     example.status = .pending;
-    example.game_clock = try cc.app.Timer.start();
+    example.game_clock = try cc.time.Timer.start();
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -199,7 +199,7 @@ pub fn update() !void {
 
     var queue = example.device.getQueue();
 
-    const time = cc.app.readSeconds(example.game_clock);
+    const time = cc.time.readSeconds(example.game_clock);
 
     const model_matrix = cc.math.M44f32.makeAngleAxis(
         1.0,

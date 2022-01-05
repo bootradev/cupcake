@@ -31,12 +31,12 @@ pub const Queue = api.Queue;
 pub const GfxCbs = struct {
     adapter_ready_cb: fn (adapter: *Adapter, user_data: ?*anyopaque) void = adapterReadyNoOp,
     device_ready_cb: fn (device: *Device, user_data: ?*anyopaque) void = deviceReadyNoOp,
-    error_cb: fn (err: anyerror) void = errorNoOp,
+    gfx_error_cb: fn (err: anyerror) void = gfxErrorNoOp,
 };
 
 fn adapterReadyNoOp(_: *Adapter, _: ?*anyopaque) void {}
 fn deviceReadyNoOp(_: *Device, _: ?*anyopaque) void {}
-fn errorNoOp(_: anyerror) void {}
+fn gfxErrorNoOp(_: anyerror) void {}
 
 pub const cbs: GfxCbs = if (@hasDecl(root.app, "gfx_cbs")) root.app.gfx_cbs else .{};
 

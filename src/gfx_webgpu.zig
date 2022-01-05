@@ -494,14 +494,14 @@ pub const Device = struct {
     }
 };
 
-export fn runtimeError(error_code: u32) void {
+export fn gfxError(error_code: u32) void {
     const err = switch (error_code) {
         0 => error.RequestAdapterFailed,
         1 => error.RequestDeviceFailed,
         2 => error.CreateShaderFailed,
-        else => error.UnknownError,
+        else => error.GfxError,
     };
-    gfx.cbs.error_cb(err);
+    gfx.cbs.gfx_error_cb(err);
 }
 
 pub const Buffer = packed struct {

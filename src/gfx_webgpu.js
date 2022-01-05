@@ -67,7 +67,7 @@ const webgpu = {
             })
             .catch((err) => {
                 console.log(err);
-                main._wasms.get(_wasmId)._obj.runtimeError(RequestAdapterFailed);
+                main._wasms.get(_wasmId)._obj.gfxError(RequestAdapterFailed);
             });
     },
 
@@ -85,7 +85,7 @@ const webgpu = {
             })
             .catch((err) => {
                 console.log(err);
-                main._wasms.get(_wasmId)._obj.runtimeError(RequestDeviceFailed);
+                main._wasms.get(_wasmId)._obj.gfxError(RequestDeviceFailed);
             });
     },
 
@@ -114,7 +114,7 @@ const webgpu = {
                     err |= msg.type == "error";
                 }
                 if (err) {
-                    main._wasms.get(_wasmId)._obj.runtimeError(CreateShaderFailed);
+                    main._wasms.get(_wasmId)._obj.gfxError(CreateShaderFailed);
                 }
             });
     },

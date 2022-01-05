@@ -17,10 +17,6 @@ const app = {
         });
     }),
 
-    logConsole(_wasmId, _msgPtr, _msgLen) {
-        console.log(main.getString(_wasmId, _msgPtr, _msgLen));
-    },
-
     setWindowTitle(_wasmId, _titlePtr, _titleLen) {
         document.title = _titleLen > 0 ?
             main.getString(_wasmId, _titlePtr, _titleLen) :
@@ -46,9 +42,5 @@ const app = {
         const canvas = app._canvases.get(_canvasId);
         canvas._parent.removeChild(canvas._obj);
         app._canvases.remove(_canvasId);
-    },
-
-    now() {
-        return performance.now();
     },
 };

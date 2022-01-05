@@ -4,7 +4,7 @@ const shaders = @import("shaders");
 pub const gfx_cbs = .{
     .adapter_ready_cb = onAdapterReady,
     .device_ready_cb = onDeviceReady,
-    .error_cb = onGfxError,
+    .gfx_error_cb = onGfxError,
 };
 
 const Example = struct {

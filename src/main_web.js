@@ -7,6 +7,8 @@ const main = {
         imports.env = {
             ...app,
             ...webgpu,
+            ...time,
+            ...res,
         };
 
         fetch(_wasmPath)
@@ -40,6 +42,11 @@ const main = {
     getString(_wasmId, _ptr, _len) {
         return main._textDecoder.decode(main.getSlice(_wasmId, _ptr, _len));
     },
+
+    logConsole(_wasmId, _msgPtr, _msgLen) {
+        console.log(main.getString(_wasmId, _msgPtr, _msgLen));
+    },
+
 };
 
 function run(_wasmPath, _canvasParent) {

@@ -5,7 +5,12 @@ const std = @import("std");
 pub const gfx_cbs = .{
     .adapter_ready_cb = onAdapterReady,
     .device_ready_cb = onDeviceReady,
-    .error_cb = onGfxError,
+    .gfx_error_cb = onGfxError,
+};
+
+pub const res_cbs = .{
+    .file_ready_cb = onFileReady,
+    .file_error_cb = onFileError,
 };
 
 const Example = struct {
@@ -51,6 +56,7 @@ pub fn init() !void {
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
+    //try cc.res.requestFile(std.heap.page_allocator, .{ .name = "test", .size = 1234 }, null);
 }
 
 fn onAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
@@ -129,7 +135,15 @@ fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
     example.status = .ok;
 }
 
+fn onFileReady(data: []u8, _: ?*anyopaque) void {
+    std.log.debug("File is ready! length is {}", .{data.len});
+}
+
 fn onGfxError(err: anyerror) void {
+    example.status = Status{ .fail = err };
+}
+
+fn onFileError(err: anyerror, _: ?*anyopaque) void {
     example.status = Status{ .fail = err };
 }
 
