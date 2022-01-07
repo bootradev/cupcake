@@ -2,14 +2,7 @@ const cc = @import("cupcake");
 const shaders = @import("shaders");
 const std = @import("std");
 
-pub const gfx_cbs = .{
-    .adapter_ready_cb = onAdapterReady,
-    .device_ready_cb = onDeviceReady,
-    .gfx_error_cb = onGfxError,
-};
-
 const Example = struct {
-    status: Status,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -24,12 +17,7 @@ const Example = struct {
     depth_texture_view: cc.gfx.TextureView,
     uniform_bind_group: cc.gfx.BindGroup,
     game_clock: cc.time.Timer,
-};
-
-const Status = union(enum) {
-    pending,
-    fail: anyerror,
-    ok,
+    update_ready: anyerror!bool,
 };
 
 var example: Example = undefined;
@@ -62,7 +50,7 @@ const cube_data = struct {
 };
 
 pub fn init() !void {
-    example.status = .pending;
+    example.update_ready = false;
     example.game_clock = try cc.time.Timer.start();
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
@@ -70,11 +58,11 @@ pub fn init() !void {
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
 }
 
-fn onAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
+pub fn ccGfxAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
     try adapter.requestDevice(.{}, &example.device, null);
 }
 
-fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
+pub fn ccGfxDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
     example.swapchain = try device.createSwapchain(
@@ -108,25 +96,15 @@ fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
 
     var uniform_layout = try device.createBindGroupLayout(.{
         .entries = &.{
-            .{
-                .binding = 0,
-                .visibility = .{ .vertex = true },
-                .layout = .{ .buffer = .{} },
-            },
+            .{ .binding = 0, .visibility = .{ .vertex = true }, .layout = .{ .buffer = .{} } },
         },
     });
     defer uniform_layout.destroy();
 
     example.uniform_bind_group = try device.createBindGroup(
         &uniform_layout,
-        &.{
-            .{ .buffer = .{ .resource = &example.uniform_buffer } },
-        },
-        .{
-            .entries = &.{
-                .{ .binding = 0, .resource_type = .buffer },
-            },
-        },
+        &.{.{ .buffer = .{ .resource = &example.uniform_buffer } }},
+        .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
     );
 
     var vert_shader = try device.createShader(shaders.cube_vert);
@@ -181,26 +159,19 @@ fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
         },
     );
 
-    example.status = .ok;
+    example.update_ready = true;
 }
 
-fn onGfxError(err: anyerror) void {
-    example.status = Status{ .fail = err };
+pub fn ccGfxError(err: anyerror) void {
+    example.update_ready = err;
 }
 
 pub fn update() !void {
-    // todo: see if this is a compiler error - shouldn't need to copy status here
-    const status = example.status;
-    switch (status) {
-        .pending => return,
-        .fail => |err| return err,
-        .ok => {},
+    if ((try example.update_ready) == false) {
+        return;
     }
 
-    var queue = example.device.getQueue();
-
     const time = cc.time.readSeconds(example.game_clock);
-
     const model_matrix = cc.math.M44f32.makeAngleAxis(
         1.0,
         cc.math.V3f32.make(cc.math.sinFast(time), cc.math.cosFast(time), 0.0),
@@ -218,6 +189,7 @@ pub fn update() !void {
     );
     const mvp_matrix = model_matrix.mul(view_matrix.mul(proj_matrix));
 
+    var queue = example.device.getQueue();
     queue.writeBuffer(&example.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
 
     var swapchain_view = try example.swapchain.getCurrentTextureView();
@@ -239,18 +211,15 @@ pub fn update() !void {
             },
         },
     );
-
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.uniform_bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
     render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, cc.gfx.whole_size);
     render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
-
     render_pass.end();
 
     const command_buffer = command_encoder.finish(.{});
     queue.submit(&.{command_buffer});
-
     example.swapchain.present();
 }
 

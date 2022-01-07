@@ -1,14 +1,7 @@
 const cc = @import("cupcake");
 const shaders = @import("shaders");
 
-pub const gfx_cbs = .{
-    .adapter_ready_cb = onAdapterReady,
-    .device_ready_cb = onDeviceReady,
-    .gfx_error_cb = onGfxError,
-};
-
 const Example = struct {
-    status: Status,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -16,49 +9,44 @@ const Example = struct {
     surface: cc.gfx.Surface,
     swapchain: cc.gfx.Swapchain,
     render_pipeline: cc.gfx.RenderPipeline,
-};
-
-const Status = union(enum) {
-    pending,
-    fail: anyerror,
-    ok,
+    update_ready: anyerror!bool,
 };
 
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.status = .pending;
+    example.update_ready = false;
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
 }
 
-fn onAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
+pub fn ccGfxAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
     try adapter.requestDevice(.{}, &example.device, null);
 }
 
-fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
+pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
-    example.swapchain = try device.createSwapchain(
+    example.swapchain = try example.device.createSwapchain(
         &example.surface,
         example.window.size,
         .{ .format = swapchain_format },
     );
 
-    var vert_shader = try device.createShader(shaders.triangle_vert);
+    var vert_shader = try example.device.createShader(shaders.triangle_vert);
     defer vert_shader.destroy();
-    device.checkShaderCompile(&vert_shader);
+    example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try device.createShader(shaders.triangle_frag);
+    var frag_shader = try example.device.createShader(shaders.triangle_frag);
     defer frag_shader.destroy();
-    device.checkShaderCompile(&frag_shader);
+    example.device.checkShaderCompile(&frag_shader);
 
-    var pipeline_layout = try device.createPipelineLayout(&.{}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
 
-    example.render_pipeline = try device.createRenderPipeline(
+    example.render_pipeline = try example.device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
         &frag_shader,
@@ -74,36 +62,28 @@ fn onDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
         },
     );
 
-    example.status = .ok;
+    example.update_ready = true;
 }
 
-fn onGfxError(err: anyerror) void {
-    example.status = Status{ .fail = err };
+pub fn ccGfxError(err: anyerror) void {
+    example.update_ready = err;
 }
 
 pub fn update() !void {
-    // todo: see if this is a compiler error - shouldn't need to copy status here
-    const status = example.status;
-    switch (status) {
-        .pending => return,
-        .fail => |err| return err,
-        .ok => {},
+    if ((try example.update_ready) == false) {
+        return;
     }
 
-    const swapchain_view = try example.swapchain.getCurrentTextureView();
+    var swapchain_view = try example.swapchain.getCurrentTextureView();
+    defer swapchain_view.destroy();
+
     var command_encoder = example.device.createCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
-        .{
-            .color_views = &.{swapchain_view},
-        },
-        .{
-            .color_attachments = &.{.{ .load_op = .clear, .store_op = .store }},
-        },
+        .{ .color_views = &.{swapchain_view} },
+        .{ .color_attachments = &.{.{ .load_op = .clear, .store_op = .store }} },
     );
-
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);
-
     render_pass.end();
 
     const command_buffer = command_encoder.finish(.{});

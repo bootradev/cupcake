@@ -280,7 +280,7 @@ pub const Instance = struct {
         user_data: ?*anyopaque,
     ) void {
         adapter.id = adapter_id;
-        gfx.cbs.adapter_ready_cb(adapter, user_data);
+        gfx.adapter_ready_cb(adapter, user_data);
     }
 };
 
@@ -307,7 +307,7 @@ pub const Adapter = struct {
         user_data: ?*anyopaque,
     ) void {
         device.id = device_id;
-        gfx.cbs.device_ready_cb(device, user_data);
+        gfx.device_ready_cb(device, user_data);
     }
 };
 
@@ -501,7 +501,7 @@ export fn gfxError(error_code: u32) void {
         2 => error.CreateShaderFailed,
         else => error.GfxError,
     };
-    gfx.cbs.gfx_error_cb(err);
+    gfx.error_cb(err);
 }
 
 pub const Buffer = packed struct {

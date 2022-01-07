@@ -28,17 +28,24 @@ pub const CommandBuffer = api.CommandBuffer;
 pub const QuerySet = api.QuerySet;
 pub const Queue = api.Queue;
 
-pub const GfxCbs = struct {
-    adapter_ready_cb: fn (adapter: *Adapter, user_data: ?*anyopaque) void = adapterReadyNoOp,
-    device_ready_cb: fn (device: *Device, user_data: ?*anyopaque) void = deviceReadyNoOp,
-    gfx_error_cb: fn (err: anyerror) void = gfxErrorNoOp,
-};
+pub const adapter_ready_cb = if (@hasDecl(root.app, "ccGfxAdapterReady"))
+    root.app.ccGfxAdapterReady
+else
+    adapterReadyNoOp;
+
+pub const device_ready_cb = if (@hasDecl(root.app, "ccGfxDeviceReady"))
+    root.app.ccGfxDeviceReady
+else
+    deviceReadyNoOp;
+
+pub const error_cb = if (@hasDecl(root.app, "ccGfxError"))
+    root.app.ccGfxError
+else
+    errorNoOp;
 
 fn adapterReadyNoOp(_: *Adapter, _: ?*anyopaque) void {}
 fn deviceReadyNoOp(_: *Device, _: ?*anyopaque) void {}
-fn gfxErrorNoOp(_: anyerror) void {}
-
-pub const cbs: GfxCbs = if (@hasDecl(root.app, "gfx_cbs")) root.app.gfx_cbs else .{};
+fn errorNoOp(_: anyerror) void {}
 
 pub const SurfaceDesc = struct {
     label: []const u8 = "",
