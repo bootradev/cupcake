@@ -22,8 +22,8 @@ pub fn init() !void {
     try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
 }
 
-pub fn ccGfxAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
-    try adapter.requestDevice(.{}, &example.device, null);
+pub fn ccGfxAdapterReady(_: *cc.gfx.Adapter, _: ?*anyopaque) void {
+    try example.adapter.requestDevice(.{}, &example.device, null);
 }
 
 pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
@@ -86,9 +86,8 @@ pub fn update() !void {
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();
 
-    const command_buffer = command_encoder.finish(.{});
     var queue = example.device.getQueue();
-    queue.submit(&.{command_buffer});
+    queue.submit(&.{command_encoder.finish(.{})});
     example.swapchain.present();
 }
 

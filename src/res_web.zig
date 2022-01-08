@@ -23,13 +23,13 @@ pub fn requestFile(
 }
 
 export fn requestFileComplete(data_ptr: [*]u8, data_len: usize, user_data: ?*anyopaque) void {
-    res.cbs.file_ready_cb(data_ptr[0..data_len], user_data);
+    res.file_ready_cb(data_ptr[0..data_len], user_data);
 }
 
-export fn resError(error_code: u32, user_data: ?*anyopaque) void {
+export fn fileError(error_code: u32, data_ptr: [*]u8, data_len: usize, user_data: ?*anyopaque) void {
     const err = switch (error_code) {
         0 => error.RequestFileFailed,
         else => error.ResError,
     };
-    res.cbs.file_error_cb(err, user_data);
+    res.file_error_cb(err, data_ptr[0..data_len], user_data);
 }

@@ -709,17 +709,17 @@ pub const CommandEncoder = packed struct {
         const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
         const json = comptime try stringifyRenderPassDescComptime(desc);
 
-        var crc = std.hash.Fnv1a_32.init();
-        crc.update(color_views_bytes);
-        crc.update(color_resolve_targets_bytes);
-        crc.update(std.mem.asBytes(&depth_stencil_view_id));
-        crc.update(std.mem.asBytes(&occlusion_query_set_id));
-        crc.update(timestamp_query_set_ids);
-        crc.update(json);
+        var fnv = std.hash.Fnv1a_32.init();
+        fnv.update(color_views_bytes);
+        fnv.update(color_resolve_targets_bytes);
+        fnv.update(std.mem.asBytes(&depth_stencil_view_id));
+        fnv.update(std.mem.asBytes(&occlusion_query_set_id));
+        fnv.update(timestamp_query_set_ids);
+        fnv.update(json);
 
         return RenderPass{
             .id = js.beginRenderPass(
-                crc.final(),
+                fnv.final(),
                 main.wasm_id,
                 command_encoder.id,
                 color_views_bytes.ptr,

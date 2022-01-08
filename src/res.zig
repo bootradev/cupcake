@@ -4,19 +4,22 @@ const api = switch (cfg.platform) {
 const cfg = @import("cfg");
 const root = @import("root");
 
+pub const requestFile = api.requestFile;
+
+pub const file_ready_cb = if (@hasDecl(root.app, "ccResFileReady"))
+    root.app.ccResFileReady
+else
+    fileReadyNoOp;
+
+pub const file_error_cb = if (@hasDecl(root.app, "ccResFileError"))
+    root.app.ccResFileError
+else
+    fileErrorNoOp;
+
+fn fileReadyNoOp(_: []u8, _: ?*anyopaque) void {}
+fn fileErrorNoOp(_: anyerror, _: []u8, _: ?*anyopaque) void {}
+
 pub const FileHeader = struct {
     name: []const u8,
     size: usize,
 };
-
-pub const requestFile = api.requestFile;
-
-pub const ResCbs = struct {
-    file_ready_cb: fn (file_data: []u8, user_data: ?*anyopaque) void = fileReadyNoOp,
-    res_error_cb: fn (err: anyerror, user_data: ?*anyopaque) void = resErrorNoOp,
-};
-
-fn fileReadyNoOp(_: []u8, _: ?*anyopaque) void {}
-fn resErrorNoOp(_: anyerror, _: ?*anyopaque) void {}
-
-pub const cbs = if (@hasDecl(root.app, "gfx_cbs")) root.app.res_cbs else .{};

@@ -9,6 +9,7 @@ const main = {
             ...webgpu,
             ...time,
             ...res,
+            ...main,
         };
 
         fetch(_wasmPath)

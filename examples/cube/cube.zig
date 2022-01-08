@@ -218,8 +218,7 @@ pub fn update() !void {
     render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
     render_pass.end();
 
-    const command_buffer = command_encoder.finish(.{});
-    queue.submit(&.{command_buffer});
+    queue.submit(&.{command_encoder.finish(.{})});
     example.swapchain.present();
 }
 
