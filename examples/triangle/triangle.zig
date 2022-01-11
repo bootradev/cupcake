@@ -1,5 +1,5 @@
 const cc = @import("cupcake");
-const shaders = @import("shaders");
+const res = @import("res");
 
 const Example = struct {
     window: cc.app.Window,
@@ -35,11 +35,11 @@ pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
         .{ .format = swapchain_format },
     );
 
-    var vert_shader = try example.device.createShader(shaders.triangle_vert);
+    var vert_shader = try example.device.createShader(res.@"triangle_vert.wgsl");
     defer vert_shader.destroy();
     example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(shaders.triangle_frag);
+    var frag_shader = try example.device.createShader(res.@"triangle_frag.wgsl");
     defer frag_shader.destroy();
     example.device.checkShaderCompile(&frag_shader);
 

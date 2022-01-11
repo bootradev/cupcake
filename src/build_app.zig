@@ -1,5 +1,6 @@
 const build_web = @import("build_web.zig");
 const build_res = @import("build_res.zig");
+const res = @import("res.zig");
 const std = @import("std");
 
 pub const Platform = enum {
@@ -16,11 +17,17 @@ pub const GfxApi = enum {
     webgpu,
 };
 
+pub const BuildResource = struct {
+    res_type: res.ResourceType,
+    path: []const u8,
+    embedded: bool = false,
+};
+
 pub const AppOptions = struct {
     name: []const u8,
     root: []const u8,
-    shader_dir: []const u8 = "",
-    shader_names: []const []const u8 = &.{},
+    res_dir: []const u8 = "",
+    res: []const BuildResource = &.{},
 };
 
 pub const BuildOptions = struct {
@@ -31,7 +38,7 @@ pub const BuildOptions = struct {
     log_enabled: bool,
     log_level: std.log.Level,
 
-    pub fn initOptions(builder: *std.build.Builder, app_options: AppOptions) BuildOptions {
+    pub fn init(builder: *std.build.Builder, app_options: AppOptions) BuildOptions {
         var build_options: BuildOptions = undefined;
         build_options.app = app_options;
         build_options.platform = builder.option(
@@ -91,17 +98,21 @@ pub fn build(builder: *std.build.Builder, build_options: BuildOptions) !void {
     cfg.addOption(bool, "log_enabled", build_options.log_enabled);
     app_lib_exe.step.dependOn(&cfg.step);
 
-    const shader_pkg = build_res_step.getPackage("shaders");
     const cfg_pkg = cfg.getPackage("cfg");
     const cupcake_pkg = std.build.Pkg{
         .name = "cupcake",
         .path = .{ .path = "src/cupcake.zig" },
         .dependencies = &.{cfg_pkg},
     };
+    const res_pkg = std.build.Pkg{
+        .name = "res",
+        .path = std.build.FileSource{ .generated = &build_res_step.generated_file },
+        .dependencies = &.{cupcake_pkg},
+    };
     const app_pkg = std.build.Pkg{
         .name = "app",
         .path = .{ .path = build_options.app.root },
-        .dependencies = &.{ cfg_pkg, cupcake_pkg, shader_pkg },
+        .dependencies = &.{ cfg_pkg, res_pkg, cupcake_pkg },
     };
 
     app_lib_exe.addPackage(cfg_pkg);

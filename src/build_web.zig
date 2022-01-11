@@ -67,7 +67,7 @@ pub const BuildWebStep = struct {
         );
         defer build_web.builder.allocator.free(js_src_dir_path);
 
-        var js_src_dir = try std.fs.openDirAbsolute(js_src_dir_path, .{});
+        var js_src_dir = try std.fs.cwd().openDir(js_src_dir_path, .{});
         defer js_src_dir.close();
 
         var js_file_contents = std.ArrayList(u8).init(build_web.builder.allocator);

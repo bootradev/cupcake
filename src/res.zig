@@ -19,7 +19,12 @@ else
 fn fileReadyNoOp(_: []u8, _: ?*anyopaque) void {}
 fn fileErrorNoOp(_: anyerror, _: []u8, _: ?*anyopaque) void {}
 
-pub const FileHeader = struct {
-    name: []const u8,
+pub const ResourceType = enum {
+    shader,
+};
+
+pub const Resource = struct {
+    res_type: ResourceType,
+    path: []const u8,
     size: usize,
 };

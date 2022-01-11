@@ -8,28 +8,37 @@ const Example = enum {
 };
 
 pub fn build(builder: *std.build.Builder) !void {
-    const example = builder.option(Example, "example", "example project") orelse .cube;
+    const example = builder.option(Example, "example", "example project") orelse .triangle;
 
     var app_options: build_app.AppOptions = switch (example) {
         .triangle => .{
             .name = "triangle",
             .root = "examples/triangle/triangle.zig",
-            .shader_names = &.{ "triangle_vert", "triangle_frag" },
-            .shader_dir = "examples/triangle",
+            .res_dir = "examples/triangle",
+            .res = &.{
+                .{ .res_type = .shader, .path = "triangle_vert.wgsl", .embedded = true },
+                .{ .res_type = .shader, .path = "triangle_frag.wgsl", .embedded = true },
+            },
         },
         .cube => .{
             .name = "cube",
             .root = "examples/cube/cube.zig",
-            .shader_names = &.{ "cube_vert", "cube_frag" },
-            .shader_dir = "examples/cube",
+            .res_dir = "examples/cube",
+            .res = &.{
+                .{ .res_type = .shader, .path = "cube_vert.wgsl", .embedded = true },
+                .{ .res_type = .shader, .path = "cube_frag.wgsl", .embedded = true },
+            },
         },
         .texture => .{
             .name = "texture",
             .root = "examples/texture/texture.zig",
-            .shader_names = &.{ "texture_vert", "texture_frag" },
-            .shader_dir = "examples/texture",
+            .res_dir = "examples/texture",
+            .res = &.{
+                .{ .res_type = .shader, .path = "texture_vert.wgsl", .embedded = true },
+                .{ .res_type = .shader, .path = "texture_frag.wgsl", .embedded = true },
+            },
         },
     };
 
-    try build_app.build(builder, build_app.BuildOptions.initOptions(builder, app_options));
+    try build_app.build(builder, build_app.BuildOptions.init(builder, app_options));
 }

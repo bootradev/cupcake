@@ -23,55 +23,28 @@ pub const BuildResStep = struct {
         };
         build_res.generated_file = .{ .step = &build_res.step };
 
+        for (build_options.app.res) |res| {
+            if (!res.embedded) {
+                builder.pushInstalledFile(.lib, res.path);
+            }
+        }
+
         return build_res;
     }
 
     fn make(step: *std.build.Step) !void {
         const build_res = @fieldParentPtr(BuildResStep, "step", step);
 
-        const shader_dir_path = try std.fs.path.join(
+        const res_dir_path = try std.fs.path.join(
             build_res.builder.allocator,
-            &.{ build_res.builder.build_root, build_res.build_options.app.shader_dir },
+            &.{ build_res.builder.build_root, build_res.build_options.app.res_dir },
         );
-        defer build_res.builder.allocator.free(shader_dir_path);
+        defer build_res.builder.allocator.free(res_dir_path);
 
-        var shader_dir = try std.fs.openDirAbsolute(shader_dir_path, .{});
-        defer shader_dir.close();
+        var res_dir = try std.fs.cwd().openDir(res_dir_path, .{});
+        defer res_dir.close();
 
-        const writer = build_res.contents.writer();
-        for (build_res.build_options.app.shader_names) |shader_name| {
-            const shader_ext = switch (build_res.build_options.gfx_api) {
-                .webgpu => ".wgsl",
-            };
-
-            const shader_path = try std.mem.concat(
-                build_res.builder.allocator,
-                u8,
-                &.{ shader_name, shader_ext },
-            );
-            defer build_res.builder.allocator.free(shader_path);
-
-            const shader_file = try shader_dir.openFile(shader_path, .{});
-            defer shader_file.close();
-
-            const shader_bytes = try shader_file.readToEndAlloc(
-                build_res.builder.allocator,
-                (try shader_file.stat()).size,
-            );
-            defer build_res.builder.allocator.free(shader_bytes);
-
-            const shader_bytes_min = try minify.shader(
-                shader_bytes,
-                build_res.builder.allocator,
-                build_res.build_options.opt_level,
-                build_res.build_options.gfx_api,
-            );
-            defer build_res.builder.allocator.free(shader_bytes_min);
-
-            try writer.print("pub const {s} = \"{s}\";\n", .{ shader_name, shader_bytes_min });
-        }
-
-        const build_res_dir_path = try std.fs.path.join(
+        const out_dir_path = try std.fs.path.join(
             build_res.builder.allocator,
             &.{
                 build_res.builder.build_root,
@@ -79,41 +52,75 @@ pub const BuildResStep = struct {
                 "build_res",
             },
         );
-        defer build_res.builder.allocator.free(build_res_dir_path);
+        defer build_res.builder.allocator.free(out_dir_path);
 
-        try std.fs.cwd().makePath(build_res_dir_path);
+        var out_dir = try std.fs.cwd().makeOpenPath(out_dir_path, .{});
+        defer out_dir.close();
 
-        const build_res_src_file_name = try std.mem.concat(
-            build_res.builder.allocator,
-            u8,
-            &.{
-                build_res.build_options.app.name,
-                "_",
-                @tagName(build_res.build_options.gfx_api),
-            },
-        );
-        defer build_res.builder.allocator.free(build_res_src_file_name);
+        var lib_dir = try std.fs.cwd().makeOpenPath(build_res.builder.lib_dir, .{});
+        defer lib_dir.close();
 
-        const build_res_src_file_path = try std.fs.path.join(
-            build_res.builder.allocator,
-            &.{ build_res_dir_path, build_res_src_file_name },
-        );
-        defer build_res.builder.allocator.free(build_res_src_file_path);
+        const writer = build_res.contents.writer();
+        try writer.print("const cc = @import(\"cupcake\");\n", .{});
+        try writer.print("const Resource = cc.res.Resource;\n", .{});
+        try writer.print("const ResourceType = cc.res.ResourceType;\n", .{});
 
-        try std.fs.cwd().writeFile(build_res_src_file_path, build_res.contents.items);
+        for (build_res.build_options.app.res) |res| {
+            const res_bytes = switch (res.res_type) {
+                .shader => try build_res.buildShader(&res_dir, res),
+            };
+            defer build_res.builder.allocator.free(res_bytes);
+
+            const res_name = try std.mem.concat(
+                build_res.builder.allocator,
+                u8,
+                &.{ "@\"", res.path, "\"" },
+            );
+            defer build_res.builder.allocator.free(res_name);
+
+            if (res.embedded) {
+                try out_dir.writeFile(res.path, res_bytes);
+                try writer.print(
+                    "pub const {s} = @embedFile(\"{s}\");\n",
+                    .{ res_name, res.path },
+                );
+            } else {
+                try lib_dir.writeFile(res.path, res_bytes);
+                try writer.print(
+                    "pub const {s} = Resource{{ .res_type = {}, .path = \"{s}\", .size = {} }};\n",
+                    .{ res_name, res.res_type, res.path, res_bytes.len },
+                );
+            }
+        }
+
+        try out_dir.writeFile(build_res.build_options.app.name, build_res.contents.items);
         build_res.contents.deinit();
 
-        build_res.generated_file.path = try std.mem.Allocator.dupe(
+        build_res.generated_file.path = try out_dir.realpathAlloc(
             build_res.builder.allocator,
-            u8,
-            build_res_src_file_path,
+            build_res.build_options.app.name,
         );
     }
 
-    pub fn getPackage(build_res: BuildResStep, package_name: []const u8) std.build.Pkg {
-        return .{
-            .name = package_name,
-            .path = std.build.FileSource{ .generated = &build_res.generated_file },
-        };
+    fn buildShader(
+        build_res: *BuildResStep,
+        res_dir: *std.fs.Dir,
+        res: build_app.BuildResource,
+    ) ![]const u8 {
+        const shader_file = try res_dir.openFile(res.path, .{});
+        defer shader_file.close();
+
+        const shader_bytes = try shader_file.readToEndAlloc(
+            build_res.builder.allocator,
+            (try shader_file.stat()).size,
+        );
+        defer build_res.builder.allocator.free(shader_bytes);
+
+        return try minify.shader(
+            shader_bytes,
+            build_res.builder.allocator,
+            build_res.build_options.opt_level,
+            build_res.build_options.gfx_api,
+        );
     }
 };

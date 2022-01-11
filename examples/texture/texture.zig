@@ -1,5 +1,5 @@
 const cc = @import("cupcake");
-const shaders = @import("shaders");
+const res = @import("res");
 const std = @import("std");
 
 const Example = struct {
@@ -40,13 +40,12 @@ pub fn init() !void {
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
-    example.ba = try cc.mem.BumpAllocator.init(1024);
-    try cc.res.requestFile(example.ba.allocator(), .{ .name = "test", .size = 1024 }, null);
+    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
+    //example.ba = try cc.mem.BumpAllocator.init(1024);
+    //try cc.res.requestFile(example.ba.allocator(), .{ .name = "test", .size = 1024 }, null);
 }
 
-pub fn ccResFileReady(_: []u8, _: ?*anyopaque) void {
-    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
-}
+pub fn ccResFileReady(_: []u8, _: ?*anyopaque) void {}
 
 pub fn ccResFileError(err: anyerror, _: []u8, _: ?*anyopaque) void {
     example.update_ready = err;
@@ -78,11 +77,11 @@ pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
         .{ .usage = .{ .index = true } },
     );
 
-    var vert_shader = try example.device.createShader(shaders.texture_vert);
+    var vert_shader = try example.device.createShader(res.@"texture_vert.wgsl");
     defer vert_shader.destroy();
     example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(shaders.texture_frag);
+    var frag_shader = try example.device.createShader(res.@"texture_frag.wgsl");
     defer frag_shader.destroy();
     example.device.checkShaderCompile(&frag_shader);
 
