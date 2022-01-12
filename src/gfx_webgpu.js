@@ -1,6 +1,3 @@
-const RequestAdapterFailed = 0;
-const RequestDeviceFailed = 1;
-const CreateShaderFailed = 2;
 const InvalidId = 0;
 const WholeSize = 0xFFFFFFFF;
 const BindTypeBuffer = 0;
@@ -56,18 +53,16 @@ const webgpu = {
         webgpu._contexts.get(_contextId)._obj.configure(desc);
     },
 
-    requestAdapter(_wasmId, _jsonPtr, _jsonLen, _adapter, _userData) {
+    requestAdapter(_wasmId, _jsonPtr, _jsonLen) {
         navigator.gpu.requestAdapter(JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen)))
             .then(adapter => {
                 main._wasms.get(_wasmId)._obj.requestAdapterComplete(
-                    webgpu._adapters.insert(adapter),
-                    _adapter,
-                    _userData
+                    webgpu._adapters.insert(adapter)
                 );
             })
             .catch((err) => {
                 console.log(err);
-                main._wasms.get(_wasmId)._obj.gfxError(RequestAdapterFailed);
+                main._wasms.get(_wasmId)._obj.requestAdapterComplete(InvalidId);
             });
     },
 
@@ -75,17 +70,15 @@ const webgpu = {
         webgpu._adapters.remove(_adapterId);
     },
 
-    requestDevice(_wasmId, _adapterId, _jsonPtr, _jsonLen, _device, _userData) {
+    requestDevice(_wasmId, _adapterId, _jsonPtr, _jsonLen) {
         const desc = JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen));
         webgpu._adapters.get(_adapterId).requestDevice(desc)
             .then(dev => {
-                main._wasms.get(_wasmId)._obj.requestDeviceComplete(
-                    webgpu._devices.insert(dev), _device, _userData
-                );
+                main._wasms.get(_wasmId)._obj.requestDeviceComplete(webgpu._devices.insert(dev));
             })
             .catch((err) => {
                 console.log(err);
-                main._wasms.get(_wasmId)._obj.gfxError(RequestDeviceFailed);
+                main._wasms.get(_wasmId)._obj.requestDeviceComplete(InvalidId);
             });
     },
 
@@ -113,9 +106,7 @@ const webgpu = {
                     console.log("line:", msg.lineNum, "col:", msg.linePos, msg.message);
                     err |= msg.type == "error";
                 }
-                if (err) {
-                    main._wasms.get(_wasmId)._obj.gfxError(CreateShaderFailed);
-                }
+                main._wasms.get(_wasmId)._obj.checkShaderCompileComplete(err);
             });
     },
 
@@ -247,7 +238,6 @@ const webgpu = {
     },
 
     beginRenderPass(
-        _hash,
         _wasmId,
         _commandEncoderId,
         _colorViewIdsPtr,
@@ -261,7 +251,7 @@ const webgpu = {
         _jsonPtr,
         _jsonLen
     ) {
-        let cache = webgpu._renderPassDescs.get(_hash);
+        let cache = webgpu._renderPassDescs.get(_jsonPtr);
         if (cache === undefined) {
             cache = {
                 _desc: JSON.parse(main.getString(_wasmId, _jsonPtr, _jsonLen)),
@@ -278,7 +268,7 @@ const webgpu = {
                 ),
             };
 
-            webgpu._renderPassDescs.set(cache, _hash);
+            webgpu._renderPassDescs.set(cache, _jsonPtr);
         }
 
         for (let i = 0; i < cache._colorViewIds.length; ++i) {

@@ -19,7 +19,7 @@ const main = {
                 app.setCanvasParent(_canvasParent);
                 const wasmId = main._wasms.insert({
                     _obj: results.instance.exports,
-                    _canUpdate: true,
+                    _canUpdate: false,
                 });
                 main._wasms.get(wasmId)._obj.init(wasmId);
                 window.requestAnimationFrame(main.update);
@@ -47,7 +47,6 @@ const main = {
     logConsole(_wasmId, _msgPtr, _msgLen) {
         console.log(main.getString(_wasmId, _msgPtr, _msgLen));
     },
-
 };
 
 function run(_wasmPath, _canvasParent) {

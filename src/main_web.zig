@@ -25,17 +25,35 @@ pub fn log(
 pub const main = struct {
     pub const WasmId = u32;
     pub var wasm_id: WasmId = undefined;
+    var init_in_progress = true;
 
     pub export fn init(id: WasmId) void {
         wasm_id = id;
+        _ = async appInit();
+    }
+
+    fn appInit() void {
         app.init() catch |err| handleError(err);
+        init_in_progress = false;
     }
 
     pub export fn update() void {
+        _ = async appUpdate();
+    }
+
+    fn appUpdate() void {
+        if (init_in_progress) {
+            return;
+        }
+
         app.update() catch |err| handleError(err);
     }
 
     pub export fn deinit() void {
+        _ = async appDeinit();
+    }
+
+    fn appDeinit() void {
         app.deinit() catch |err| handleError(err);
     }
 

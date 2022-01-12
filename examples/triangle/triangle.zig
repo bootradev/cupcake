@@ -9,24 +9,17 @@ const Example = struct {
     surface: cc.gfx.Surface,
     swapchain: cc.gfx.Swapchain,
     render_pipeline: cc.gfx.RenderPipeline,
-    update_ready: anyerror!bool,
 };
 
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.update_ready = false;
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
-    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
-}
+    example.adapter = try example.instance.requestAdapter(&example.surface, .{});
+    example.device = try example.adapter.requestDevice(.{});
 
-pub fn ccGfxAdapterReady(_: *cc.gfx.Adapter, _: ?*anyopaque) void {
-    try example.adapter.requestDevice(.{}, &example.device, null);
-}
-
-pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
     example.swapchain = try example.device.createSwapchain(
@@ -37,11 +30,11 @@ pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
 
     var vert_shader = try example.device.createShader(res.@"triangle_vert.wgsl");
     defer vert_shader.destroy();
-    example.device.checkShaderCompile(&vert_shader);
+    try example.device.checkShaderCompile(&vert_shader);
 
     var frag_shader = try example.device.createShader(res.@"triangle_frag.wgsl");
     defer frag_shader.destroy();
-    example.device.checkShaderCompile(&frag_shader);
+    try example.device.checkShaderCompile(&frag_shader);
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
@@ -61,19 +54,9 @@ pub fn ccGfxDeviceReady(_: *cc.gfx.Device, _: ?*anyopaque) void {
             },
         },
     );
-
-    example.update_ready = true;
-}
-
-pub fn ccGfxError(err: anyerror) void {
-    example.update_ready = err;
 }
 
 pub fn update() !void {
-    if ((try example.update_ready) == false) {
-        return;
-    }
-
     var swapchain_view = try example.swapchain.getCurrentTextureView();
     defer swapchain_view.destroy();
 

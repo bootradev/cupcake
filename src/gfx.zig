@@ -28,25 +28,6 @@ pub const CommandBuffer = api.CommandBuffer;
 pub const QuerySet = api.QuerySet;
 pub const Queue = api.Queue;
 
-pub const adapter_ready_cb = if (@hasDecl(root.app, "ccGfxAdapterReady"))
-    root.app.ccGfxAdapterReady
-else
-    adapterReadyNoOp;
-
-pub const device_ready_cb = if (@hasDecl(root.app, "ccGfxDeviceReady"))
-    root.app.ccGfxDeviceReady
-else
-    deviceReadyNoOp;
-
-pub const error_cb = if (@hasDecl(root.app, "ccGfxError"))
-    root.app.ccGfxError
-else
-    errorNoOp;
-
-fn adapterReadyNoOp(_: *Adapter, _: ?*anyopaque) void {}
-fn deviceReadyNoOp(_: *Device, _: ?*anyopaque) void {}
-fn errorNoOp(_: anyerror) void {}
-
 pub const SurfaceDesc = struct {
     label: []const u8 = "",
 };

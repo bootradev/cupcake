@@ -2,26 +2,6 @@ const cc = @import("cupcake");
 const res = @import("res");
 const std = @import("std");
 
-const Example = struct {
-    window: cc.app.Window,
-    instance: cc.gfx.Instance,
-    adapter: cc.gfx.Adapter,
-    device: cc.gfx.Device,
-    surface: cc.gfx.Surface,
-    swapchain: cc.gfx.Swapchain,
-    render_pipeline: cc.gfx.RenderPipeline,
-    vertex_buffer: cc.gfx.Buffer,
-    index_buffer: cc.gfx.Buffer,
-    uniform_buffer: cc.gfx.Buffer,
-    depth_texture: cc.gfx.Texture,
-    depth_texture_view: cc.gfx.TextureView,
-    uniform_bind_group: cc.gfx.BindGroup,
-    game_clock: cc.time.Timer,
-    update_ready: anyerror!bool,
-};
-
-var example: Example = undefined;
-
 const cube_data = struct {
     const position_offset = 0;
     const color_offset = 4 * 4;
@@ -49,75 +29,89 @@ const cube_data = struct {
     };
 };
 
+const Example = struct {
+    window: cc.app.Window,
+    instance: cc.gfx.Instance,
+    adapter: cc.gfx.Adapter,
+    device: cc.gfx.Device,
+    surface: cc.gfx.Surface,
+    swapchain: cc.gfx.Swapchain,
+    render_pipeline: cc.gfx.RenderPipeline,
+    vertex_buffer: cc.gfx.Buffer,
+    index_buffer: cc.gfx.Buffer,
+    uniform_buffer: cc.gfx.Buffer,
+    depth_texture: cc.gfx.Texture,
+    depth_texture_view: cc.gfx.TextureView,
+    uniform_bind_group: cc.gfx.BindGroup,
+    game_clock: cc.time.Timer,
+};
+
+var example: Example = undefined;
+
 pub fn init() !void {
-    example.update_ready = false;
     example.game_clock = try cc.time.Timer.start();
+
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
-    try example.instance.requestAdapter(&example.surface, .{}, &example.adapter, null);
-}
+    example.adapter = try example.instance.requestAdapter(&example.surface, .{});
+    example.device = try example.adapter.requestDevice(.{});
 
-pub fn ccGfxAdapterReady(adapter: *cc.gfx.Adapter, _: ?*anyopaque) void {
-    try adapter.requestDevice(.{}, &example.device, null);
-}
-
-pub fn ccGfxDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
 
-    example.swapchain = try device.createSwapchain(
+    example.swapchain = try example.device.createSwapchain(
         &example.surface,
         example.window.size,
         .{ .format = swapchain_format },
     );
 
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
-    example.vertex_buffer = try device.createBuffer(
+    example.vertex_buffer = try example.device.createBuffer(
         cube_vertices_bytes,
         cube_vertices_bytes.len,
         .{ .usage = .{ .vertex = true } },
     );
     const cube_indices_bytes = std.mem.sliceAsBytes(cube_data.indices);
-    example.index_buffer = try device.createBuffer(
+    example.index_buffer = try example.device.createBuffer(
         cube_indices_bytes,
         cube_indices_bytes.len,
         .{ .usage = .{ .index = true } },
     );
-    example.depth_texture = try device.createTexture(
+    example.depth_texture = try example.device.createTexture(
         .{ .width = example.window.size.x, .height = example.window.size.y },
         .{ .format = .depth24plus, .usage = .{ .render_attachment = true } },
     );
     example.depth_texture_view = example.depth_texture.createView();
-    example.uniform_buffer = try device.createBuffer(
+    example.uniform_buffer = try example.device.createBuffer(
         null,
         64, // mat4x4 float = 4x4x4 bytes
         .{ .usage = .{ .uniform = true, .copy_dst = true } },
     );
 
-    var uniform_layout = try device.createBindGroupLayout(.{
+    var uniform_layout = try example.device.createBindGroupLayout(.{
         .entries = &.{
             .{ .binding = 0, .visibility = .{ .vertex = true }, .layout = .{ .buffer = .{} } },
         },
     });
     defer uniform_layout.destroy();
 
-    example.uniform_bind_group = try device.createBindGroup(
+    example.uniform_bind_group = try example.device.createBindGroup(
         &uniform_layout,
         &.{.{ .buffer = .{ .resource = &example.uniform_buffer } }},
         .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
     );
 
-    var vert_shader = try device.createShader(res.@"cube_vert.wgsl");
+    var vert_shader = try example.device.createShader(res.@"cube_vert.wgsl");
     defer vert_shader.destroy();
-    device.checkShaderCompile(&vert_shader);
+    try example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try device.createShader(res.@"cube_frag.wgsl");
+    var frag_shader = try example.device.createShader(res.@"cube_frag.wgsl");
     defer frag_shader.destroy();
-    device.checkShaderCompile(&frag_shader);
+    try example.device.checkShaderCompile(&frag_shader);
 
-    var pipeline_layout = try device.createPipelineLayout(&.{uniform_layout}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(&.{uniform_layout}, .{});
     defer pipeline_layout.destroy();
-    example.render_pipeline = try device.createRenderPipeline(
+    example.render_pipeline = try example.device.createRenderPipeline(
         &pipeline_layout,
         &vert_shader,
         &frag_shader,
@@ -158,19 +152,9 @@ pub fn ccGfxDeviceReady(device: *cc.gfx.Device, _: ?*anyopaque) void {
             },
         },
     );
-
-    example.update_ready = true;
-}
-
-pub fn ccGfxError(err: anyerror) void {
-    example.update_ready = err;
 }
 
 pub fn update() !void {
-    if ((try example.update_ready) == false) {
-        return;
-    }
-
     const time = cc.time.readSeconds(example.game_clock);
     const model_matrix = cc.math.M44f32.makeAngleAxis(
         1.0,

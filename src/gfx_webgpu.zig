@@ -92,8 +92,6 @@ const js = struct {
         wasm_id: main.WasmId,
         json_ptr: [*]const u8,
         json_len: usize,
-        adapter: *Adapter,
-        user_data: ?*anyopaque,
     ) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
     extern fn requestDevice(
@@ -101,8 +99,6 @@ const js = struct {
         adapter_id: AdapterId,
         json_ptr: [*]const u8,
         json_len: usize,
-        device: *Device,
-        user_data: ?*anyopaque,
     ) void;
     extern fn destroyDevice(device_id: DeviceId) void;
     extern fn createShader(
@@ -156,7 +152,6 @@ const js = struct {
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
     extern fn beginRenderPass(
-        hash: u32,
         wasm_id: main.WasmId,
         command_encoder_id: CommandEncoderId,
         color_view_ids_ptr: [*]const u8,
@@ -263,24 +258,34 @@ pub const Instance = struct {
         return Surface{ .id = window.id };
     }
 
+    var request_adapter_frame: anyframe = undefined;
+    var request_adapter_id: anyerror!js.AdapterId = undefined;
+
     pub fn requestAdapter(
         _: *Instance,
-        _: *const Surface,
+        surface: *const Surface,
         comptime desc: gfx.AdapterDesc,
-        adapter: *Adapter,
-        user_data: ?*anyopaque,
-    ) !void {
+    ) !Adapter {
+        _ = surface;
         const json = comptime stringifyAdapterDescComptime(desc);
-        js.requestAdapter(main.wasm_id, json.ptr, json.len, adapter, user_data);
+        return try await async requestAdapterAsync(json);
     }
 
-    export fn requestAdapterComplete(
-        adapter_id: js.AdapterId,
-        adapter: *Adapter,
-        user_data: ?*anyopaque,
-    ) void {
-        adapter.id = adapter_id;
-        gfx.adapter_ready_cb(adapter, user_data);
+    fn requestAdapterAsync(json: []const u8) !Adapter {
+        js.requestAdapter(main.wasm_id, json.ptr, json.len);
+        suspend {
+            request_adapter_frame = @frame();
+        }
+        return Adapter{ .id = try request_adapter_id };
+    }
+
+    export fn requestAdapterComplete(adapter_id: js.AdapterId) void {
+        if (adapter_id == js.invalid_id) {
+            request_adapter_id = error.RequestAdaterFailed;
+        } else {
+            request_adapter_id = adapter_id;
+        }
+        resume request_adapter_frame;
     }
 };
 
@@ -291,23 +296,32 @@ pub const Adapter = struct {
         js.destroyAdapter(adapter.id);
     }
 
+    var request_device_frame: anyframe = undefined;
+    var request_device_id: anyerror!js.DeviceId = undefined;
+
     pub fn requestDevice(
         adapter: *Adapter,
         comptime desc: gfx.DeviceDesc,
-        device: *Device,
-        user_data: ?*anyopaque,
-    ) !void {
+    ) !Device {
         const json = comptime stringifyDeviceDescComptime(desc);
-        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len, device, user_data);
+        return try await async requestDeviceAsync(adapter, json);
     }
 
-    export fn requestDeviceComplete(
-        device_id: js.DeviceId,
-        device: *Device,
-        user_data: ?*anyopaque,
-    ) void {
-        device.id = device_id;
-        gfx.device_ready_cb(device, user_data);
+    fn requestDeviceAsync(adapter: *Adapter, json: []const u8) !Device {
+        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len);
+        suspend {
+            request_device_frame = @frame();
+        }
+        return Device{ .id = try request_device_id };
+    }
+
+    export fn requestDeviceComplete(device_id: js.DeviceId) void {
+        if (device_id == js.invalid_id) {
+            request_device_id = error.RequestDeviceFailed;
+        } else {
+            request_device_id = device_id;
+        }
+        resume request_device_frame;
     }
 };
 
@@ -344,8 +358,28 @@ pub const Device = struct {
         return Shader{ .id = js.createShader(main.wasm_id, device.id, code.ptr, code.len) };
     }
 
-    pub fn checkShaderCompile(_: *Device, shader: *Shader) void {
+    var shader_compile_frame: anyframe = undefined;
+    var shader_compile_result: anyerror!void = undefined;
+
+    pub fn checkShaderCompile(_: *Device, shader: *Shader) !void {
+        try await async checkShaderCompileAsync(shader);
+    }
+
+    fn checkShaderCompileAsync(shader: *Shader) !void {
         js.checkShaderCompile(main.wasm_id, shader.id);
+        suspend {
+            shader_compile_frame = @frame();
+        }
+        try shader_compile_result;
+    }
+
+    export fn checkShaderCompileComplete(err: bool) void {
+        if (err) {
+            shader_compile_result = error.ShaderCompileFailed;
+        } else {
+            shader_compile_result = {};
+        }
+        resume shader_compile_frame;
     }
 
     pub fn createBindGroupLayout(
@@ -493,16 +527,6 @@ pub const Device = struct {
         };
     }
 };
-
-export fn gfxError(error_code: u32) void {
-    const err = switch (error_code) {
-        0 => error.RequestAdapterFailed,
-        1 => error.RequestDeviceFailed,
-        2 => error.CreateShaderFailed,
-        else => error.GfxError,
-    };
-    gfx.error_cb(err);
-}
 
 pub const Buffer = packed struct {
     id: js.BufferId,
@@ -709,17 +733,8 @@ pub const CommandEncoder = packed struct {
         const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
         const json = comptime try stringifyRenderPassDescComptime(desc);
 
-        var fnv = std.hash.Fnv1a_32.init();
-        fnv.update(color_views_bytes);
-        fnv.update(color_resolve_targets_bytes);
-        fnv.update(std.mem.asBytes(&depth_stencil_view_id));
-        fnv.update(std.mem.asBytes(&occlusion_query_set_id));
-        fnv.update(timestamp_query_set_ids);
-        fnv.update(json);
-
         return RenderPass{
             .id = js.beginRenderPass(
-                fnv.final(),
                 main.wasm_id,
                 command_encoder.id,
                 color_views_bytes.ptr,
