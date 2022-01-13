@@ -40,6 +40,18 @@ const main = {
         return main._wasms.get(_wasmId)._obj.memory.buffer.slice(_ptr, _ptr + _len);
     },
 
+    u8Array(_wasmId, _ptr, _len) {
+        return new Uint8Array(main.buffer(_wasmId), _ptr, _len);
+    },
+
+    u32Array(_wasmId, _ptr, _len) {
+        return new Uint32Array(main.buffer(_wasmId), _ptr, _len);
+    },
+
+    buffer(_wasmId) {
+        return main._wasms.get(_wasmId)._obj.memory.buffer;
+    },
+
     getString(_wasmId, _ptr, _len) {
         return main._textDecoder.decode(main.getSlice(_wasmId, _ptr, _len));
     },

@@ -1,13 +1,8 @@
 const api = switch (cfg.platform) {
     .web => @import("main_web.zig"),
 };
-const cc = @import("cupcake");
 const cfg = @import("cfg");
 const std = @import("std");
-
-// not to be confused with cc.app, this re-exports the user app package to
-// the root so that cc does not need to depend on the user app package
-pub const app = @import("app");
 
 pub fn log(
     comptime message_level: std.log.Level,

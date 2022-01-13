@@ -3,7 +3,6 @@ const api = switch (cfg.gfx_api) {
 };
 const cfg = @import("cfg");
 const math = @import("math.zig");
-const root = @import("root");
 const std = @import("std");
 
 pub const whole_size = std.math.maxInt(usize);

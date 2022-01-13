@@ -16,8 +16,8 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/triangle/triangle.zig",
             .res_dir = "examples/triangle",
             .res = &.{
-                .{ .res_type = .shader, .path = "triangle_vert.wgsl", .embedded = true },
-                .{ .res_type = .shader, .path = "triangle_frag.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "triangle_vert.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "triangle_frag.wgsl", .embedded = true },
             },
         },
         .cube => .{
@@ -25,8 +25,8 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/cube/cube.zig",
             .res_dir = "examples/cube",
             .res = &.{
-                .{ .res_type = .shader, .path = "cube_vert.wgsl", .embedded = true },
-                .{ .res_type = .shader, .path = "cube_frag.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "cube_vert.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "cube_frag.wgsl", .embedded = true },
             },
         },
         .texture => .{
@@ -34,8 +34,8 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/texture/texture.zig",
             .res_dir = "examples/texture",
             .res = &.{
-                .{ .res_type = .shader, .path = "texture_vert.wgsl", .embedded = true },
-                .{ .res_type = .shader, .path = "texture_frag.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "texture_vert.wgsl", .embedded = true },
+                .{ .kind = .shader, .path = "texture_frag.wgsl", .embedded = true },
             },
         },
     };

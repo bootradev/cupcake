@@ -18,7 +18,7 @@ pub const GfxApi = enum {
 };
 
 pub const BuildResource = struct {
-    res_type: res.ResourceType,
+    kind: res.Kind,
     path: []const u8,
     embedded: bool = false,
 };

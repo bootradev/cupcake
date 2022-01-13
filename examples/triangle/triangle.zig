@@ -2,6 +2,7 @@ const cc = @import("cupcake");
 const res = @import("res");
 
 const Example = struct {
+    loader: cc.res.Loader,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -14,6 +15,7 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
+    example.loader = try cc.res.Loader.init(res);
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -28,11 +30,13 @@ pub fn init() !void {
         .{ .format = swapchain_format },
     );
 
-    var vert_shader = try example.device.createShader(res.@"triangle_vert.wgsl");
+    const vert_shader_bytes = try example.loader.load(res.shader_triangle_vert);
+    var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
     try example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(res.@"triangle_frag.wgsl");
+    const frag_shader_bytes = try example.loader.load(res.shader_triangle_frag);
+    var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
     try example.device.checkShaderCompile(&frag_shader);
 
@@ -82,4 +86,5 @@ pub fn deinit() !void {
     example.surface.destroy();
     example.instance.deinit();
     example.window.deinit();
+    example.loader.deinit();
 }

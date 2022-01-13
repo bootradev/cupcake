@@ -1,25 +1,14 @@
-const RequestFileFailed = 0;
-
 const res = {
-    requestFile(_wasmId, _namePtr, _nameLen, _dataPtr, _dataLen, _userData) {
+    loadFile(_wasmId, _namePtr, _nameLen, _filePtr, _fileLen) {
         fetch(main.getString(_wasmId, _namePtr, _nameLen))
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
-                new Uint8Array(main.getSlice(_dataPtr, _dataLen)).set(new Uint8Array(arrayBuffer));
-                main._wasms.get(_wasmId)._obj.requestFileComplete(
-                    _dataPtr,
-                    _dataLen,
-                    _userData
-                );
+                main.u8Array(_wasmId, _filePtr, _fileLen).set(new Uint8Array(arrayBuffer));
+                main._wasms.get(_wasmId)._obj.loadFileComplete(false);
             })
             .catch(err => {
                 console.log(err);
-                main._wasms.get(_wasmId)._obj.resError(
-                    RequestFileFailed,
-                    _dataPtr,
-                    _dataLen,
-                    _userData
-                );
+                main._wasms.get(_wasmId)._obj.loadFileComplete(true);
             });
     }
 };
