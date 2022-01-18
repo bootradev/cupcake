@@ -431,6 +431,13 @@ pub const CommandBufferDesc = struct {
     label: []const u8 = "",
 };
 
+pub const Color = struct {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
 pub const LoadOp = enum {
     load,
 };
@@ -442,7 +449,7 @@ pub fn LoadValue(comptime ClearType: type) type {
     };
 }
 
-pub const ColorLoadValue = LoadValue([4]f32);
+pub const ColorLoadValue = LoadValue(Color);
 pub const DepthLoadValue = LoadValue(f32);
 pub const StencilLoadValue = LoadValue(u32);
 
@@ -456,7 +463,9 @@ pub const ColorAttachment = struct {
     store_op: StoreOp,
 };
 
-pub const default_clear: ColorLoadValue = .{ .clear = [4]f32{ 0.32, 0.1, 0.18, 1.0 } };
+pub const cc_clear_color: ColorLoadValue = .{
+    .clear = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 },
+};
 
 pub const DepthStencilAttachment = struct {
     depth_load_value: DepthLoadValue,

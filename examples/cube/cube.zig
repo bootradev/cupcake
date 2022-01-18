@@ -30,6 +30,7 @@ const cube_data = struct {
 };
 
 const Example = struct {
+    loader: cc.res.Loader,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -49,6 +50,7 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
+    example.loader = try cc.res.Loader.init(res.total_file_size, res.total_file_count);
     example.game_clock = try cc.time.Timer.start();
 
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
@@ -90,7 +92,7 @@ pub fn init() !void {
 
     var uniform_layout = try example.device.createBindGroupLayout(.{
         .entries = &.{
-            .{ .binding = 0, .visibility = .{ .vertex = true }, .layout = .{ .buffer = .{} } },
+            .{ .binding = 0, .visibility = .{ .vertex = true }, .buffer = .{} },
         },
     });
     defer uniform_layout.destroy();
@@ -101,11 +103,13 @@ pub fn init() !void {
         .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
     );
 
-    var vert_shader = try example.device.createShader(res.@"cube_vert.wgsl");
+    const vert_shader_bytes = try example.loader.load(res.shader_cube_vert);
+    var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
     try example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(res.@"cube_frag.wgsl");
+    const frag_shader_bytes = try example.loader.load(res.shader_cube_frag);
+    var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
     try example.device.checkShaderCompile(&frag_shader);
 
@@ -186,11 +190,11 @@ pub fn update() !void {
             .depth_stencil_view = &example.depth_texture_view,
         },
         .{
-            .color_attachments = &.{.{ .load_op = .clear, .store_op = .store }},
+            .color_attachments = &.{.{ .load_value = cc.gfx.cc_clear_color, .store_op = .store }},
             .depth_stencil_attachment = .{
-                .depth_load_op = .clear,
+                .depth_load_value = .{ .clear = 1.0 },
                 .depth_store_op = .store,
-                .stencil_load_op = .clear,
+                .stencil_load_value = .{ .clear = 0 },
                 .stencil_store_op = .store,
             },
         },

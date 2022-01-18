@@ -67,7 +67,7 @@ pub fn update() !void {
     var command_encoder = example.device.createCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
         .{ .color_views = &.{swapchain_view} },
-        .{ .color_attachments = &.{.{ .load_value = cc.gfx.default_clear, .store_op = .store }} },
+        .{ .color_attachments = &.{.{ .load_value = cc.gfx.cc_clear_color, .store_op = .store }} },
     );
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);
