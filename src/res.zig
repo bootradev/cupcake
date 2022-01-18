@@ -1,13 +1,10 @@
 const api = switch (cfg.platform) {
     .web => @import("res_web.zig"),
 };
+const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
 const mem = @import("mem.zig");
 const std = @import("std");
-
-pub const Kind = enum {
-    shader,
-};
 
 pub const FileData = struct {
     id: usize,
@@ -21,7 +18,7 @@ pub const Data = union(enum) {
 };
 
 pub const Resource = struct {
-    kind: Kind,
+    kind: build_res.Kind,
     data: Data,
 };
 
@@ -30,16 +27,16 @@ pub const Loader = struct {
     has_allocator: bool,
     file_cache: []?[]const u8,
 
-    pub fn init(comptime res: anytype) !Loader {
+    pub fn init(comptime total_file_size: usize, comptime total_file_count: usize) !Loader {
         var loader: Loader = undefined;
-        const has_files = res.total_file_size > 0;
+        const has_files = total_file_size > 0;
         if (has_files) {
             const file_ptr_size = @sizeOf(?[]const u8);
             const file_ptr_align = @alignOf(?[]const u8);
-            const total_file_size = std.mem.alignForward(res.total_file_size, file_ptr_align);
-            const total_size = total_file_size + file_ptr_size * res.total_file_count;
+            const total_file_size_aligned = std.mem.alignForward(total_file_size, file_ptr_align);
+            const total_size = total_file_size_aligned + file_ptr_size * total_file_count;
             loader.ba = try mem.BumpAllocator.init(total_size);
-            loader.file_cache = try loader.ba.allocator().alloc(?[]const u8, res.total_file_count);
+            loader.file_cache = try loader.ba.allocator().alloc(?[]const u8, total_file_count);
             for (loader.file_cache) |*file| {
                 file.* = null;
             }

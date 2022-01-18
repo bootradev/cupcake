@@ -24,11 +24,9 @@ pub const BumpAllocator = struct {
         };
     }
 
-    pub fn deinit(ba: *BumpAllocator) void {
+    pub fn deinit(_: *BumpAllocator) void {
         switch (cfg.platform) {
-            .web => {
-                _ = ba;
-            },
+            .web => {},
         }
     }
 

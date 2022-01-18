@@ -178,7 +178,10 @@ pub const BindingLayout = union(enum) {
 pub const BindGroupLayoutEntry = struct {
     binding: u32,
     visibility: ShaderStage,
-    layout: BindingLayout,
+    buffer: ?BufferBindingLayout = null,
+    sampler: ?SamplerBindingLayout = null,
+    texture: ?TextureBindingLayout = null,
+    storage_texture: ?StorageTextureBindingLayout = null,
 };
 
 pub const BindGroupLayoutDesc = struct {
@@ -429,9 +432,19 @@ pub const CommandBufferDesc = struct {
 };
 
 pub const LoadOp = enum {
-    clear,
     load,
 };
+
+pub fn LoadValue(comptime ClearType: type) type {
+    return union(enum) {
+        clear: ClearType,
+        load: LoadOp,
+    };
+}
+
+pub const ColorLoadValue = LoadValue([4]f32);
+pub const DepthLoadValue = LoadValue(f32);
+pub const StencilLoadValue = LoadValue(u32);
 
 pub const StoreOp = enum {
     store,
@@ -439,19 +452,18 @@ pub const StoreOp = enum {
 };
 
 pub const ColorAttachment = struct {
-    load_op: LoadOp,
+    load_value: ColorLoadValue,
     store_op: StoreOp,
-    clear_color: math.V4f64 = math.V4f64.make(0.31, 0.1, 0.18, 1.0),
 };
 
+pub const default_clear: ColorLoadValue = .{ .clear = [4]f32{ 0.32, 0.1, 0.18, 1.0 } };
+
 pub const DepthStencilAttachment = struct {
-    depth_load_op: LoadOp,
+    depth_load_value: DepthLoadValue,
     depth_store_op: StoreOp,
-    clear_depth: f32 = 1.0,
     depth_read_only: bool = false,
-    stencil_load_op: LoadOp,
+    stencil_load_value: StencilLoadValue,
     stencil_store_op: StoreOp,
-    clear_stencil: u32 = 0,
     stencil_read_only: bool = false,
 };
 

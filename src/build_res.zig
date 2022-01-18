@@ -2,6 +2,16 @@ const build_app = @import("build_app.zig");
 const minify = @import("minify.zig");
 const std = @import("std");
 
+pub const Kind = enum {
+    shader,
+};
+
+pub const BuildResource = struct {
+    kind: Kind,
+    path: []const u8,
+    embedded: bool = false,
+};
+
 pub const BuildResStep = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
@@ -119,7 +129,7 @@ pub const BuildResStep = struct {
     fn buildShader(
         build_res: *BuildResStep,
         res_dir: *std.fs.Dir,
-        res: build_app.BuildResource,
+        res: BuildResource,
     ) ![]const u8 {
         const shader_file = try res_dir.openFile(res.path, .{});
         defer shader_file.close();

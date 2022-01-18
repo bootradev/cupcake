@@ -15,7 +15,7 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.loader = try cc.res.Loader.init(res);
+    example.loader = try cc.res.Loader.init(res.total_file_size, res.total_file_count);
     try example.window.init(cc.math.V2u32.make(800, 600), .{});
     try example.instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -67,7 +67,7 @@ pub fn update() !void {
     var command_encoder = example.device.createCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
         .{ .color_views = &.{swapchain_view} },
-        .{ .color_attachments = &.{.{ .load_op = .clear, .store_op = .store }} },
+        .{ .color_attachments = &.{.{ .load_value = cc.gfx.default_clear, .store_op = .store }} },
     );
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);

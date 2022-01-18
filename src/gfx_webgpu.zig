@@ -40,41 +40,6 @@ const js = struct {
 
     const invalid_id: ObjectId = 0;
 
-    pub const GPUColorWrite = enum(GPUFlagsConstant) {
-        RED = 0x1,
-        GREEN = 0x2,
-        BLUE = 0x4,
-        ALPHA = 0x8,
-        ALL = 0xF,
-    };
-
-    pub const GPUBufferUsage = enum(GPUFlagsConstant) {
-        MAP_READ = 0x0001,
-        MAP_WRITE = 0x0002,
-        COPY_SRC = 0x0004,
-        COPY_DST = 0x0008,
-        INDEX = 0x0010,
-        VERTEX = 0x0020,
-        UNIFORM = 0x0040,
-        STORAGE = 0x0080,
-        INDIRECT = 0x0100,
-        QUERY_RESOLVE = 0x0200,
-    };
-
-    pub const GPUTextureUsage = enum(GPUFlagsConstant) {
-        COPY_SRC = 0x01,
-        COPY_DST = 0x02,
-        TEXTURE_BINDING = 0x04,
-        STORAGE_BINDING = 0x08,
-        RENDER_ATTACHMENT = 0x10,
-    };
-
-    pub const GPUShaderStage = enum(GPUFlagsConstant) {
-        VERTEX = 0x01,
-        FRAGMENT = 0x02,
-        COMPUTE = 0x04,
-    };
-
     extern fn createContext(canvas_id: ObjectId) ContextId;
     extern fn destroyContext(contex_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
@@ -254,7 +219,11 @@ pub const Instance = struct {
     pub fn init(_: *Instance) !void {}
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(_: *Instance, window: *app.Window, comptime _: gfx.SurfaceDesc) !Surface {
+    pub fn createSurface(
+        _: *Instance,
+        window: *app.Window,
+        comptime _: gfx.SurfaceDesc,
+    ) !Surface {
         return Surface{ .id = window.id };
     }
 
@@ -267,7 +236,7 @@ pub const Instance = struct {
         comptime desc: gfx.AdapterDesc,
     ) !Adapter {
         _ = surface;
-        const json = comptime stringifyAdapterDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
         return try await async requestAdapterAsync(json);
     }
 
@@ -280,11 +249,10 @@ pub const Instance = struct {
     }
 
     export fn requestAdapterComplete(adapter_id: js.AdapterId) void {
-        if (adapter_id == js.invalid_id) {
-            request_adapter_id = error.RequestAdaterFailed;
-        } else {
-            request_adapter_id = adapter_id;
-        }
+        request_adapter_id = if (adapter_id == js.invalid_id)
+            error.RequestAdapterFailed
+        else
+            adapter_id;
         resume request_adapter_frame;
     }
 };
@@ -303,7 +271,7 @@ pub const Adapter = struct {
         adapter: *Adapter,
         comptime desc: gfx.DeviceDesc,
     ) !Device {
-        const json = comptime stringifyDeviceDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
         return try await async requestDeviceAsync(adapter, json);
     }
 
@@ -316,11 +284,10 @@ pub const Adapter = struct {
     }
 
     export fn requestDeviceComplete(device_id: js.DeviceId) void {
-        if (device_id == js.invalid_id) {
-            request_device_id = error.RequestDeviceFailed;
-        } else {
-            request_device_id = device_id;
-        }
+        request_device_id = if (device_id == js.invalid_id)
+            error.RequestDeviceFailed
+        else
+            device_id;
         resume request_device_frame;
     }
 };
@@ -339,8 +306,8 @@ pub const Device = struct {
         comptime desc: gfx.SwapchainDesc,
     ) !Swapchain {
         const swapchain = Swapchain{ .id = js.createContext(surface.id) };
-        const texture_format = comptime getTextureFormatString(desc.format);
-        const texture_usage = comptime getTextureUsageFlags(desc.usage);
+        const texture_format = comptime getEnumNameJs(desc.format);
+        const texture_usage = comptime getEnumFlagsJs(desc.usage);
         js.configure(
             main.wasm_id,
             device.id,
@@ -374,11 +341,7 @@ pub const Device = struct {
     }
 
     export fn checkShaderCompileComplete(err: bool) void {
-        if (err) {
-            shader_compile_result = error.ShaderCompileFailed;
-        } else {
-            shader_compile_result = {};
-        }
+        shader_compile_result = if (err) error.ShaderCompileFailed else {};
         resume shader_compile_frame;
     }
 
@@ -386,7 +349,7 @@ pub const Device = struct {
         device: *Device,
         comptime desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
-        const json = comptime stringifyBindGroupLayoutDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
         return BindGroupLayout{
             .id = js.createBindGroupLayout(main.wasm_id, device.id, json.ptr, json.len),
         };
@@ -423,7 +386,7 @@ pub const Device = struct {
         const buffer_offsets_bytes = std.mem.sliceAsBytes(&buffer_offsets);
         const buffer_sizes_bytes = std.mem.sliceAsBytes(&buffer_sizes);
 
-        const json = comptime stringifyBindGroupDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
         return BindGroup{
             .id = js.createBindGroup(
                 main.wasm_id,
@@ -461,7 +424,7 @@ pub const Device = struct {
         frag_shader: *const Shader,
         comptime desc: gfx.RenderPipelineDesc,
     ) !RenderPipeline {
-        const json = comptime stringifyRenderPipelineDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
         return RenderPipeline{
             .id = js.createRenderPipeline(
                 main.wasm_id,
@@ -495,7 +458,7 @@ pub const Device = struct {
                 main.wasm_id,
                 device.id,
                 std.mem.alignForward(size, 4),
-                comptime getBufferUsageFlags(desc.usage),
+                comptime getEnumFlagsJs(desc.usage),
                 init_data.ptr,
                 init_data.len,
             ),
@@ -507,13 +470,13 @@ pub const Device = struct {
         size: gfx.Extent3D,
         comptime desc: gfx.TextureDesc,
     ) !Texture {
-        const dimension = comptime getTextureDimensionString(desc.dimension);
-        const format = comptime getTextureFormatString(desc.format);
+        const dimension = comptime getEnumNameJs(desc.dimension);
+        const format = comptime getEnumNameJs(desc.format);
         return Texture{
             .id = js.createTexture(
                 main.wasm_id,
                 device.id,
-                comptime getTextureUsageFlags(desc.usage),
+                comptime getEnumFlagsJs(desc.usage),
                 dimension.ptr,
                 dimension.len,
                 size.width,
@@ -731,7 +694,7 @@ pub const CommandEncoder = packed struct {
         else
             js.invalid_id;
         const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
-        const json = comptime try stringifyRenderPassDescComptime(desc);
+        const json = try stringifyDescComptime(desc);
 
         return RenderPass{
             .id = js.beginRenderPass(
@@ -795,655 +758,147 @@ pub const Queue = packed struct {
     }
 };
 
-fn stringifyAdapterDescComptime(comptime desc: gfx.AdapterDesc) []const u8 {
-    const JsonDesc = struct {
-        powerPreference: ?[]const u8 = null,
-        forceFallbackAdapter: ?bool = null,
-    };
-
-    comptime var json: JsonDesc = .{};
-    if (desc.power_preference != .@"undefined") {
-        json.powerPreference = comptime getPowerPreferenceString(desc.power_preference);
-    }
-    if (desc.force_fallback_adapter) {
-        json.forceFallbackAdapter = true;
-    }
-
+fn stringifyDescComptime(comptime desc: anytype) ![]const u8 {
+    @setEvalBranchQuota(100000);
+    const JsonDescType = comptime initJsonDescType(@TypeOf(desc));
+    const json = comptime initJsonDesc(JsonDescType, desc);
     return comptime try stringifyComptime(json);
 }
 
-fn stringifyDeviceDescComptime(comptime desc: gfx.DeviceDesc) []const u8 {
-    const JsonLimits = struct {
-        maxTextureDimension1D: ?js.GPUSize32 = null,
-        maxTextureDimension2D: ?js.GPUSize32 = null,
-        maxTextureDimension3D: ?js.GPUSize32 = null,
-        maxTextureArrayLayers: ?js.GPUSize32 = null,
-        maxBindGroups: ?js.GPUSize32 = null,
-        maxDynamicUniformBuffersPerPipelineLayout: ?js.GPUSize32 = null,
-        maxDynamicStorageBuffersPerPipelineLayout: ?js.GPUSize32 = null,
-        maxSampledTexturesPerShaderStage: ?js.GPUSize32 = null,
-        maxSamplersPerShaderStage: ?js.GPUSize32 = null,
-        maxStorageBuffersPerShaderStage: ?js.GPUSize32 = null,
-        maxStorageTexturesPerShaderStage: ?js.GPUSize32 = null,
-        maxUniformBuffersPerShaderStage: ?js.GPUSize32 = null,
-        maxUniformBufferBindingSize: ?js.GPUSize64 = null,
-        maxStorageBufferBindingSize: ?js.GPUSize64 = null,
-        minUniformBufferOffsetAlignment: ?js.GPUSize32 = null,
-        minStorageBufferOffsetAlignment: ?js.GPUSize32 = null,
-        maxVertexBuffers: ?js.GPUSize32 = null,
-        maxVertexAttributes: ?js.GPUSize32 = null,
-        maxVertexBufferArrayStride: ?js.GPUSize32 = null,
-        maxInterStageShaderComponents: ?js.GPUSize32 = null,
-        maxComputeWorkgroupStorageSize: ?js.GPUSize32 = null,
-        maxComputeInvocationsPerWorkgroup: ?js.GPUSize32 = null,
-        maxComputeWorkgroupSizeX: ?js.GPUSize32 = null,
-        maxComputeWorkgroupSizeY: ?js.GPUSize32 = null,
-        maxComputeWorkgroupSizeZ: ?js.GPUSize32 = null,
-        maxComputeWorkgroupsPerDimension: ?js.GPUSize32 = null,
-    };
-    const JsonDesc = struct {
-        requiredFeatures: ?[]const []const u8 = null,
-        requiredLimits: ?JsonLimits = .{},
-    };
-
-    comptime var json: JsonDesc = .{};
-    if (desc.required_features.len > 0) {
-        comptime var required_features: []const []const u8 = &.{};
-        inline for (desc.required_features) |required_feature| {
-            required_features = required_features ++ &.{
-                comptime getFeatureNameString(required_feature),
-            };
-        }
-        json.requiredFeatures = required_features;
-    }
-
-    const default_limits: gfx.Limits = .{};
-    comptime var all_default_limits = true;
-    inline for (@typeInfo(gfx.Limits).Struct.fields) |field, i| {
-        const limit = @field(desc.required_limits, field.name);
-        if (limit != @field(default_limits, field.name)) {
-            all_default_limits = false;
-            const json_field_name = @typeInfo(JsonLimits).Struct.fields[i].name;
-            @field(json.requiredLimits, json_field_name) = limit;
-        }
-    }
-
-    if (all_default_limits) {
-        json.requiredLimits = null;
-    }
-
-    return comptime try stringifyComptime(json);
-}
-
-fn stringifyBindGroupLayoutDescComptime(comptime desc: gfx.BindGroupLayoutDesc) []const u8 {
-    const JsonBufferBindingLayout = struct {
-        @"type": ?[]const u8 = null,
-        hasDynamicOffset: ?bool = null,
-        minBindingSize: ?js.GPUSize64 = null,
-    };
-    const JsonSamplerBindingLayout = struct {
-        @"type": ?[]const u8 = null,
-    };
-    const JsonTextureBindingLayout = struct {
-        sampleType: ?[]const u8 = null,
-        viewDimension: ?[]const u8 = null,
-        multisampled: ?bool = null,
-    };
-    const JsonStorageTextureBindingLayout = struct {
-        format: []const u8 = "",
-        access: ?[]const u8 = null,
-        viewDimension: ?[]const u8 = null,
-    };
-    const JsonEntry = struct {
-        binding: js.GPUIndex32,
-        visibility: js.GPUShaderStageFlags,
-        buffer: ?JsonBufferBindingLayout = null,
-        sampler: ?JsonSamplerBindingLayout = null,
-        texture: ?JsonTextureBindingLayout = null,
-        storageTexture: ?JsonStorageTextureBindingLayout = null,
-    };
-    const JsonDesc = struct {
-        entries: []const JsonEntry = &.{},
-    };
-
-    comptime var json: JsonDesc = .{};
-
-    inline for (desc.entries) |entry| {
-        comptime var json_entry: JsonEntry = .{
-            .binding = entry.binding,
-            .visibility = comptime getShaderStageFlags(entry.visibility),
-        };
-        switch (entry.layout) {
-            .buffer => |buffer| {
-                comptime var json_buffer: JsonBufferBindingLayout = .{};
-                comptime setIfNotDefault(
-                    &json_buffer.@"type",
-                    buffer,
-                    "type",
-                    getBufferBindingTypeString(buffer.@"type"),
-                );
-                comptime setIfNotDefault(
-                    &json_buffer.hasDynamicOffset,
-                    buffer,
-                    "has_dynamic_offset",
-                    buffer.has_dynamic_offset,
-                );
-                comptime setIfNotDefault(
-                    &json_buffer.minBindingSize,
-                    buffer,
-                    "min_binding_size",
-                    buffer.min_binding_size,
-                );
-                json_entry.buffer = json_buffer;
-            },
-            .sampler => |sampler| {
-                comptime var json_sampler: JsonSamplerBindingLayout = .{};
-                comptime setIfNotDefault(
-                    &json_sampler.@"type",
-                    sampler,
-                    "type",
-                    getSamplerBindingTypeString(sampler.@"type"),
-                );
-                json_entry.sampler = json_sampler;
-            },
-            .texture => |texture| {
-                comptime var json_texture: JsonTextureBindingLayout = .{};
-                comptime setIfNotDefault(
-                    &json_texture.sampleType,
-                    texture,
-                    "sample_type",
-                    getTextureSampleTypeString(texture.sample_type),
-                );
-                comptime setIfNotDefault(
-                    &json_texture.viewDimension,
-                    texture,
-                    "view_dimension",
-                    getTextureViewDimensionString(texture.view_dimension),
-                );
-                comptime setIfNotDefault(
-                    &json_texture.multisampled,
-                    texture,
-                    "multisampled",
-                    texture.multisampled,
-                );
-                json_entry.texture = json_texture;
-            },
-            .storage_texture => |storage_texture| {
-                comptime var json_storage_texture: JsonStorageTextureBindingLayout = .{
-                    .format = comptime getTextureFormatString(storage_texture.format),
-                };
-                comptime setIfNotDefault(
-                    &json_storage_texture.access,
-                    storage_texture,
-                    "access",
-                    getStorageTextureAccessString(storage_texture.access),
-                );
-                comptime setIfNotDefault(
-                    &json_storage_texture.viewDimension,
-                    storage_texture,
-                    "view_dimension",
-                    getTextureViewDimensionString(storage_texture.view_dimension),
-                );
-                json_entry.storageTexture = json_storage_texture;
-            },
-        }
-        json.entries = json.entries ++ &[_]JsonEntry{json_entry};
-    }
-
-    return comptime try stringifyComptime(json);
-}
-
-fn stringifyBindGroupDescComptime(comptime desc: gfx.BindGroupDesc) []const u8 {
-    const JsonEntry = struct {
-        binding: js.GPUIndex32,
-    };
-    const JsonDesc = struct {
-        entries: []const JsonEntry = &.{},
-    };
-    comptime var json: JsonDesc = .{};
-    inline for (desc.entries) |entry| {
-        json.entries = json.entries ++ &[_]JsonEntry{
-            .{
-                .binding = entry.binding,
-            },
-        };
-    }
-    return comptime try stringifyComptime(json);
-}
-
-fn stringifyRenderPipelineDescComptime(comptime desc: gfx.RenderPipelineDesc) []const u8 {
-    const JsonVertAttr = struct {
-        format: []const u8,
-        offset: js.GPUSize64,
-        shaderLocation: js.GPUIndex32,
-    };
-    const JsonVertLayout = struct {
-        arrayStride: js.GPUSize64 = 0,
-        stepMode: ?[]const u8 = null,
-        attributes: []const JsonVertAttr = &.{},
-    };
-    const JsonVertState = struct {
-        entryPoint: []const u8 = "",
-        buffers: ?[]const JsonVertLayout = null,
-    };
-    const JsonPrimState = struct {
-        topology: ?[]const u8 = null,
-        stripIndexFormat: ?[]const u8 = null,
-        frontFace: ?[]const u8 = null,
-        cullMode: ?[]const u8 = null,
-        unclippedDepth: ?bool = null,
-    };
-    const JsonStencilFaceState = struct {
-        compare: ?[]const u8 = null,
-        failOp: ?[]const u8 = null,
-        depthFailOp: ?[]const u8 = null,
-        passOp: ?[]const u8 = null,
-    };
-    const JsonDepthStencilState = struct {
-        format: []const u8 = "",
-        depthWriteEnabled: ?bool = null,
-        depthCompare: ?[]const u8 = null,
-        stencilFront: ?JsonStencilFaceState = null,
-        stencilBack: ?JsonStencilFaceState = null,
-        stencilReadMask: ?js.GPUStencilValue = null,
-        stencilWriteMask: ?js.GPUStencilValue = null,
-        depthBias: ?js.GPUDepthBias = null,
-        depthBiasSlopeScale: ?f32 = null,
-        depthBiasClamp: ?f32 = null,
-    };
-    const JsonMultiState = struct {
-        count: ?js.GPUSize32 = null,
-        mask: ?js.GPUSampleMask = null,
-        alphaToCoverageEnabled: ?bool = null,
-    };
-    const JsonBlendComp = struct {
-        operation: ?[]const u8 = null,
-        srcFactor: ?[]const u8 = null,
-        dstFactor: ?[]const u8 = null,
-    };
-    const JsonBlend = struct {
-        color: JsonBlendComp = .{},
-        alpha: JsonBlendComp = .{},
-    };
-    const JsonTarget = struct {
-        format: []const u8 = "",
-        blend: ?JsonBlend = null,
-        writeMask: ?js.GPUColorWriteFlags = null,
-    };
-    const JsonFragState = struct {
-        entryPoint: []const u8 = "",
-        targets: []const JsonTarget = &.{},
-    };
-    const JsonDesc = struct {
-        vertex: JsonVertState = .{},
-        primitive: ?JsonPrimState = null,
-        depthStencil: ?JsonDepthStencilState = null,
-        multisample: ?JsonMultiState = null,
-        fragment: ?JsonFragState = null,
-    };
-
-    comptime var json: JsonDesc = .{};
-    json.vertex.entryPoint = desc.vertex.entry_point;
-    if (desc.vertex.buffers.len > 0) {
-        comptime var vert_buffers: []const JsonVertLayout = &.{};
-        inline for (desc.vertex.buffers) |buffer| {
-            comptime var json_buffer: JsonVertLayout = .{};
-            json_buffer.arrayStride = buffer.array_stride;
-            comptime setIfNotDefault(
-                &json_buffer.stepMode,
-                buffer,
-                "step_mode",
-                getStepModeString(buffer.step_mode),
-            );
-            comptime var vert_attrs: []const JsonVertAttr = &.{};
-            inline for (buffer.attributes) |attr| {
-                comptime var json_attr: JsonVertAttr = .{
-                    .format = comptime getVertexFormatString(attr.format),
-                    .offset = attr.offset,
-                    .shaderLocation = attr.shader_location,
-                };
-                vert_attrs = vert_attrs ++ [_]JsonVertAttr{json_attr};
+fn initJsonDescType(comptime DescType: type) type {
+    comptime var json_info = @typeInfo(DescType);
+    switch (json_info) {
+        .Int, .Float, .Bool => {},
+        .Enum => {
+            json_info = @typeInfo([]const u8);
+        },
+        .Pointer => |P| {
+            json_info.Pointer.child = initJsonDescType(P.child);
+        },
+        .Array => |A| {
+            json_info.Array.child = initJsonDescType(A.child);
+        },
+        .Optional => |O| {
+            json_info.Optional.child = initJsonDescType(O.child);
+        },
+        .Union => |U| {
+            comptime var json_fields: []const std.builtin.TypeInfo.UnionField = &.{};
+            inline for (U.fields) |desc_field| {
+                comptime var json_field = desc_field;
+                json_field.field_type = initJsonDescType(desc_field.field_type);
+                json_fields = json_fields ++ [_]std.builtin.TypeInfo.UnionField{json_field};
             }
-            json_buffer.attributes = vert_attrs;
 
-            vert_buffers = vert_buffers ++ [_]JsonVertLayout{json_buffer};
-        }
-        json.vertex.buffers = vert_buffers;
-    }
-
-    if (comptime hasNonDefaultFields(desc.primitive)) {
-        comptime var json_primitive: JsonPrimState = .{};
-        comptime setIfNotDefault(
-            &json_primitive.topology,
-            desc.primitive,
-            "topology",
-            getPrimitiveTopologyString(desc.primitive.topology),
-        );
-        comptime setIfNotDefault(
-            &json_primitive.stripIndexFormat,
-            desc.primitive,
-            "strip_index_format",
-            getIndexFormatString(desc.primitive.strip_index_format),
-        );
-        comptime setIfNotDefault(
-            &json_primitive.frontFace,
-            desc.primitive,
-            "front_face",
-            getFrontFaceString(desc.primitive.front_face),
-        );
-        comptime setIfNotDefault(
-            &json_primitive.cullMode,
-            desc.primitive,
-            "cull_mode",
-            getCullModeString(desc.primitive.cull_mode),
-        );
-        json.primitive = json_primitive;
-    }
-
-    if (desc.depth_stencil) |depth_stencil| {
-        comptime var json_depth_stencil: JsonDepthStencilState = .{};
-        json_depth_stencil.format = comptime getTextureFormatString(depth_stencil.format);
-        comptime setIfNotDefault(
-            &json_depth_stencil.depthWriteEnabled,
-            depth_stencil,
-            "depth_write_enabled",
-            depth_stencil.depth_write_enabled,
-        );
-        comptime setIfNotDefault(
-            &json_depth_stencil.depthCompare,
-            depth_stencil,
-            "depth_compare",
-            getCompareFunctionString(depth_stencil.depth_compare),
-        );
-
-        if (comptime hasNonDefaultFields(depth_stencil.stencil_front)) {
-            comptime var json_stencil_front: JsonStencilFaceState = .{};
-            comptime setIfNotDefault(
-                &json_stencil_front.compare,
-                depth_stencil.stencil_front,
-                "compare",
-                getCompareFunctionString(depth_stencil.stencil_front.compare),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_front.failOp,
-                depth_stencil.stencil_front,
-                "fail_op",
-                getStencilOperationString(depth_stencil.stencil_front.fail_op),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_front.depthFailOp,
-                depth_stencil.stencil_front,
-                "depth_fail_op",
-                getStencilOperationString(depth_stencil.stencil_front.depth_fail_op),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_front.passOp,
-                depth_stencil.stencil_front,
-                "pass_op",
-                getStencilOperationString(depth_stencil.stencil_front.pass_op),
-            );
-            json_depth_stencil.stencilFront = json_stencil_front;
-        }
-
-        if (comptime hasNonDefaultFields(depth_stencil.stencil_back)) {
-            comptime var json_stencil_back: JsonStencilFaceState = .{};
-            comptime setIfNotDefault(
-                &json_stencil_back.compare,
-                depth_stencil.stencil_back,
-                "compare",
-                getCompareFunctionString(depth_stencil.stencil_back.compare),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_back.failOp,
-                depth_stencil.stencil_back,
-                "fail_op",
-                getStencilOperationString(depth_stencil.stencil_back.fail_op),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_back.depthFailOp,
-                depth_stencil.stencil_back,
-                "depth_fail_op",
-                getStencilOperationString(depth_stencil.stencil_back.depth_fail_op),
-            );
-            comptime setIfNotDefault(
-                &json_stencil_back.passOp,
-                depth_stencil.stencil_back,
-                "pass_op",
-                getStencilOperationString(depth_stencil.stencil_back.pass_op),
-            );
-            json_depth_stencil.stencilBack = json_stencil_back;
-        }
-
-        comptime setIfNotDefault(
-            &json_depth_stencil.stencilReadMask,
-            depth_stencil,
-            "stencil_read_mask",
-            depth_stencil.stencil_read_mask,
-        );
-
-        comptime setIfNotDefault(
-            &json_depth_stencil.stencilWriteMask,
-            depth_stencil,
-            "stencil_write_mask",
-            depth_stencil.stencil_write_mask,
-        );
-
-        comptime setIfNotDefault(
-            &json_depth_stencil.depthBias,
-            depth_stencil,
-            "depth_bias",
-            depth_stencil.depth_bias,
-        );
-
-        comptime setIfNotDefault(
-            &json_depth_stencil.depthBiasSlopeScale,
-            depth_stencil,
-            "depth_bias_slope_scale",
-            depth_stencil.depth_bias_slope_scale,
-        );
-
-        comptime setIfNotDefault(
-            &json_depth_stencil.depthBiasClamp,
-            depth_stencil,
-            "depth_bias_clamp",
-            depth_stencil.depth_bias_clamp,
-        );
-
-        json.depthStencil = json_depth_stencil;
-    }
-
-    if (comptime hasNonDefaultFields(desc.multisample)) {
-        comptime var json_multisample: JsonMultiState = .{};
-
-        comptime setIfNotDefault(
-            &json_multisample.count,
-            desc.multisample,
-            "count",
-            desc.multisample.count,
-        );
-
-        comptime setIfNotDefault(
-            &json_multisample.mask,
-            desc.multisample,
-            "mask",
-            desc.multisample.mask,
-        );
-
-        comptime setIfNotDefault(
-            &json_multisample.alphaToCoverageEnabled,
-            desc.multisample,
-            "alpha_to_coverage_enabled",
-            desc.multisample.alpha_to_coverage_enabled,
-        );
-
-        json.multisample = json_multisample;
-    }
-
-    if (desc.fragment) |fragment| {
-        comptime var json_fragment: JsonFragState = .{};
-        json_fragment.entryPoint = fragment.entry_point;
-        inline for (fragment.targets) |target| {
-            comptime var json_target: JsonTarget = .{};
-            json_target.format = comptime getTextureFormatString(target.format);
-            if (target.blend) |blend| {
-                comptime var json_blend: JsonBlend = .{};
-                comptime setIfNotDefault(
-                    &json_blend.color.operation,
-                    blend.color,
-                    "operation",
-                    getBlendOperationString(blend.color.operation),
-                );
-                comptime setIfNotDefault(
-                    &json_blend.color.srcFactor,
-                    blend.color,
-                    "src_factor",
-                    getBlendFactorString(blend.color.src_factor),
-                );
-                comptime setIfNotDefault(
-                    &json_blend.color.dstFactor,
-                    blend.color,
-                    "dst_factor",
-                    getBlendFactorString(blend.color.dst_factor),
-                );
-                comptime setIfNotDefault(
-                    &json_blend.alpha.operation,
-                    blend.alpha,
-                    "operation",
-                    getBlendOperationString(blend.alpha.operation),
-                );
-                comptime setIfNotDefault(
-                    &json_blend.alpha.srcFactor,
-                    blend.alpha,
-                    "src_factor",
-                    getBlendFactorString(blend.alpha.src_factor),
-                );
-                comptime setIfNotDefault(
-                    &json_blend.alpha.dstFactor,
-                    blend.alpha,
-                    "dst_factor",
-                    getBlendFactorString(blend.alpha.dst_factor),
-                );
-                json_target.blend = json_blend;
+            json_info.Union.fields = json_fields;
+        },
+        .Struct => |S| {
+            if (S.layout == .Packed) {
+                json_info = @typeInfo(u32);
+            } else {
+                comptime var json_fields: []const std.builtin.TypeInfo.StructField = &.{};
+                inline for (S.fields) |desc_field| {
+                    comptime var json_field = desc_field;
+                    json_field.name = snakeCaseToCamelCase(desc_field.name);
+                    json_field.field_type = initJsonDescType(desc_field.field_type);
+                    const json_field_tag = std.meta.activeTag(@typeInfo(json_field.field_type));
+                    if (json_field_tag != .Optional and desc_field.default_value != null) {
+                        json_field.field_type = @Type(std.builtin.TypeInfo{
+                            .Optional = .{ .child = json_field.field_type },
+                        });
+                    }
+                    json_field.default_value = null;
+                    json_fields = json_fields ++ [_]std.builtin.TypeInfo.StructField{json_field};
+                }
+                json_info.Struct.fields = json_fields;
             }
-            comptime setIfNotDefault(
-                &json_target.writeMask,
-                target,
-                "write_mask",
-                getColorWriteFlags(target.write_mask),
-            );
-            json_fragment.targets = json_fragment.targets ++ &[_]JsonTarget{json_target};
-        }
-        json.fragment = json_fragment;
+        },
+        else => |T| {
+            const name = @tagName(std.meta.activeTag(T));
+            @compileError("Unsupported field type (" ++ name ++ ") for JSON desc type!");
+        },
     }
 
-    return comptime try stringifyComptime(json);
+    return @Type(json_info);
 }
 
-fn stringifyRenderPassDescComptime(comptime desc: gfx.RenderPassDesc) ![]const u8 {
-    const JsonColorLoadValue = union(enum) {
-        loadOp: []const u8,
-        clearColor: []const f64,
-    };
-    const JsonDepthLoadValue = union(enum) {
-        loadOp: []const u8,
-        clearDepth: f32,
-    };
-    const JsonStencilLoadValue = union(enum) {
-        loadOp: []const u8,
-        clearStencil: js.GPUStencilValue,
-    };
-    const JsonColorAttachment = struct {
-        loadValue: JsonColorLoadValue,
-        storeOp: []const u8,
-    };
-    const JsonDepthStencilAttachment = struct {
-        depthLoadValue: JsonDepthLoadValue,
-        depthStoreOp: []const u8,
-        depthReadOnly: ?bool = null,
-        stencilLoadValue: JsonStencilLoadValue,
-        stencilStoreOp: []const u8,
-        stencilReadOnly: ?bool = null,
-    };
-    const JsonTimestampWrite = struct {
-        queryIndex: js.GPUSize32,
-        location: []const u8,
-    };
-    const JsonDesc = struct {
-        colorAttachments: []const JsonColorAttachment = &.{},
-        depthStencilAttachment: ?JsonDepthStencilAttachment = null,
-        timestampWrites: ?[]const JsonTimestampWrite = null,
-    };
-    comptime var json: JsonDesc = .{};
-    inline for (desc.color_attachments) |color_attachment| {
-        json.colorAttachments = json.colorAttachments ++ &[_]JsonColorAttachment{
-            .{
-                .loadValue = switch (color_attachment.load_op) {
-                    .clear => .{
-                        .clearColor = &.{
-                            color_attachment.clear_color.x,
-                            color_attachment.clear_color.y,
-                            color_attachment.clear_color.z,
-                            color_attachment.clear_color.w,
-                        },
-                    },
-                    .load => .{ .loadOp = "load" },
-                },
-                .storeOp = comptime getStoreOpString(color_attachment.store_op),
-            },
-        };
-    }
-    if (desc.depth_stencil_attachment) |depth_stencil_attachment| {
-        json.depthStencilAttachment = .{
-            .depthLoadValue = switch (depth_stencil_attachment.depth_load_op) {
-                .clear => .{
-                    .clearDepth = depth_stencil_attachment.clear_depth,
-                },
-                .load => .{ .loadOp = "load" },
-            },
-            .depthStoreOp = comptime getStoreOpString(
-                depth_stencil_attachment.depth_store_op,
-            ),
-            .stencilLoadValue = switch (depth_stencil_attachment.stencil_load_op) {
-                .clear => .{
-                    .clearStencil = depth_stencil_attachment.clear_stencil,
-                },
-                .load => .{ .loadOp = "load" },
-            },
-            .stencilStoreOp = comptime getStoreOpString(
-                depth_stencil_attachment.stencil_store_op,
-            ),
-        };
-
-        comptime setIfNotDefault(
-            &json.depthStencilAttachment.?.depthReadOnly,
-            depth_stencil_attachment,
-            "depth_read_only",
-            depth_stencil_attachment.depth_read_only,
-        );
-        comptime setIfNotDefault(
-            &json.depthStencilAttachment.?.stencilReadOnly,
-            depth_stencil_attachment,
-            "stencil_read_only",
-            depth_stencil_attachment.stencil_read_only,
-        );
-    }
-
-    if (desc.timestamp_writes.len > 0) {
-        comptime var json_timestamp_writes: []const JsonTimestampWrite = &.{};
-        inline for (desc.timestamp_writes) |timestamp_write| {
-            json_timestamp_writes = json_timestamp_writes ++ &[_]JsonTimestampWrite{
-                .{
-                    .queryIndex = timestamp_write.query_index,
-                    .location = comptime getRenderPassTimestampLocationString(
-                        timestamp_write.location,
-                    ),
-                },
-            };
+fn initJsonDesc(comptime JsonType: type, comptime desc: anytype) JsonType {
+    comptime var json_desc: JsonType = undefined;
+    inline for (@typeInfo(@TypeOf(desc)).Struct.fields) |desc_field, i| {
+        comptime var json_field = @typeInfo(JsonType).Struct.fields[i];
+        if (std.meta.activeTag(@typeInfo(json_field.field_type)) == .Optional and
+            std.meta.eql(desc_field.default_value.?, @field(desc, desc_field.name)))
+        {
+            @field(json_desc, json_field.name) = null;
+        } else {
+            @field(json_desc, json_field.name) = initJsonDescField(
+                json_field.field_type,
+                @field(desc, desc_field.name),
+            );
         }
-        json.timestampWrites = json_timestamp_writes;
     }
 
-    return comptime try stringifyComptime(json);
+    return json_desc;
+}
+
+fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype) JsonFieldType {
+    const json_field_info = @typeInfo(JsonFieldType);
+    const JsonFieldOptionalType = if (std.meta.activeTag(json_field_info) == .Optional)
+        json_field_info.Optional.child
+    else
+        JsonFieldType;
+
+    return switch (@typeInfo(@TypeOf(desc_field))) {
+        .Int, .Float, .Bool => desc_field,
+        .Enum => comptime getEnumNameJs(desc_field),
+        .Pointer => |P| block: {
+            const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Pointer.child;
+            comptime var json_desc_field: JsonFieldOptionalType = undefined;
+            switch (P.size) {
+                .Slice => {
+                    json_desc_field = &.{};
+                    for (desc_field) |desc_field_elem| {
+                        json_desc_field = json_desc_field ++ &[_]JsonFieldOptionalTypeChild{
+                            initJsonDescField(JsonFieldOptionalTypeChild, desc_field_elem),
+                        };
+                    }
+                },
+                else => @compileError("Unsupported pointer size for JSON desc!"),
+            }
+            break :block json_desc_field;
+        },
+        .Array => block: {
+            const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Array.child;
+            comptime var json_desc_field: JsonFieldOptionalType = undefined;
+            for (desc_field) |desc_field_elem, i| {
+                json_desc_field[i] = initJsonDescField(JsonFieldOptionalTypeChild, desc_field_elem);
+            }
+            break :block json_desc_field;
+        },
+        .Optional => initJsonDescField(JsonFieldOptionalType, desc_field.?),
+        .Union => block: {
+            const field_name = @tagName(std.meta.activeTag(desc_field));
+            inline for (json_field_info.Union.fields) |field| {
+                if (std.mem.eql(u8, field.name, field_name)) {
+                    break :block @unionInit(
+                        JsonFieldOptionalType,
+                        field_name,
+                        initJsonDescField(field.field_type, @field(desc_field, field_name)),
+                    );
+                }
+            }
+        },
+        .Struct => |S| block: {
+            if (S.layout == .Packed) {
+                break :block comptime getEnumFlagsJs(desc_field);
+            } else {
+                break :block initJsonDesc(JsonFieldOptionalType, desc_field);
+            }
+        },
+        else => |T| {
+            const name = @tagName(std.meta.activeTag(T));
+            @compileError("Unsupported field type (" ++ name ++ ") for JSON desc!");
+        },
+    };
 }
 
 fn stringifyComptime(value: anytype) ![]const u8 {
@@ -1480,7 +935,7 @@ fn stringifyComptime(value: anytype) ![]const u8 {
     @setEvalBranchQuota(100000);
     comptime var json: [2048]u8 = undefined;
     comptime var buffer_stream = FixedBufferStream.init(json[0..]);
-    comptime try std.json.stringify(
+    try std.json.stringify(
         value,
         .{
             .emit_null_optional_fields = false,
@@ -1490,147 +945,249 @@ fn stringifyComptime(value: anytype) ![]const u8 {
     return &[_]u8{} ++ json[0..buffer_stream.write_index];
 }
 
-fn setIfNotDefault(
-    optional: anytype,
-    check: anytype,
-    comptime check_field_name: []const u8,
-    value: anytype,
-) void {
-    inline for (@typeInfo(@TypeOf(check)).Struct.fields) |field| {
-        if (std.mem.eql(u8, field.name, check_field_name) and
-            !std.meta.eql(field.default_value.?, @field(check, check_field_name)))
-        {
-            optional.* = value;
-            break;
-        }
-    }
+fn testStringifyDescComptime(comptime desc: anytype, comptime expected: []const u8) !void {
+    try std.testing.expectEqualStrings(
+        "{" ++ expected ++ "}",
+        try stringifyDescComptime(desc),
+    );
 }
 
-fn hasNonDefaultFields(value: anytype) bool {
-    inline for (@typeInfo(@TypeOf(value)).Struct.fields) |field| {
-        if (!std.meta.eql(field.default_value.?, @field(value, field.name))) {
-            return true;
-        }
-    }
-    return false;
+test "stringifyAdapterDescComptime" {
+    comptime var str: []const u8 = "";
+    comptime var adapter_desc = gfx.AdapterDesc{};
+    try testStringifyDescComptime(adapter_desc, str);
+
+    adapter_desc.power_preference = .low_power;
+    str = str ++ "\"powerPreference\":\"low-power\"";
+    try testStringifyDescComptime(adapter_desc, str);
+
+    adapter_desc.force_fallback_adapter = true;
+    str = str ++ ",\"forceFallbackAdapter\":true";
+    try testStringifyDescComptime(adapter_desc, str);
 }
 
-fn getPowerPreferenceString(comptime power_preference: gfx.PowerPreference) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(power_preference));
+test "stringifyDeviceDescComptime" {
+    comptime var str: []const u8 = "";
+    comptime var device_desc = gfx.DeviceDesc{};
+    try testStringifyDescComptime(device_desc, str);
+
+    device_desc.label = "hello";
+    str = str ++ "\"label\":\"hello\"";
+    try testStringifyDescComptime(device_desc, str);
+
+    device_desc.required_features = &.{.timestamp_query};
+    str = str ++ ",\"requiredFeatures\":[\"timestamp-query\"]";
+    try testStringifyDescComptime(device_desc, str);
+
+    device_desc.required_limits = .{ .max_vertex_buffers = 4 };
+    str = str ++ ",\"requiredLimits\":{\"maxVertexBuffers\":4}";
+    try testStringifyDescComptime(device_desc, str);
 }
 
-fn getFeatureNameString(comptime feature_name: gfx.FeatureName) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(feature_name));
+test "stringifyBindGroupLayoutDescComptime" {
+    const entries: []const gfx.BindGroupLayoutEntry = &.{
+        .{ .binding = 0, .visibility = .{ .vertex = true }, .sampler = .{} },
+    };
+    const str = "\"entries\":[{\"binding\":0,\"visibility\":1,\"sampler\":{}}]";
+
+    const bind_group_layout_desc = gfx.BindGroupLayoutDesc{ .entries = entries };
+    try testStringifyDescComptime(bind_group_layout_desc, str);
 }
 
-fn getStepModeString(comptime step_mode: gfx.VertexStepMode) []const u8 {
-    return @tagName(step_mode);
+test "stringifyBindGroupDescComptime" {
+    const entries: []const gfx.BindGroupEntry = &.{
+        .{ .binding = 2, .resource_type = .texture_view },
+    };
+    const str = "\"entries\":[{\"binding\":2,\"resourceType\":\"texture-view\"}]";
+
+    const bind_group_desc = gfx.BindGroupDesc{ .entries = entries };
+    try testStringifyDescComptime(bind_group_desc, str);
 }
 
-fn getVertexFormatString(comptime format: gfx.VertexFormat) []const u8 {
-    return @tagName(format);
+test "stringifyRenderPipelineDescComptime" {
+    const render_pipeline_desc: gfx.RenderPipelineDesc = .{
+        .vertex = .{
+            .entry_point = "main",
+            .buffers = &.{
+                .{
+                    .array_stride = 8,
+                    .attributes = &.{.{ .format = .uint8x4, .offset = 2, .shader_location = 1 }},
+                },
+            },
+        },
+        .primitive = .{
+            .topology = .line_list,
+            .strip_index_format = .uint16,
+            .front_face = .cw,
+            .cull_mode = .back,
+        },
+        .depth_stencil = .{
+            .format = .r8unorm,
+            .depth_write_enabled = true,
+            .depth_compare = .never,
+            .stencil_front = .{
+                .compare = .greater,
+                .fail_op = .zero,
+                .depth_fail_op = .increment_wrap,
+                .pass_op = .invert,
+            },
+            .stencil_read_mask = 0,
+        },
+        .multisample = .{
+            .count = 2,
+            .mask = 0,
+            .alpha_to_coverage_enabled = true,
+        },
+        .fragment = .{
+            .entry_point = "main",
+            .targets = &.{
+                .{
+                    .format = .rg8unorm,
+                    .blend = .{
+                        .color = .{
+                            .operation = .min,
+                            .src_factor = .dst,
+                            .dst_factor = .dst_alpha,
+                        },
+                    },
+                    .write_mask = .{
+                        .red = true,
+                        .green = true,
+                        .blue = false,
+                        .alpha = false,
+                    },
+                },
+            },
+        },
+    };
+
+    comptime var str: []const u8 = &.{};
+    str = str ++ "\"vertex\":{\"entryPoint\":\"main\",\"buffers\":[{\"arrayStride\":8";
+    str = str ++ ",\"attributes\":[{\"format\":\"uint8x4\",\"offset\":2,\"shaderLocation\":1}]}]}";
+    str = str ++ ",\"primitive\":{\"topology\":\"line-list\",\"stripIndexFormat\":\"uint16\"";
+    str = str ++ ",\"frontFace\":\"cw\",\"cullMode\":\"back\"}";
+    str = str ++ ",\"depthStencil\":{\"format\":\"r8unorm\",\"depthWriteEnabled\":true";
+    str = str ++ ",\"depthCompare\":\"never\",\"stencilFront\":{\"compare\":\"greater\"";
+    str = str ++ ",\"failOp\":\"zero\",\"depthFailOp\":\"increment-wrap\",\"passOp\":\"invert\"}";
+    str = str ++ ",\"stencilReadMask\":0}";
+    str = str ++ ",\"multisample\":{\"count\":2,\"mask\":0,\"alphaToCoverageEnabled\":true}";
+    str = str ++ ",\"fragment\":{\"entryPoint\":\"main\",\"targets\":[{\"format\":\"rg8unorm\"";
+    str = str ++ ",\"blend\":{\"color\":{\"operation\":\"min\",\"srcFactor\":\"dst\"";
+    str = str ++ ",\"dstFactor\":\"dst-alpha\"}},\"writeMask\":3}]}";
+    try testStringifyDescComptime(render_pipeline_desc, str);
 }
 
-fn getPrimitiveTopologyString(comptime primitive_topology: gfx.PrimitiveTopology) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(primitive_topology));
+test "stringifyRenderPassDescComptime" {
+    const render_pass_desc: gfx.RenderPassDesc = .{
+        .color_attachments = &.{
+            .{
+                .load_value = .{ .load = .load },
+                .store_op = .store,
+            },
+        },
+        .depth_stencil_attachment = .{
+            .depth_load_value = .{ .clear = 0.0 },
+            .depth_store_op = .discard,
+            .depth_read_only = true,
+            .stencil_load_value = .{ .clear = 1 },
+            .stencil_store_op = .store,
+        },
+        .timestamp_writes = &.{
+            .{
+                .query_index = 2,
+                .location = .end,
+            },
+        },
+    };
+
+    comptime var str: []const u8 = "";
+    str = str ++ "\"colorAttachments\":[{\"loadValue\":\"load\",\"storeOp\":\"store\"}]";
+    str = str ++ ",\"depthStencilAttachment\":{\"depthLoadValue\":0.0e+00";
+    str = str ++ ",\"depthStoreOp\":\"discard\",\"depthReadOnly\":true";
+    str = str ++ ",\"stencilLoadValue\":1,\"stencilStoreOp\":\"store\"}";
+    str = str ++ ",\"timestampWrites\":[{\"queryIndex\":2,\"location\":\"end\"}]";
+    try testStringifyDescComptime(render_pass_desc, str);
 }
 
-fn getIndexFormatString(comptime index_format: gfx.IndexFormat) []const u8 {
-    return @tagName(index_format);
-}
-
-fn getFrontFaceString(comptime front_face: gfx.FrontFace) []const u8 {
-    return @tagName(front_face);
-}
-
-fn getCullModeString(comptime cull_mode: gfx.CullMode) []const u8 {
-    return @tagName(cull_mode);
-}
-
-fn getTextureFormatString(comptime texture_format: gfx.TextureFormat) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(texture_format));
-}
-
-fn getCompareFunctionString(comptime compare_function: gfx.CompareFunction) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(compare_function));
-}
-
-fn getStencilOperationString(comptime stencil_operation: gfx.StencilOperation) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(stencil_operation));
-}
-
-fn getBlendOperationString(comptime blend_operation: gfx.BlendOperation) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(blend_operation));
-}
-
-fn getBlendFactorString(comptime blend_factor: gfx.BlendFactor) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(blend_factor));
-}
-
-fn getStoreOpString(comptime store_op: gfx.StoreOp) []const u8 {
-    return @tagName(store_op);
-}
-
-fn getRenderPassTimestampLocationString(comptime loc: gfx.RenderPassTimestampLocation) []const u8 {
-    return @tagName(loc);
-}
-
-fn getTextureDimensionString(comptime texture_dimension: gfx.TextureDimension) []const u8 {
-    return @tagName(texture_dimension);
-}
-
-fn getBufferBindingTypeString(comptime buffer_binding_type: gfx.BufferBindingType) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(buffer_binding_type));
-}
-
-fn getSamplerBindingTypeString(comptime sampler_binding_type: gfx.SamplerBindingType) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(sampler_binding_type));
-}
-
-fn getTextureSampleTypeString(comptime texture_sample_type: gfx.TextureSampleType) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(texture_sample_type));
-}
-
-fn getTextureViewDimensionString(comptime view_dimension: gfx.TextureViewDimension) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(view_dimension));
-}
-
-fn getStorageTextureAccessString(comptime access: gfx.StorageTextureAccess) []const u8 {
-    return replaceUnderscoreWithDash(@tagName(access));
-}
-
-fn replaceUnderscoreWithDash(comptime string: []const u8) []const u8 {
+fn getEnumNameJs(comptime value: anytype) []const u8 {
+    const string = @tagName(value);
     comptime var buf: [string.len]u8 = undefined;
     _ = std.mem.replace(u8, string, "_", "-", buf[0..]);
     return buf[0..];
 }
 
-fn getBufferUsageFlags(comptime buffer_usage: gfx.BufferUsage) js.GPUBufferUsageFlags {
-    return getJsEnumFlags(buffer_usage, js.GPUBufferUsage, js.GPUBufferUsageFlags);
+test "getEnumNameJs" {
+    const EnumTest = enum {
+        nounderscore,
+        has_underscore,
+    };
+    try std.testing.expectEqualStrings(
+        "nounderscore",
+        comptime getEnumNameJs(EnumTest.nounderscore),
+    );
+    try std.testing.expectEqualStrings(
+        "has-underscore",
+        comptime getEnumNameJs(EnumTest.has_underscore),
+    );
 }
 
-fn getTextureUsageFlags(comptime texture_usage: gfx.TextureUsage) js.GPUTextureUsageFlags {
-    return getJsEnumFlags(texture_usage, js.GPUTextureUsage, js.GPUTextureUsageFlags);
-}
-
-fn getColorWriteFlags(comptime color_write_mask: gfx.ColorWriteMask) js.GPUColorWriteFlags {
-    return getJsEnumFlags(color_write_mask, js.GPUColorWrite, js.GPUColorWriteFlags);
-}
-
-fn getShaderStageFlags(comptime shader_stage: gfx.ShaderStage) js.GPUShaderStageFlags {
-    return getJsEnumFlags(shader_stage, js.GPUShaderStage, js.GPUShaderStageFlags);
-}
-
-fn getJsEnumFlags(
-    comptime value: anytype,
-    comptime EnumType: type,
-    comptime FlagType: type,
-) FlagType {
-    comptime var flags: FlagType = 0;
-    inline for (std.meta.fields(@TypeOf(value))) |field| {
-        comptime var js_enum_name_buf: [field.name.len]u8 = undefined;
-        const js_enum_name = comptime std.ascii.upperString(&js_enum_name_buf, field.name);
-        if (@field(value, field.name)) flags |= @enumToInt(@field(EnumType, js_enum_name));
+fn getEnumFlagsJs(comptime value: anytype) js.GPUFlagsConstant {
+    comptime var flags: js.GPUFlagsConstant = 0;
+    inline for (@typeInfo(@TypeOf(value)).Struct.fields) |field, i| {
+        if (@field(value, field.name)) {
+            flags |= 1 << i;
+        }
     }
     return flags;
+}
+
+test "getEnumFlagsJs" {
+    const EnumTest = packed struct {
+        a: bool,
+        b: bool,
+        c: bool,
+    };
+    try std.testing.expectEqual(
+        0,
+        comptime getEnumFlagsJs(EnumTest{ .a = false, .b = false, .c = false }),
+    );
+    try std.testing.expectEqual(
+        1,
+        comptime getEnumFlagsJs(EnumTest{ .a = true, .b = false, .c = false }),
+    );
+    try std.testing.expectEqual(
+        6,
+        comptime getEnumFlagsJs(EnumTest{ .a = false, .b = true, .c = true }),
+    );
+}
+
+fn snakeCaseToCamelCase(comptime string: []const u8) []const u8 {
+    comptime var buf: [string.len]u8 = undefined;
+    comptime var write_index = 0;
+    comptime var write_upper = false;
+    inline for (string) |byte| {
+        if (byte == '_') {
+            write_upper = true;
+        } else {
+            if (write_upper) {
+                buf[write_index] = std.ascii.toUpper(byte);
+                write_upper = false;
+            } else {
+                buf[write_index] = byte;
+            }
+            write_index += 1;
+        }
+    }
+    return &[_]u8{} ++ buf[0..write_index];
+}
+
+test "snakeCaseToCamelCase" {
+    try std.testing.expectEqualStrings(
+        "nounderscore",
+        comptime snakeCaseToCamelCase("nounderscore"),
+    );
+    try std.testing.expectEqualStrings(
+        "hasUnderscore",
+        comptime snakeCaseToCamelCase("has_underscore"),
+    );
 }

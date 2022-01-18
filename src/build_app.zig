@@ -1,6 +1,5 @@
 const build_web = @import("build_web.zig");
 const build_res = @import("build_res.zig");
-const res = @import("res.zig");
 const std = @import("std");
 
 pub const Platform = enum {
@@ -17,17 +16,11 @@ pub const GfxApi = enum {
     webgpu,
 };
 
-pub const BuildResource = struct {
-    kind: res.Kind,
-    path: []const u8,
-    embedded: bool = false,
-};
-
 pub const AppOptions = struct {
     name: []const u8,
     root: []const u8,
     res_dir: []const u8 = "",
-    res: []const BuildResource = &.{},
+    res: []const build_res.BuildResource = &.{},
 };
 
 pub const BuildOptions = struct {
