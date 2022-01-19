@@ -442,7 +442,7 @@ pub const LoadOp = enum {
     load,
 };
 
-pub fn LoadValue(comptime ClearType: type) type {
+fn LoadValue(comptime ClearType: type) type {
     return union(enum) {
         clear: ClearType,
         load: LoadOp,
@@ -463,7 +463,7 @@ pub const ColorAttachment = struct {
     store_op: StoreOp,
 };
 
-pub const cc_clear_color: ColorLoadValue = .{
+pub const default_clear_color: ColorLoadValue = .{
     .clear = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 },
 };
 

@@ -50,11 +50,10 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.loader = try cc.res.Loader.init(res.total_file_size, res.total_file_count);
+    example.loader = try cc.res.Loader.init(res);
     example.game_clock = try cc.time.Timer.start();
-
-    try example.window.init(cc.math.V2u32.make(800, 600), .{});
-    try example.instance.init();
+    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     example.adapter = try example.instance.requestAdapter(&example.surface, .{});
     example.device = try example.adapter.requestDevice(.{});
@@ -106,12 +105,10 @@ pub fn init() !void {
     const vert_shader_bytes = try example.loader.load(res.shader_cube_vert);
     var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
-    try example.device.checkShaderCompile(&vert_shader);
 
     const frag_shader_bytes = try example.loader.load(res.shader_cube_frag);
     var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
-    try example.device.checkShaderCompile(&frag_shader);
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{uniform_layout}, .{});
     defer pipeline_layout.destroy();
@@ -190,7 +187,12 @@ pub fn update() !void {
             .depth_stencil_view = &example.depth_texture_view,
         },
         .{
-            .color_attachments = &.{.{ .load_value = cc.gfx.cc_clear_color, .store_op = .store }},
+            .color_attachments = &.{
+                .{
+                    .load_value = cc.gfx.default_clear_color,
+                    .store_op = .store,
+                },
+            },
             .depth_stencil_attachment = .{
                 .depth_load_value = .{ .clear = 1.0 },
                 .depth_store_op = .store,

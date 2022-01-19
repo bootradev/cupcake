@@ -15,11 +15,11 @@ pub const Window = struct {
     size: math.V2u32,
     id: js.CanvasId,
 
-    pub fn init(window: *Window, size: math.V2u32, comptime desc: app.WindowDesc) !void {
+    pub fn init(size: math.V2u32, comptime desc: app.WindowDesc) !Window {
         if (desc.name.len > 0) {
             js.setWindowTitle(main.wasm_id, desc.name.ptr, desc.name.len);
         }
-        window.* = .{
+        return Window{
             .id = js.createCanvas(main.wasm_id, size.x, size.y),
             .size = size,
         };

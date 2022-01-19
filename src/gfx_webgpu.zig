@@ -1,4 +1,5 @@
 const app = @import("app.zig");
+const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
 const math = @import("math.zig");
@@ -216,7 +217,9 @@ const js = struct {
 };
 
 pub const Instance = struct {
-    pub fn init(_: *Instance) !void {}
+    pub fn init() !Instance {
+        return Instance{};
+    }
     pub fn deinit(_: *Instance) void {}
 
     pub fn createSurface(
@@ -322,17 +325,23 @@ pub const Device = struct {
     }
 
     pub fn createShader(device: *Device, code: []const u8) !Shader {
-        return Shader{ .id = js.createShader(main.wasm_id, device.id, code.ptr, code.len) };
+        const shader = Shader{
+            .id = js.createShader(main.wasm_id, device.id, code.ptr, code.len),
+        };
+        if (cfg.opt_level != .release) {
+            try device.checkShaderCompile(&shader);
+        }
+        return shader;
     }
 
     var shader_compile_frame: anyframe = undefined;
     var shader_compile_result: anyerror!void = undefined;
 
-    pub fn checkShaderCompile(_: *Device, shader: *Shader) !void {
+    pub fn checkShaderCompile(_: *Device, shader: *const Shader) !void {
         try await async checkShaderCompileAsync(shader);
     }
 
-    fn checkShaderCompileAsync(shader: *Shader) !void {
+    fn checkShaderCompileAsync(shader: *const Shader) !void {
         js.checkShaderCompile(main.wasm_id, shader.id);
         suspend {
             shader_compile_frame = @frame();

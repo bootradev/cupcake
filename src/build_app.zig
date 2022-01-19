@@ -87,6 +87,7 @@ pub fn build(builder: *std.build.Builder, build_options: BuildOptions) !void {
     const cfg = builder.addOptions();
     cfg.addOption(Platform, "platform", build_options.platform);
     cfg.addOption(GfxApi, "gfx_api", build_options.gfx_api);
+    cfg.addOption(OptLevel, "opt_level", build_options.opt_level);
     cfg.addOption(std.log.Level, "log_level", build_options.log_level);
     cfg.addOption(bool, "log_enabled", build_options.log_enabled);
     app_lib_exe.step.dependOn(&cfg.step);
