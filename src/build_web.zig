@@ -52,11 +52,28 @@ pub const BuildWebStep = struct {
         const html_file = try lib_dir.createFile(build_web.html_name, .{ .truncate = true });
         defer html_file.close();
 
-        try std.fmt.format(
-            html_file.writer(),
-            @embedFile("../examples/template.html"),
-            .{build_web.wasm_name},
-        );
+        const html_fmt =
+            \\<!DOCTYPE html>
+            \\<html>
+            \\    <head>
+            \\        <meta charset="utf-8">
+            \\        <style>
+            \\            canvas {{
+            \\                border: 1px solid;
+            \\                display: block;
+            \\                margin: 0px auto 0px auto;
+            \\            }}
+            \\        </style>
+            \\    </head>
+            \\    <body>
+            \\        <script src="cupcake.js"></script>
+            \\        <script>
+            \\            run("{s}", null);
+            \\        </script>
+            \\    </body>
+            \\</html>
+        ;
+        try std.fmt.format(html_file.writer(), html_fmt, .{build_web.wasm_name});
 
         const js_file = try lib_dir.createFile(js_name, .{ .truncate = true });
         defer js_file.close();

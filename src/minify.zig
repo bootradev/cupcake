@@ -291,6 +291,58 @@ pub fn js(
     return try ctx.minify();
 }
 
+test "minify js" {
+    const in =
+        \\class TestClass {
+        \\    aField = {};
+        \\    bField = [];
+        \\    aFunction(aParam) {
+        \\        const aVar = aField.bFunction(aParam);
+        \\        return aVar;
+        \\    }
+        \\    bFunction(bParam) {
+        \\        let bVar = bField[11];
+        \\        switch (bVar) {
+        \\            case 0:
+        \\                bVar = "wah";
+        \\                break;
+        \\        }
+        \\        return JSON.parse(bVar);
+        \\    }
+        \\};
+        \\const TestObject = {
+        \\    cField: undefined,
+        \\    dField: new TestClass(),
+        \\    run(cParam, dParam) {
+        \\        const imports = {
+        \\            ...app,
+        \\            ...res
+        \\        };
+        \\        fetch(path)
+        \\            .then(response => response.arrayBuffer())
+        \\            .catch(err => console.log(err));
+        \\    },
+        \\    cFunction() {
+        \\        document.title = "aField";
+        \\    }
+        \\};
+        \\
+    ;
+
+    comptime var out: []const u8 = "";
+    out = out ++ "class a{b={};c=[];aFunction(d){const e=b.bFunction(d);return e;}";
+    out = out ++ "bFunction(f){let g=c[11];switch(g){case 0:g=\"wah\";break;}";
+    out = out ++ "return JSON.parse(g);}};";
+    out = out ++ "const h={i:undefined,j:new TestClass(),run(k,l){const m={...n,...o};";
+    out = out ++ "fetch(p).then(q=>q.arrayBuffer()).catch(r=>console.log(r));},";
+    out = out ++ "cFunction(){document.title=\"aField\";}};";
+
+    const min = try js(in, std.testing.allocator, .release);
+    defer std.testing.allocator.free(min);
+
+    try std.testing.expectEqualStrings(out, min);
+}
+
 pub fn shader(
     src: []const u8,
     allocator: std.mem.Allocator,
@@ -305,4 +357,39 @@ pub fn shader(
     defer ctx.deinit();
 
     return try ctx.minify();
+}
+
+test "minify wgsl" {
+    const in =
+        \\struct Uniforms {
+        \\    mvp : mat4x4<f32>;
+        \\};
+        \\[[binding(0), group(0)]] var<uniform> uniforms : Uniforms;
+        \\struct VertexOutput {
+        \\    [[builtin(position)]] pos : vec4<f32>;
+        \\    [[location(0)]] color: vec4<f32>;
+        \\};
+        \\[[stage(vertex)]]
+        \\fn vs_main(
+        \\    [[location(0)]] pos : vec4<f32>,
+        \\    [[location(1)]] color : vec4<f32>) -> VertexOutput
+        \\{
+        \\    var output : VertexOutput;
+        \\    output.pos = uniforms.mvp * pos;
+        \\    output.color = color;
+        \\    return output;
+        \\}
+        \\
+    ;
+
+    comptime var out: []const u8 = "";
+    out = out ++ "struct a{b:mat4x4<f32>;};[[binding(0),group(0)]]var<uniform>c:a;";
+    out = out ++ "struct d{[[builtin(position)]]e:vec4<f32>;[[location(0)]]f:vec4<f32>;};";
+    out = out ++ "[[stage(vertex)]]fn vs_main([[location(0)]]e:vec4<f32>,";
+    out = out ++ "[[location(1)]]f:vec4<f32>)->d{var g:d;g.e=c.b* e;g.f=f;return g;}";
+
+    const min = try shader(in, std.testing.allocator, .release, .webgpu);
+    defer std.testing.allocator.free(min);
+
+    try std.testing.expectEqualStrings(out, min);
 }

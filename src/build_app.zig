@@ -100,7 +100,7 @@ pub fn build(builder: *std.build.Builder, build_options: BuildOptions) !void {
     };
     const res_pkg = std.build.Pkg{
         .name = "res",
-        .path = std.build.FileSource{ .generated = &build_res_step.generated_file },
+        .path = .{ .generated = &build_res_step.generated_file },
         .dependencies = &.{cupcake_pkg},
     };
     const app_pkg = std.build.Pkg{
