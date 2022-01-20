@@ -1,66 +1,62 @@
-const main = {
+const _main = {
     _wasms: new Objs(),
     _textDecoder: new TextDecoder(),
 
     run(_wasmPath, _canvasParent) {
-        const imports = {};
-        imports.env = {
-            ...app,
-            ...webgpu,
-            ...time,
-            ...res,
-            ...main,
+        const _imports = {};
+        _imports.env = {
+            ..._app,
+            ..._webgpu,
+            ..._time,
+            ..._res,
+            ..._main,
         };
 
         fetch(_wasmPath)
-            .then(response => response.arrayBuffer())
-            .then(arrayBuffer => WebAssembly.instantiate(arrayBuffer, imports))
-            .then(results => {
-                app.setCanvasParent(_canvasParent);
-                const wasmId = main._wasms.insert({
-                    _obj: results.instance.exports,
+            .then(_response => _response.arrayBuffer())
+            .then(_arrayBuffer => WebAssembly.instantiate(_arrayBuffer, _imports))
+            .then(_results => {
+                _app.setCanvasParent(_canvasParent);
+                const _wasmId = _main._wasms.insert({
+                    _obj: _results.instance.exports,
                     _canUpdate: false,
                 });
-                main._wasms.get(wasmId)._obj.init(wasmId);
-                window.requestAnimationFrame(main.update);
+                _main._wasms.get(_wasmId)._obj.init(_wasmId);
+                window.requestAnimationFrame(_main.update);
             })
-            .catch((err) => console.log(err));
+            .catch(_err => console.log(_err));
     },
 
-    update(timestamp) {
-        for (let i = main._wasms.begin(); i < main._wasms.end(); i = main._wasms.next(i)) {
-            if (main._wasms.get(i)._canUpdate) {
-                main._wasms.get(i)._obj.update();
+    update(_timestamp) {
+        //console.log(performance.memory.totalJSHeapSize);
+        for (let _i = _main._wasms.begin();
+            _i < _main._wasms.end();
+            _i = _main._wasms.next(_i))
+        {
+            if (_main._wasms.get(_i)._canUpdate) {
+                _main._wasms.get(_i)._obj.update();
             }
         }
-        window.requestAnimationFrame(main.update);
-    },
-
-    getSlice(_wasmId, _ptr, _len) {
-        return main._wasms.get(_wasmId)._obj.memory.buffer.slice(_ptr, _ptr + _len);
+        window.requestAnimationFrame(_main.update);
     },
 
     u8Array(_wasmId, _ptr, _len) {
-        return new Uint8Array(main.buffer(_wasmId), _ptr, _len);
+        return new Uint8Array(_main._wasms.get(_wasmId)._obj.memory.buffer, _ptr, _len);
     },
 
     u32Array(_wasmId, _ptr, _len) {
-        return new Uint32Array(main.buffer(_wasmId), _ptr, _len);
-    },
-
-    buffer(_wasmId) {
-        return main._wasms.get(_wasmId)._obj.memory.buffer;
+        return new Uint32Array(_main._wasms.get(_wasmId)._obj.memory.buffer, _ptr, _len / 4);
     },
 
     getString(_wasmId, _ptr, _len) {
-        return main._textDecoder.decode(main.getSlice(_wasmId, _ptr, _len));
+        return _main._textDecoder.decode(_main.u8Array(_wasmId, _ptr, _len));
     },
 
     logConsole(_wasmId, _msgPtr, _msgLen) {
-        console.log(main.getString(_wasmId, _msgPtr, _msgLen));
+        console.log(_main.getString(_wasmId, _msgPtr, _msgLen));
     },
 };
 
 function run(_wasmPath, _canvasParent) {
-    main.run(_wasmPath, _canvasParent);
+    _main.run(_wasmPath, _canvasParent);
 }

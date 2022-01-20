@@ -25,11 +25,11 @@ fn loadFileAsync(name: []const u8, file: []u8) !void {
     try load_file_result;
 }
 
-export fn loadFileComplete(err: bool) void {
-    if (err) {
-        load_file_result = error.LoadFileFailed;
-    } else {
+export fn loadFileComplete(success: bool) void {
+    if (success) {
         load_file_result = {};
+    } else {
+        load_file_result = error.LoadFileFailed;
     }
     resume load_file_frame;
 }

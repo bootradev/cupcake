@@ -1,5 +1,5 @@
-const build_web = @import("build_web.zig");
 const build_res = @import("build_res.zig");
+const build_web = @import("build_web.zig");
 const std = @import("std");
 
 pub const Platform = enum {

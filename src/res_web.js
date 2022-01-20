@@ -1,14 +1,14 @@
-const res = {
+const _res = {
     loadFile(_wasmId, _namePtr, _nameLen, _filePtr, _fileLen) {
-        fetch(main.getString(_wasmId, _namePtr, _nameLen))
-            .then(response => response.arrayBuffer())
-            .then(arrayBuffer => {
-                main.u8Array(_wasmId, _filePtr, _fileLen).set(new Uint8Array(arrayBuffer));
-                main._wasms.get(_wasmId)._obj.loadFileComplete(false);
+        fetch(_main.getString(_wasmId, _namePtr, _nameLen))
+            .then(_response => _response.arrayBuffer())
+            .then(_arrayBuffer => {
+                _main.u8Array(_wasmId, _filePtr, _fileLen).set(new Uint8Array(_arrayBuffer));
+                _main._wasms.get(_wasmId)._obj.loadFileComplete(true);
             })
-            .catch(err => {
-                console.log(err);
-                main._wasms.get(_wasmId)._obj.loadFileComplete(true);
+            .catch(_err => {
+                console.log(_err);
+                _main._wasms.get(_wasmId)._obj.loadFileComplete(false);
             });
     }
 };

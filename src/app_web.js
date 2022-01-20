@@ -1,17 +1,17 @@
-const baseWindowTitle = document.title;
+const _BaseWindowTitle = document.title;
 
-const app = {
+const _app = {
     _canvases: new Objs(),
     _canvasParent: document.body,
-    _observer: new IntersectionObserver(function(e) {
-        e.forEach(entry => {
-            for (let i = app._canvases.begin();
-                i < app._canvases.end();
-                i = app._canvases.next(i))
+    _observer: new IntersectionObserver(function(_entries) {
+        _entries.forEach(_entry => {
+            for (let _i = _app._canvases.begin();
+                _i < _app._canvases.end();
+                _i = _app._canvases.next(_i))
             {
-                const canvas = app._canvases.get(i);
-                if (canvas._obj === entry.target) {
-                    main._wasms.get(canvas._wasmId)._canUpdate = entry.isIntersecting;
+                const _canvas = _app._canvases.get(_i);
+                if (_canvas._obj === _entry.target) {
+                    _main._wasms.get(_canvas._wasmId)._canUpdate = _entry.isIntersecting;
                 }
             }
         });
@@ -19,28 +19,32 @@ const app = {
 
     setWindowTitle(_wasmId, _titlePtr, _titleLen) {
         document.title = _titleLen > 0 ?
-            main.getString(_wasmId, _titlePtr, _titleLen) :
-            baseWindowTitle;
+            _main.getString(_wasmId, _titlePtr, _titleLen) :
+            _BaseWindowTitle;
     },
 
     setCanvasParent(_canvasParent) {
-        app._canvasParent = _canvasParent === null ?
+        _app._canvasParent = _canvasParent === null ?
             document.body :
             document.getElementById(_canvasParent);
     },
 
     createCanvas(_wasmId, _width, _height) {
-        const canvas = document.createElement("canvas");
-        canvas.width = _width;
-        canvas.height = _height;
-        app._canvasParent.appendChild(canvas);
-        app._observer.observe(canvas);
-        return app._canvases.insert({ _obj: canvas, _wasmId: _wasmId, _parent: app._canvasParent});
+        const _canvas = document.createElement("canvas");
+        _canvas.width = _width;
+        _canvas.height = _height;
+        _app._canvasParent.appendChild(_canvas);
+        _app._observer.observe(_canvas);
+        return _app._canvases.insert({
+            _obj: _canvas,
+            _wasmId: _wasmId,
+            _parent: _app._canvasParent
+        });
     },
     
     destroyCanvas(_canvasId) {
-        const canvas = app._canvases.get(_canvasId);
-        canvas._parent.removeChild(canvas._obj);
-        app._canvases.remove(_canvasId);
+        const _canvas = _app._canvases.get(_canvasId);
+        _canvas._parent.removeChild(_canvas._obj);
+        _app._canvases.remove(_canvasId);
     },
 };

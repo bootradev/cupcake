@@ -154,7 +154,8 @@ const js = struct {
         wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         buffer_id: BufferId,
-        index_format_id: u32,
+        index_format_ptr: [*]const u8,
+        index_format_len: usize,
         offset: usize,
         size: usize,
     ) void;
@@ -641,11 +642,13 @@ pub const RenderPass = packed struct {
         offset: usize,
         size: usize,
     ) void {
+        const index_format_name = comptime getEnumNameJs(index_format);
         js.setIndexBuffer(
             main.wasm_id,
             render_pass.id,
             buffer.id,
-            @enumToInt(index_format),
+            index_format_name.ptr,
+            index_format_name.len,
             offset,
             size,
         );
