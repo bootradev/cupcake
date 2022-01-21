@@ -19,6 +19,7 @@ const quad_data = struct {
 };
 
 const Example = struct {
+    loader: cc.res.Loader,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -33,8 +34,9 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    try example.window.init(cc.math.V2u32.make(800, 600), .{});
-    try example.instance.init();
+    example.loader = try cc.res.Loader.init(res);
+    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
     example.adapter = try example.instance.requestAdapter(&example.surface, .{});
     example.device = try example.adapter.requestDevice(.{});
@@ -60,11 +62,13 @@ pub fn init() !void {
         .{ .usage = .{ .index = true } },
     );
 
-    var vert_shader = try example.device.createShader(res.@"texture_vert.wgsl");
+    const vert_shader_bytes = try example.loader.load(res.shader_texture_vert);
+    var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
     try example.device.checkShaderCompile(&vert_shader);
 
-    var frag_shader = try example.device.createShader(res.@"texture_frag.wgsl");
+    const frag_shader_bytes = try example.loader.load(res.shader_texture_frag);
+    var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
     try example.device.checkShaderCompile(&frag_shader);
 
@@ -115,7 +119,11 @@ pub fn update() !void {
     var command_encoder = example.device.createCommandEncoder();
     var render_pass = command_encoder.beginRenderPass(
         .{ .color_views = &.{swapchain_view} },
-        .{ .color_attachments = &.{.{ .load_op = .clear, .store_op = .store }} },
+        .{
+            .color_attachments = &.{
+                .{ .load_value = cc.gfx.default_clear_color, .store_op = .store },
+            },
+        },
     );
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
