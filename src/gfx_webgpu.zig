@@ -614,7 +614,11 @@ pub const RenderPass = packed struct {
         group: *BindGroup,
         dynamic_offsets: ?[]const u32,
     ) void {
-        const offsets = if (dynamic_offsets) |offsets| std.mem.sliceAsBytes(offsets) else &[_]u8{};
+        const offsets = if (dynamic_offsets) |offsets|
+            std.mem.sliceAsBytes(offsets)
+        else
+            &[_]u8{};
+
         js.setBindGroup(
             main.wasm_id,
             render_pass.id,
@@ -772,12 +776,11 @@ pub const Queue = packed struct {
 
 fn stringifyDescComptime(comptime desc: anytype) ![]const u8 {
     @setEvalBranchQuota(100000);
-    const JsonDescType = comptime initJsonDescType(@TypeOf(desc));
-    const json = comptime initJsonDesc(JsonDescType, desc);
+    const json = comptime initJsonDesc(JsonDescType(@TypeOf(desc)), desc);
     return comptime try stringifyComptime(json);
 }
 
-fn initJsonDescType(comptime DescType: type) type {
+fn JsonDescType(comptime DescType: type) type {
     comptime var json_info = @typeInfo(DescType);
     switch (json_info) {
         .Int, .Float, .Bool => {},
@@ -785,19 +788,19 @@ fn initJsonDescType(comptime DescType: type) type {
             json_info = @typeInfo([]const u8);
         },
         .Pointer => |P| {
-            json_info.Pointer.child = initJsonDescType(P.child);
+            json_info.Pointer.child = JsonDescType(P.child);
         },
         .Array => |A| {
-            json_info.Array.child = initJsonDescType(A.child);
+            json_info.Array.child = JsonDescType(A.child);
         },
         .Optional => |O| {
-            json_info.Optional.child = initJsonDescType(O.child);
+            json_info.Optional.child = JsonDescType(O.child);
         },
         .Union => |U| {
             comptime var json_fields: []const std.builtin.TypeInfo.UnionField = &.{};
             inline for (U.fields) |desc_field| {
                 comptime var json_field = desc_field;
-                json_field.field_type = initJsonDescType(desc_field.field_type);
+                json_field.field_type = JsonDescType(desc_field.field_type);
                 json_fields = json_fields ++ [_]std.builtin.TypeInfo.UnionField{json_field};
             }
 
@@ -811,7 +814,7 @@ fn initJsonDescType(comptime DescType: type) type {
                 inline for (S.fields) |desc_field| {
                     comptime var json_field = desc_field;
                     json_field.name = snakeCaseToCamelCase(desc_field.name);
-                    json_field.field_type = initJsonDescType(desc_field.field_type);
+                    json_field.field_type = JsonDescType(desc_field.field_type);
                     const json_field_tag = std.meta.activeTag(@typeInfo(json_field.field_type));
                     if (json_field_tag != .Optional and desc_field.default_value != null) {
                         json_field.field_type = @Type(std.builtin.TypeInfo{
@@ -882,7 +885,10 @@ fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype)
             const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Array.child;
             comptime var json_desc_field: JsonFieldOptionalType = undefined;
             for (desc_field) |desc_field_elem, i| {
-                json_desc_field[i] = initJsonDescField(JsonFieldOptionalTypeChild, desc_field_elem);
+                json_desc_field[i] = initJsonDescField(
+                    JsonFieldOptionalTypeChild,
+                    desc_field_elem,
+                );
             }
             break :block json_desc_field;
         },
@@ -1075,7 +1081,8 @@ test "stringifyRenderPipelineDescComptime" {
 
     comptime var str: []const u8 = &.{};
     str = str ++ "\"vertex\":{\"entryPoint\":\"main\",\"buffers\":[{\"arrayStride\":8";
-    str = str ++ ",\"attributes\":[{\"format\":\"uint8x4\",\"offset\":2,\"shaderLocation\":1}]}]}";
+    str = str ++ ",\"attributes\":[{\"format\":\"uint8x4\",\"offset\":2";
+    str = str ++ ",\"shaderLocation\":1}]}]}";
     str = str ++ ",\"primitive\":{\"topology\":\"line-list\",\"stripIndexFormat\":\"uint16\"";
     str = str ++ ",\"frontFace\":\"cw\",\"cullMode\":\"back\"}";
     str = str ++ ",\"depthStencil\":{\"format\":\"r8unorm\",\"depthWriteEnabled\":true";
