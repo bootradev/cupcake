@@ -1,7 +1,7 @@
 const api = switch (cfg.platform) {
     .web => @import("res_web.zig"),
 };
-const build_res = @import("build_res.zig");
+const build_app = @import("build_app.zig");
 const cfg = @import("cfg");
 const mem = @import("mem.zig");
 const std = @import("std");
@@ -18,7 +18,7 @@ pub const Data = union(enum) {
 };
 
 pub const Resource = struct {
-    kind: build_res.Kind,
+    res_type: build_app.ResType,
     data: Data,
 };
 

@@ -102,11 +102,11 @@ pub fn init() !void {
         .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.shader_cube_vert);
+    const vert_shader_bytes = try example.loader.load(res.cube_vert_shader);
     var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
 
-    const frag_shader_bytes = try example.loader.load(res.shader_cube_frag);
+    const frag_shader_bytes = try example.loader.load(res.cube_frag_shader);
     var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
 

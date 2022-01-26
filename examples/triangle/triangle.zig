@@ -30,11 +30,11 @@ pub fn init() !void {
         .{ .format = swapchain_format },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.shader_triangle_vert);
+    const vert_shader_bytes = try example.loader.load(res.triangle_vert_shader);
     var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
 
-    const frag_shader_bytes = try example.loader.load(res.shader_triangle_frag);
+    const frag_shader_bytes = try example.loader.load(res.triangle_frag_shader);
     var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
 

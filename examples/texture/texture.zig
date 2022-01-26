@@ -62,15 +62,16 @@ pub fn init() !void {
         .{ .usage = .{ .index = true } },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.shader_texture_vert);
+    const vert_shader_bytes = try example.loader.load(res.texture_vert_shader);
     var vert_shader = try example.device.createShader(vert_shader_bytes);
     defer vert_shader.destroy();
-    try example.device.checkShaderCompile(&vert_shader);
 
-    const frag_shader_bytes = try example.loader.load(res.shader_texture_frag);
+    const frag_shader_bytes = try example.loader.load(res.texture_frag_shader);
     var frag_shader = try example.device.createShader(frag_shader_bytes);
     defer frag_shader.destroy();
-    try example.device.checkShaderCompile(&frag_shader);
+
+    const texture_bytes = try example.loader.load(res.cupcake_texture);
+    std.log.debug("raw size: {}", .{texture_bytes.len});
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
@@ -147,4 +148,5 @@ pub fn deinit() !void {
     example.surface.destroy();
     example.instance.deinit();
     example.window.deinit();
+    example.loader.deinit();
 }

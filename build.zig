@@ -10,14 +10,14 @@ const Example = enum {
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .triangle;
 
-    var app_options: build_app.AppOptions = switch (example) {
+    var app_manifest: build_app.AppManifest = switch (example) {
         .triangle => .{
             .name = "triangle",
             .root = "examples/triangle/triangle.zig",
             .res_dir = "examples/triangle",
             .res = &.{
-                .{ .kind = .shader, .path = "triangle_vert.wgsl", .embedded = true },
-                .{ .kind = .shader, .path = "triangle_frag.wgsl", .embedded = true },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "triangle_vert.wgsl" },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "triangle_frag.wgsl" },
             },
         },
         .cube => .{
@@ -25,8 +25,8 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/cube/cube.zig",
             .res_dir = "examples/cube",
             .res = &.{
-                .{ .kind = .shader, .path = "cube_vert.wgsl", .embedded = true },
-                .{ .kind = .shader, .path = "cube_frag.wgsl", .embedded = true },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "cube_vert.wgsl" },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "cube_frag.wgsl" },
             },
         },
         .texture => .{
@@ -34,11 +34,12 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/texture/texture.zig",
             .res_dir = "examples/texture",
             .res = &.{
-                .{ .kind = .shader, .path = "texture_vert.wgsl", .embedded = true },
-                .{ .kind = .shader, .path = "texture_frag.wgsl", .embedded = true },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "texture_vert.wgsl" },
+                .{ .res_type = .shader, .file_type = .embedded, .path = "texture_frag.wgsl" },
+                .{ .res_type = .texture, .file_type = .file, .path = "cupcake.png" },
             },
         },
     };
 
-    try build_app.build(builder, build_app.BuildOptions.init(builder, app_options));
+    try build_app.build(builder, app_manifest);
 }

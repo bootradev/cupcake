@@ -338,7 +338,7 @@ pub const Device = struct {
     var shader_compile_frame: anyframe = undefined;
     var shader_compile_result: anyerror!void = undefined;
 
-    pub fn checkShaderCompile(_: *Device, shader: *const Shader) !void {
+    fn checkShaderCompile(_: *Device, shader: *const Shader) !void {
         try await async checkShaderCompileAsync(shader);
     }
 

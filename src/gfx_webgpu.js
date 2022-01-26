@@ -106,7 +106,7 @@ const _webgpu = {
             .then(_info => {
                 let _err = false;
                 for (let _i = 0; _i < _info.messages.length; ++_i) {
-                    const _msg = _info.messages[i];
+                    const _msg = _info.messages[_i];
                     console.log("line:", _msg.lineNum, "col:", _msg.linePos, _msg.message);
                     _err |= _msg.type == "error";
                 }

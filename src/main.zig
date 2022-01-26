@@ -10,11 +10,15 @@ pub fn log(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (cfg.log_enabled) {
+    if (cfg.log_level != .disabled) {
         api.log(message_level, scope, format, args);
     }
 }
 
-pub const log_level = @intToEnum(std.log.Level, @enumToInt(cfg.log_level));
+pub const log_level = switch (cfg.log_level) {
+    .debug => .debug,
+    .warn => .warn,
+    .err, .disabled => .err,
+};
 
 usingnamespace api.main;
