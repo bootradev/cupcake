@@ -2,7 +2,6 @@ const cc = @import("cupcake");
 const res = @import("res");
 
 const Example = struct {
-    loader: cc.res.Loader,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -15,7 +14,6 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.loader = try cc.res.Loader.init(res);
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -30,12 +28,12 @@ pub fn init() !void {
         .{ .format = swapchain_format },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.triangle_vert_shader);
-    var vert_shader = try example.device.createShader(vert_shader_bytes);
+    const vert_shader_res = try cc.res.load(res.triangle_vert_shader, .{});
+    var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_bytes = try example.loader.load(res.triangle_frag_shader);
-    var frag_shader = try example.device.createShader(frag_shader_bytes);
+    const frag_shader_res = try cc.res.load(res.triangle_frag_shader, .{});
+    var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
@@ -93,5 +91,4 @@ pub fn deinit() !void {
     example.surface.destroy();
     example.instance.deinit();
     example.window.deinit();
-    example.loader.deinit();
 }

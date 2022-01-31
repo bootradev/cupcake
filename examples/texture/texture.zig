@@ -19,7 +19,7 @@ const quad_data = struct {
 };
 
 const Example = struct {
-    loader: cc.res.Loader,
+    file_allocator: cc.mem.BumpAllocator,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -34,7 +34,7 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.loader = try cc.res.Loader.init(res);
+    example.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(&example.window, .{});
@@ -62,16 +62,22 @@ pub fn init() !void {
         .{ .usage = .{ .index = true } },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.texture_vert_shader);
-    var vert_shader = try example.device.createShader(vert_shader_bytes);
+    const vert_shader_res = try cc.res.load(res.texture_vert_shader, .{});
+    var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_bytes = try example.loader.load(res.texture_frag_shader);
-    var frag_shader = try example.device.createShader(frag_shader_bytes);
+    const frag_shader_res = try cc.res.load(res.texture_frag_shader, .{});
+    var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    const texture_bytes = try example.loader.load(res.cupcake_texture);
-    std.log.debug("raw size: {}", .{texture_bytes.len});
+    const texture_res = try cc.res.load(
+        res.cupcake_texture,
+        .{
+            .file_allocator = example.file_allocator.allocator(),
+            .res_allocator = example.file_allocator.allocator(),
+        },
+    );
+    std.log.debug("width: {}, height: {}", .{ texture_res.width, texture_res.height });
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
     defer pipeline_layout.destroy();
@@ -148,5 +154,5 @@ pub fn deinit() !void {
     example.surface.destroy();
     example.instance.deinit();
     example.window.deinit();
-    example.loader.deinit();
+    example.file_allocator.deinit();
 }

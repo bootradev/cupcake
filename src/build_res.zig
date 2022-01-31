@@ -1,9 +1,69 @@
 const build_app = @import("build_app.zig");
 const minify = @import("minify.zig");
+const serde = @import("serde.zig");
 const stb = @cImport({
     @cInclude("stb_image.h");
 });
 const std = @import("std");
+
+pub const Res = struct {
+    Type: type,
+    data: Data,
+
+    pub const Data = union(enum) {
+        file: struct {
+            path: []const u8,
+            size: usize,
+        },
+        embedded: []const u8,
+    };
+};
+
+pub const ShaderRes = struct {
+    data: []const u8,
+};
+
+pub const TextureRes = struct {
+    width: u32,
+    height: u32,
+    data: []const u8,
+};
+
+const BuildResult = struct {
+    data: []const u8,
+    var_name: []const u8,
+    file_name: []const u8,
+    type_name: []const u8,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        resource: anytype,
+        res: build_app.ManifestRes,
+        file_name_suffix: ?[]const u8,
+    ) !BuildResult {
+        const data = try serde.serialize(allocator, resource);
+        const var_name = try getVarName(allocator, res);
+        const file_name = if (file_name_suffix) |suffix| block: {
+            break :block try std.mem.concat(allocator, u8, &.{ var_name, "_", suffix });
+        } else var_name;
+        const type_name = @typeName(@TypeOf(resource));
+
+        return BuildResult{
+            .data = data,
+            .var_name = var_name,
+            .file_name = file_name,
+            .type_name = type_name,
+        };
+    }
+
+    pub fn deinit(build_info: BuildResult, allocator: std.mem.Allocator) void {
+        if (build_info.var_name.ptr != build_info.file_name.ptr) {
+            allocator.free(build_info.file_name);
+        }
+        allocator.free(build_info.var_name);
+        allocator.free(build_info.data);
+    }
+};
 
 pub const log_level = .info;
 
@@ -19,27 +79,27 @@ pub fn main() !void {
 
     std.log.info("building manifest {s}", .{manifest_path});
 
-    @setEvalBranchQuota(2500);
+    @setEvalBranchQuota(10000);
     const manifest_bytes = try readFile(allocator, &std.fs.cwd(), manifest_path);
     defer allocator.free(manifest_bytes);
     const manifest = try std.json.parse(
-        build_app.BuildManifest,
+        build_app.Manifest,
         &std.json.TokenStream.init(manifest_bytes),
         .{ .allocator = allocator },
     );
-    defer std.json.parseFree(build_app.BuildManifest, manifest, .{ .allocator = allocator });
+    defer std.json.parseFree(build_app.Manifest, manifest, .{ .allocator = allocator });
 
     const res_dir_path = try std.fs.path.join(
         allocator,
-        &.{ manifest.build_root_path, manifest.app.res_dir },
+        &.{ manifest.build_root_path, manifest.res_dir },
     );
     defer allocator.free(res_dir_path);
 
     var res_dir = try std.fs.cwd().openDir(res_dir_path, .{});
     defer res_dir.close();
 
-    const manifest_dir_path = std.fs.path.dirname(manifest.manifest_pkg_path) orelse
-        return error.InvalidPkgPath;
+    const manifest_dir_path = std.fs.path.dirname(manifest.pkg_path) orelse
+        return error.InvalidManifestPkgPath;
 
     var manifest_dir = try std.fs.cwd().makeOpenPath(manifest_dir_path, .{});
     defer manifest_dir.close();
@@ -59,9 +119,7 @@ pub fn main() !void {
 
     try writer.print("const cc = @import(\"cupcake\");\n", .{});
 
-    var total_file_ids: usize = 0;
-    var total_file_size: usize = 0;
-    for (manifest.app.res) |res| {
+    for (manifest.res) |res| {
         const res_bytes = try readFile(allocator, &res_dir, res.path);
         defer allocator.free(res_bytes);
 
@@ -69,62 +127,45 @@ pub fn main() !void {
             .shader => buildShader,
             .texture => buildTexture,
         };
-        const write_bytes = try build_fn(allocator, manifest, res_bytes);
-        defer allocator.free(write_bytes);
-
-        const res_name = try getResName(allocator, res);
-        defer allocator.free(res_name);
-
-        const res_file_name = switch (res.res_type) {
-            .shader => try std.mem.concat(
-                allocator,
-                u8,
-                &.{ res_name, "_", @tagName(manifest.gfx_api) },
-            ),
-            else => try allocator.dupe(u8, res_name),
-        };
-        defer allocator.free(res_file_name);
+        const build_result = try build_fn(allocator, manifest, res, res_bytes);
+        defer build_result.deinit(allocator);
 
         var write_dir: std.fs.Dir = undefined;
-        try writer.print("pub const {s} = cc.res.Resource{{ ", .{res_name});
-        try writer.print(".res_type = .{s}, ", .{@tagName(res.res_type)});
+        try writer.print("pub const {s} = cc.build_res.Res{{ ", .{build_result.var_name});
+        try writer.print(".Type = cc.build_res.{s}, ", .{build_result.type_name});
         switch (res.file_type) {
             .embedded => {
                 try writer.print(
                     ".data = .{{ .embedded = @embedFile(\"{s}\") }} ",
-                    .{res_file_name},
+                    .{build_result.file_name},
                 );
                 write_dir = manifest_dir;
             },
             .file => {
                 try writer.print(
-                    ".data = .{{ .file = .{{ .id = {}, .path = \"{s}\", .size = {} }} }}",
-                    .{ total_file_ids, res_file_name, write_bytes.len },
+                    ".data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }}",
+                    .{ build_result.file_name, build_result.data.len },
                 );
                 write_dir = install_dir;
-                total_file_ids += 1;
-                total_file_size += write_bytes.len;
             },
         }
         try writer.print("}};\n", .{});
-        try write_dir.writeFile(res_file_name, write_bytes);
+        try write_dir.writeFile(build_result.file_name, build_result.data);
 
         const res_path = try res_dir.realpathAlloc(allocator, res.path);
         defer allocator.free(res_path);
-        const write_path = try write_dir.realpathAlloc(allocator, res_file_name);
+        const write_path = try write_dir.realpathAlloc(allocator, build_result.file_name);
         defer allocator.free(write_path);
         std.log.info(
             "{s} ({s}): {s} -> {s}",
-            .{ res_name, @tagName(res.file_type), res_path, write_path },
+            .{ build_result.var_name, @tagName(res.file_type), res_path, write_path },
         );
     }
-    try writer.print("pub const total_file_count = {};\n", .{total_file_ids});
-    try writer.print("pub const total_file_size = {};\n", .{total_file_size});
 
-    std.log.info("writing package {s}", .{manifest.manifest_pkg_path});
+    std.log.info("writing package {s}", .{manifest.pkg_path});
 
     try std.fs.cwd().writeFile(
-        manifest.manifest_pkg_path,
+        manifest.pkg_path,
         pkg_contents.items,
     );
 
@@ -137,22 +178,28 @@ pub fn main() !void {
 
 fn buildShader(
     allocator: std.mem.Allocator,
-    manifest: build_app.BuildManifest,
+    manifest: build_app.Manifest,
+    res: build_app.ManifestRes,
     res_bytes: []const u8,
-) ![]const u8 {
-    return try minify.shader(res_bytes, allocator, .debug, manifest.gfx_api);
+) !BuildResult {
+    const shader_bytes = try minify.shader(res_bytes, allocator, .debug, manifest.gfx_api);
+    defer allocator.free(shader_bytes);
+
+    const shader_resource: ShaderRes = .{ .data = shader_bytes };
+
+    return try BuildResult.init(allocator, shader_resource, res, @tagName(manifest.gfx_api));
 }
 
 fn buildTexture(
     allocator: std.mem.Allocator,
-    manifest: build_app.BuildManifest,
+    _: build_app.Manifest,
+    res: build_app.ManifestRes,
     res_bytes: []const u8,
-) ![]const u8 {
-    _ = manifest;
-    var width: i32 = undefined;
-    var height: i32 = undefined;
-    var channels: i32 = undefined;
-    const bytes = stb.stbi_load_from_memory(
+) !BuildResult {
+    var width: c_int = undefined;
+    var height: c_int = undefined;
+    var channels: c_int = undefined;
+    const texture_bytes = stb.stbi_load_from_memory(
         res_bytes.ptr,
         @intCast(c_int, res_bytes.len),
         &width,
@@ -160,22 +207,28 @@ fn buildTexture(
         &channels,
         0,
     );
-    defer stb.stbi_image_free(bytes);
-    const bytes_slice = bytes[0..@intCast(usize, width * height * channels)];
-    return try allocator.dupe(u8, bytes_slice);
+    defer stb.stbi_image_free(texture_bytes);
+
+    const texture_resource: TextureRes = .{
+        .width = @intCast(u32, width),
+        .height = @intCast(u32, height),
+        .data = texture_bytes[0..@intCast(usize, width * height * channels)],
+    };
+
+    return try BuildResult.init(allocator, texture_resource, res, null);
 }
 
 fn buildWeb(
     allocator: std.mem.Allocator,
-    manifest: build_app.BuildManifest,
+    manifest: build_app.Manifest,
     install_dir: *std.fs.Dir,
 ) !void {
     std.log.info("building web files", .{});
 
-    const html_name = try std.mem.concat(allocator, u8, &.{ manifest.app.name, ".html" });
+    const html_name = try std.mem.concat(allocator, u8, &.{ manifest.name, ".html" });
     defer allocator.free(html_name);
 
-    const wasm_name = try std.mem.concat(allocator, u8, &.{ manifest.app.name, ".wasm" });
+    const wasm_name = try std.mem.concat(allocator, u8, &.{ manifest.name, ".wasm" });
     defer allocator.free(wasm_name);
 
     const html_file = try install_dir.createFile(html_name, .{ .truncate = true });
@@ -255,7 +308,7 @@ fn buildWeb(
     std.log.info("js bindings -> {s}", .{js_path});
 }
 
-fn getResName(allocator: std.mem.Allocator, res: build_app.Res) ![]const u8 {
+fn getVarName(allocator: std.mem.Allocator, res: build_app.ManifestRes) ![]const u8 {
     const res_path_no_ext = block: {
         const index = std.mem.lastIndexOfScalar(u8, res.path, '.') orelse
             break :block res.path[0..];

@@ -46,35 +46,38 @@ pub const GfxApi = enum {
     pub usingnamespace JsonEnumString(GfxApi);
 };
 
-pub const ResType = enum {
-    shader,
-    texture,
-
-    pub usingnamespace JsonEnumString(@This());
-};
-
-pub const FileType = enum {
-    embedded,
-    file,
-
-    pub usingnamespace JsonEnumString(@This());
-};
-
-pub const Res = struct {
+pub const ManifestRes = struct {
     res_type: ResType,
     file_type: FileType,
     path: []const u8,
+
+    pub const ResType = enum {
+        shader,
+        texture,
+
+        pub usingnamespace JsonEnumString(@This());
+    };
+
+    pub const FileType = enum {
+        embedded,
+        file,
+
+        pub usingnamespace JsonEnumString(@This());
+    };
 };
 
-pub const AppManifest = struct {
+pub const ManifestDesc = struct {
     name: []const u8,
     root: []const u8,
     res_dir: []const u8 = "",
-    res: []const Res = &.{},
+    res: []const ManifestRes = &.{},
 };
 
-pub const BuildManifest = struct {
-    app: AppManifest,
+pub const Manifest = struct {
+    name: []const u8,
+    root: []const u8,
+    res_dir: []const u8,
+    res: []const ManifestRes,
     platform: Platform,
     opt_level: OptLevel,
     gfx_api: GfxApi,
@@ -82,12 +85,15 @@ pub const BuildManifest = struct {
     build_root_path: []const u8,
     install_prefix: []const u8,
     dest_dir: []const u8,
-    manifest_out_path: []const u8,
-    manifest_pkg_path: []const u8,
+    out_path: []const u8,
+    pkg_path: []const u8,
 
-    fn init(builder: *std.build.Builder, app_manifest: AppManifest) !BuildManifest {
-        var build_manifest: BuildManifest = undefined;
-        build_manifest.app = app_manifest;
+    fn init(builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
+        var build_manifest: Manifest = undefined;
+        build_manifest.name = desc.name;
+        build_manifest.root = desc.root;
+        build_manifest.res_dir = desc.res_dir;
+        build_manifest.res = desc.res;
         build_manifest.platform = builder.option(
             Platform,
             "platform",
@@ -113,7 +119,7 @@ pub const BuildManifest = struct {
         build_manifest.install_prefix = builder.install_prefix;
         build_manifest.dest_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ app_manifest.name, @tagName(build_manifest.platform) },
+            &.{ build_manifest.name, @tagName(build_manifest.platform) },
         );
 
         const manifest_dir_path = try std.fs.path.join(
@@ -122,7 +128,7 @@ pub const BuildManifest = struct {
                 builder.build_root,
                 builder.cache_root,
                 "res",
-                app_manifest.name,
+                build_manifest.name,
             },
         );
         defer builder.allocator.free(manifest_dir_path);
@@ -131,7 +137,7 @@ pub const BuildManifest = struct {
             builder.allocator,
             u8,
             &.{
-                app_manifest.name,
+                build_manifest.name,
                 "_",
                 @tagName(build_manifest.platform),
                 "_",
@@ -154,14 +160,14 @@ pub const BuildManifest = struct {
         );
         defer builder.allocator.free(pkg_name);
 
-        build_manifest.manifest_out_path = try std.fs.path.join(
+        build_manifest.out_path = try std.fs.path.join(
             builder.allocator,
             &.{
                 manifest_dir_path,
                 out_name,
             },
         );
-        build_manifest.manifest_pkg_path = try std.fs.path.join(
+        build_manifest.pkg_path = try std.fs.path.join(
             builder.allocator,
             &.{
                 manifest_dir_path,
@@ -177,22 +183,22 @@ const default_platform = .web;
 const default_opt_level = .debug;
 const default_gfx_api = .webgpu;
 
-pub fn build(builder: *std.build.Builder, app_manifest: AppManifest) !void {
-    var build_manifest = try BuildManifest.init(builder, app_manifest);
+pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
+    var build_manifest = try Manifest.init(builder, desc);
 
     try buildRes(builder, build_manifest);
     try buildApp(builder, build_manifest);
 }
 
-fn buildRes(builder: *std.build.Builder, build_manifest: BuildManifest) !void {
-    const write_manifest_step = try WriteManifestStep.init(builder, build_manifest);
+fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
+    const write_manifest_step = try WriteManifestStep.init(builder, manifest);
     const header_only_libs = [_]HeaderOnlyLib{
         .{ .define = "STB_IMAGE_IMPLEMENTATION", .path = "stb_image.h" },
     };
     const header_only_libs_step = try HeaderOnlyLibStep.init(builder, &header_only_libs);
 
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
-    build_res_exe.setBuildMode(build_manifest.opt_level.getBuildMode());
+    build_res_exe.setBuildMode(manifest.opt_level.getBuildMode());
     build_res_exe.setTarget(std.zig.CrossTarget.fromTarget(builtin.target));
     build_res_exe.linkLibC();
     build_res_exe.addIncludeDir("ext/stb");
@@ -201,24 +207,24 @@ fn buildRes(builder: *std.build.Builder, build_manifest: BuildManifest) !void {
 
     var build_res_run = build_res_exe.run();
     build_res_run.step.dependOn(&write_manifest_step.step);
-    build_res_run.addArg(build_manifest.manifest_out_path);
+    build_res_run.addArg(manifest.out_path);
 
     const build_res_step = builder.step("res", "Build resources");
     build_res_step.dependOn(&build_res_run.step);
 }
 
-fn buildApp(builder: *std.build.Builder, build_manifest: BuildManifest) !void {
-    const app_lib_exe = switch (build_manifest.platform) {
-        .web => try buildWeb(builder, build_manifest),
+fn buildApp(builder: *std.build.Builder, manifest: Manifest) !void {
+    const app_lib_exe = switch (manifest.platform) {
+        .web => try buildWeb(builder, manifest),
     };
-    app_lib_exe.setBuildMode(build_manifest.opt_level.getBuildMode());
-    app_lib_exe.override_dest_dir = .{ .custom = build_manifest.dest_dir };
+    app_lib_exe.setBuildMode(manifest.opt_level.getBuildMode());
+    app_lib_exe.override_dest_dir = .{ .custom = manifest.dest_dir };
 
     const cfg = builder.addOptions();
-    cfg.addOption(Platform, "platform", build_manifest.platform);
-    cfg.addOption(GfxApi, "gfx_api", build_manifest.gfx_api);
-    cfg.addOption(OptLevel, "opt_level", build_manifest.opt_level);
-    cfg.addOption(LogLevel, "log_level", build_manifest.log_level);
+    cfg.addOption(Platform, "platform", manifest.platform);
+    cfg.addOption(GfxApi, "gfx_api", manifest.gfx_api);
+    cfg.addOption(OptLevel, "opt_level", manifest.opt_level);
+    cfg.addOption(LogLevel, "log_level", manifest.log_level);
     app_lib_exe.step.dependOn(&cfg.step);
 
     const cfg_pkg = cfg.getPackage("cfg");
@@ -229,12 +235,12 @@ fn buildApp(builder: *std.build.Builder, build_manifest: BuildManifest) !void {
     };
     const res_pkg = std.build.Pkg{
         .name = "res",
-        .path = .{ .path = build_manifest.manifest_pkg_path },
+        .path = .{ .path = manifest.pkg_path },
         .dependencies = &.{cupcake_pkg},
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
-        .path = .{ .path = build_manifest.app.root },
+        .path = .{ .path = manifest.root },
         .dependencies = &.{ cfg_pkg, res_pkg, cupcake_pkg },
     };
 
@@ -247,10 +253,10 @@ fn buildApp(builder: *std.build.Builder, build_manifest: BuildManifest) !void {
 
 fn buildWeb(
     builder: *std.build.Builder,
-    build_manifest: BuildManifest,
+    build_manifest: Manifest,
 ) !*std.build.LibExeObjStep {
     const app_lib_exe = builder.addSharedLibrary(
-        build_manifest.app.name,
+        build_manifest.name,
         "src/main.zig",
         .unversioned,
     );
@@ -264,14 +270,14 @@ fn buildWeb(
 const WriteManifestStep = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
-    build_manifest: BuildManifest,
+    manifest: Manifest,
 
-    pub fn init(builder: *std.build.Builder, build_manifest: BuildManifest) !*WriteManifestStep {
+    pub fn init(builder: *std.build.Builder, manifest: Manifest) !*WriteManifestStep {
         const write_manifest = try builder.allocator.create(WriteManifestStep);
         write_manifest.* = .{
             .builder = builder,
             .step = std.build.Step.init(.custom, "write manifest", builder.allocator, make),
-            .build_manifest = build_manifest,
+            .manifest = manifest,
         };
         return write_manifest;
     }
@@ -282,13 +288,13 @@ const WriteManifestStep = struct {
         var manifest_contents = std.ArrayList(u8).init(write_manifest.builder.allocator);
         defer manifest_contents.deinit();
 
-        try std.json.stringify(write_manifest.build_manifest, .{}, manifest_contents.writer());
+        try std.json.stringify(write_manifest.manifest, .{}, manifest_contents.writer());
 
-        if (std.fs.path.dirname(write_manifest.build_manifest.manifest_out_path)) |dir| {
+        if (std.fs.path.dirname(write_manifest.manifest.out_path)) |dir| {
             try std.fs.cwd().makePath(dir);
         }
         try std.fs.cwd().writeFile(
-            write_manifest.build_manifest.manifest_out_path,
+            write_manifest.manifest.out_path,
             manifest_contents.items,
         );
     }

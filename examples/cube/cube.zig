@@ -30,7 +30,6 @@ const cube_data = struct {
 };
 
 const Example = struct {
-    loader: cc.res.Loader,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -50,7 +49,6 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.loader = try cc.res.Loader.init(res);
     example.game_clock = try cc.time.Timer.start();
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
@@ -102,12 +100,12 @@ pub fn init() !void {
         .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
     );
 
-    const vert_shader_bytes = try example.loader.load(res.cube_vert_shader);
-    var vert_shader = try example.device.createShader(vert_shader_bytes);
+    const vert_shader_res = try cc.res.load(res.cube_vert_shader, .{});
+    var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_bytes = try example.loader.load(res.cube_frag_shader);
-    var frag_shader = try example.device.createShader(frag_shader_bytes);
+    const frag_shader_res = try cc.res.load(res.cube_frag_shader, .{});
+    var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
     var pipeline_layout = try example.device.createPipelineLayout(&.{uniform_layout}, .{});

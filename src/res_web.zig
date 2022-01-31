@@ -1,7 +1,7 @@
 const main = @import("main.zig");
 
 const js = struct {
-    extern fn loadFile(
+    extern fn readFile(
         wasm_id: main.WasmId,
         name_ptr: [*]const u8,
         name_len: usize,
@@ -13,19 +13,19 @@ const js = struct {
 var load_file_frame: anyframe = undefined;
 var load_file_result: anyerror!void = undefined;
 
-pub fn loadFile(name: []const u8, file: []u8) !void {
-    try await async loadFileAsync(name, file);
+pub fn readFile(name: []const u8, file: []u8) !void {
+    try await async readFileAsync(name, file);
 }
 
-fn loadFileAsync(name: []const u8, file: []u8) !void {
-    js.loadFile(main.wasm_id, name.ptr, name.len, file.ptr, file.len);
+fn readFileAsync(name: []const u8, file: []u8) !void {
+    js.readFile(main.wasm_id, name.ptr, name.len, file.ptr, file.len);
     suspend {
         load_file_frame = @frame();
     }
     try load_file_result;
 }
 
-export fn loadFileComplete(success: bool) void {
+export fn readFileComplete(success: bool) void {
     if (success) {
         load_file_result = {};
     } else {

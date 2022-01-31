@@ -1,4 +1,5 @@
 const app = @import("app.zig");
+const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
@@ -325,9 +326,14 @@ pub const Device = struct {
         return swapchain;
     }
 
-    pub fn createShader(device: *Device, code: []const u8) !Shader {
+    pub fn createShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
         const shader = Shader{
-            .id = js.createShader(main.wasm_id, device.id, code.ptr, code.len),
+            .id = js.createShader(
+                main.wasm_id,
+                device.id,
+                shader_res.data.ptr,
+                shader_res.data.len,
+            ),
         };
         if (cfg.opt_level != .release) {
             try device.checkShaderCompile(&shader);
@@ -828,7 +834,7 @@ fn JsonDescType(comptime DescType: type) type {
             }
         },
         else => |T| {
-            const name = @tagName(std.meta.activeTag(T));
+            const name = @tagName(T);
             @compileError("Unsupported field type (" ++ name ++ ") for JSON desc type!");
         },
     }
@@ -894,7 +900,7 @@ fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype)
         },
         .Optional => initJsonDescField(JsonFieldOptionalType, desc_field.?),
         .Union => block: {
-            const field_name = @tagName(std.meta.activeTag(desc_field));
+            const field_name = @tagName(desc_field);
             inline for (json_field_info.Union.fields) |field| {
                 if (std.mem.eql(u8, field.name, field_name)) {
                     break :block @unionInit(
@@ -913,7 +919,7 @@ fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype)
             }
         },
         else => |T| {
-            const name = @tagName(std.meta.activeTag(T));
+            const name = @tagName(T);
             @compileError("Unsupported field type (" ++ name ++ ") for JSON desc!");
         },
     };

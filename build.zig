@@ -10,7 +10,7 @@ const Example = enum {
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .triangle;
 
-    var app_manifest: build_app.AppManifest = switch (example) {
+    var manifest_desc: build_app.ManifestDesc = switch (example) {
         .triangle => .{
             .name = "triangle",
             .root = "examples/triangle/triangle.zig",
@@ -41,5 +41,5 @@ pub fn build(builder: *std.build.Builder) !void {
         },
     };
 
-    try build_app.build(builder, app_manifest);
+    try build_app.build(builder, manifest_desc);
 }
