@@ -525,7 +525,7 @@ pub const TextureDimension = enum {
     @"3d",
 };
 
-pub const Extent3D = struct {
+pub const Extent3d = struct {
     width: u32,
     height: u32,
     depth_or_array_layers: u32 = 1,
@@ -645,4 +645,53 @@ pub const TextureFormat = enum {
     astc_12x10_unorm_srgb,
     astc_12x12_unorm,
     astc_12x12_unorm_srgb,
+};
+
+pub const AddressMode = enum {
+    clamp_to_edge,
+    repeat,
+    mirror_repeat,
+};
+
+pub const FilterMode = enum {
+    nearest,
+    linear,
+};
+
+pub const SamplerDesc = struct {
+    address_mode_u: AddressMode = .clamp_to_edge,
+    address_mode_v: AddressMode = .clamp_to_edge,
+    address_mode_w: AddressMode = .clamp_to_edge,
+    mag_filter: FilterMode = .nearest,
+    min_filter: FilterMode = .nearest,
+    mipmap_filter: FilterMode = .nearest,
+    lod_min_clamp: f32 = 0,
+    lod_max_clamp: f32 = 0,
+    compare: CompareFunction = .@"undefined",
+    max_anisotropy: u32 = 1,
+};
+
+pub const TextureAspect = enum {
+    all,
+    stencil_only,
+    depth_only,
+};
+
+pub const Origin3d = struct {
+    x: u32 = 0,
+    y: u32 = 0,
+    z: u32 = 0,
+};
+
+pub const ImageCopyTexture = struct {
+    texture: *Texture,
+    mip_level: u32 = 0,
+    origin: Origin3d = .{},
+    aspect: TextureAspect = .all,
+};
+
+pub const ImageDataLayout = struct {
+    offset: usize = 0,
+    bytes_per_row: u32,
+    rows_per_image: u32,
 };

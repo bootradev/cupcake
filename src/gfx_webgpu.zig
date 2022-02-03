@@ -190,6 +190,25 @@ const js = struct {
         data_len: usize,
         data_offset: GPUSize64,
     ) void;
+    extern fn queueWriteTexture(
+        wasm_id: main.WasmId,
+        device_id: DeviceId,
+        texture_id: TextureId,
+        mip_level: GPUIntegerCoordinate,
+        origin_x: GPUIntegerCoordinate,
+        origin_y: GPUIntegerCoordinate,
+        origin_z: GPUIntegerCoordinate,
+        aspect_ptr: [*]const u8,
+        aspect_len: usize,
+        data_ptr: [*]const u8,
+        data_len: usize,
+        layout_offset: GPUSize64,
+        layout_bytes_per_row: GPUSize32,
+        layout_rows_per_image: GPUSize32,
+        size_width: GPUIntegerCoordinate,
+        size_height: GPUIntegerCoordinate,
+        size_depth_or_array_layers: GPUIntegerCoordinate,
+    ) void;
     extern fn createBuffer(
         wasm_id: main.WasmId,
         device_id: DeviceId,
@@ -214,6 +233,13 @@ const js = struct {
         sample_count: GPUSize32,
     ) TextureId;
     extern fn destroyTexture(texture_id: TextureId) void;
+    extern fn createSampler(
+        wasm_id: main.WasmId,
+        device_id: DeviceId,
+        json_ptr: [*]const u8,
+        json_len: usize,
+    ) SamplerId;
+    extern fn destroySampler(sampler_id: SamplerId) void;
     extern fn createTextureView(texture_id: TextureId) TextureViewId;
     extern fn destroyTextureView(texture_view_id: TextureViewId) void;
 };
@@ -311,7 +337,7 @@ pub const Device = struct {
         comptime desc: gfx.SwapchainDesc,
     ) !Swapchain {
         const swapchain = Swapchain{ .id = js.createContext(surface.id) };
-        const texture_format = comptime getEnumNameJs(desc.format);
+        const texture_format = comptime getEnumNameJsComptime(desc.format);
         const texture_usage = comptime getEnumFlagsJs(desc.usage);
         js.configure(
             main.wasm_id,
@@ -483,11 +509,11 @@ pub const Device = struct {
 
     pub fn createTexture(
         device: *Device,
-        size: gfx.Extent3D,
+        size: gfx.Extent3d,
         comptime desc: gfx.TextureDesc,
     ) !Texture {
-        const dimension = comptime getEnumNameJs(desc.dimension);
-        const format = comptime getEnumNameJs(desc.format);
+        const dimension = comptime getEnumNameJsComptime(desc.dimension);
+        const format = comptime getEnumNameJsComptime(desc.format);
         return Texture{
             .id = js.createTexture(
                 main.wasm_id,
@@ -504,6 +530,11 @@ pub const Device = struct {
                 desc.sample_count,
             ),
         };
+    }
+
+    pub fn createSampler(device: *Device, comptime desc: gfx.SamplerDesc) !Sampler {
+        const json = try stringifyDescComptime(desc);
+        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, json.ptr, json.len) };
     }
 };
 
@@ -539,6 +570,10 @@ pub const TextureView = packed struct {
 
 pub const Sampler = packed struct {
     id: js.SamplerId,
+
+    pub fn destroy(sampler: *Sampler) void {
+        js.destroySampler(sampler.id);
+    }
 };
 
 pub const Shader = packed struct {
@@ -652,7 +687,7 @@ pub const RenderPass = packed struct {
         offset: usize,
         size: usize,
     ) void {
-        const index_format_name = comptime getEnumNameJs(index_format);
+        const index_format_name = comptime getEnumNameJsComptime(index_format);
         js.setIndexBuffer(
             main.wasm_id,
             render_pass.id,
@@ -773,6 +808,35 @@ pub const Queue = packed struct {
         );
     }
 
+    pub fn writeTexture(
+        queue: *Queue,
+        destination: gfx.ImageCopyTexture,
+        data: []const u8,
+        data_layout: gfx.ImageDataLayout,
+        size: gfx.Extent3d,
+    ) void {
+        const aspect_name = getEnumNameJsRuntime(destination.aspect);
+        js.queueWriteTexture(
+            main.wasm_id,
+            queue.id,
+            destination.texture.id,
+            destination.mip_level,
+            destination.origin.x,
+            destination.origin.y,
+            destination.origin.z,
+            aspect_name.ptr,
+            aspect_name.len,
+            data.ptr,
+            data.len,
+            data_layout.offset,
+            data_layout.bytes_per_row,
+            data_layout.rows_per_image,
+            size.width,
+            size.height,
+            size.depth_or_array_layers,
+        );
+    }
+
     pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
         for (command_buffers) |command_buffer| {
             js.queueSubmit(main.wasm_id, queue.id, command_buffer.id);
@@ -870,7 +934,7 @@ fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype)
 
     return switch (@typeInfo(@TypeOf(desc_field))) {
         .Int, .Float, .Bool => desc_field,
-        .Enum => comptime getEnumNameJs(desc_field),
+        .Enum => comptime getEnumNameJsComptime(desc_field),
         .Pointer => |P| block: {
             const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Pointer.child;
             comptime var json_desc_field: JsonFieldOptionalType = undefined;
@@ -1134,30 +1198,52 @@ test "stringifyRenderPassDescComptime" {
     try testStringifyDescComptime(render_pass_desc, str);
 }
 
-fn getEnumNameJs(comptime value: anytype) []const u8 {
+fn getEnumNameJsComptime(comptime value: anytype) []const u8 {
     const string = @tagName(value);
     comptime var buf: [string.len]u8 = undefined;
     _ = std.mem.replace(u8, string, "_", "-", buf[0..]);
     return buf[0..];
 }
 
-test "getEnumNameJs" {
+test "getEnumNameJsComptime" {
     const EnumTest = enum {
         nounderscore,
         has_underscore,
     };
     try std.testing.expectEqualStrings(
         "nounderscore",
-        comptime getEnumNameJs(EnumTest.nounderscore),
+        comptime getEnumNameJsComptime(EnumTest.nounderscore),
     );
     try std.testing.expectEqualStrings(
         "has-underscore",
-        comptime getEnumNameJs(EnumTest.has_underscore),
+        comptime getEnumNameJsComptime(EnumTest.has_underscore),
     );
 }
 
-fn getEnumFlagsJs(comptime value: anytype) js.GPUFlagsConstant {
-    comptime var flags: js.GPUFlagsConstant = 0;
+threadlocal var enum_name_buf: [32]u8 = undefined;
+fn getEnumNameJsRuntime(value: anytype) []const u8 {
+    const string = @tagName(value);
+    _ = std.mem.replace(u8, string, "_", "-", enum_name_buf[0..string.len]);
+    return enum_name_buf[0..string.len];
+}
+
+test "getEnumNameJsRuntime" {
+    const EnumTest = enum {
+        nounderscore,
+        has_underscore,
+    };
+    try std.testing.expectEqualStrings(
+        "nounderscore",
+        getEnumNameJsRuntime(EnumTest.nounderscore),
+    );
+    try std.testing.expectEqualStrings(
+        "has-underscore",
+        getEnumNameJsRuntime(EnumTest.has_underscore),
+    );
+}
+
+fn getEnumFlagsJs(value: anytype) js.GPUFlagsConstant {
+    var flags: js.GPUFlagsConstant = 0;
     inline for (@typeInfo(@TypeOf(value)).Struct.fields) |field, i| {
         if (@field(value, field.name)) {
             flags |= 1 << i;

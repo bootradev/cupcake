@@ -6,8 +6,7 @@ const js = struct {
     extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
 };
 
-var log_buf: [2048]u8 = undefined;
-
+threadlocal var log_buf: [2048]u8 = undefined;
 pub fn log(
     comptime message_level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),

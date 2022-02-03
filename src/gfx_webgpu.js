@@ -160,10 +160,10 @@ const _webgpu = {
                     }
                     break;
                 case _BindTypeSampler:
-                    _desc.entries[_i].resource.sampler = _webgpu._samplers.get(_resourceIds[_i]);
+                    _desc.entries[_i].resource = _webgpu._samplers.get(_resourceIds[_i]);
                     break;
                 case _BindTypeTextureView:
-                    _desc.entries[_i].textureView = _webgpu.getTextureView(_resourceIds[_i]);
+                    _desc.entries[_i].resource = _webgpu.getTextureView(_resourceIds[_i]);
                     break;
             }
         }
@@ -405,6 +405,44 @@ const _webgpu = {
         );
     },
 
+    queueWriteTexture(
+        _wasmId,
+        _deviceId,
+        _textureId,
+        _mipLevel,
+        _originX,
+        _originY,
+        _originZ,
+        _aspectPtr,
+        _aspectLen,
+        _dataPtr,
+        _dataLen,
+        _layoutOffset,
+        _layoutBytesPerRow,
+        _layoutRowsPerImage,
+        _sizeWidth,
+        _sizeHeight,
+        _sizeDepthOrArrayLayers
+    ) {
+        const _destination = {};
+        _destination.texture = _webgpu._textures.get(_textureId)._obj;
+        _destination.mipLevel = _mipLevel;
+        _destination.origin = [_originX, _originY, _originZ];
+        _destination.aspect = _main.getString(_wasmId, _aspectPtr, _aspectLen);
+
+        const _dataLayout = {};
+        _dataLayout.offset = _dataPtr + _layoutOffset;
+        _dataLayout.bytesPerRow = _layoutBytesPerRow;
+        _dataLayout.rowsPerImage = _layoutRowsPerImage;
+
+        _webgpu._devices.get(_deviceId).queue.writeTexture(
+            _destination,
+            _main._wasms.get(_wasmId)._obj.memory.buffer,
+            _dataLayout,
+            [_sizeWidth, _sizeHeight, _sizeDepthOrArrayLayers]
+        );
+    },
+
     createBuffer(_wasmId, _deviceId, _size, _usage, _dataPtr, _dataLen) {
         const _mappedAtCreation = _dataLen > 0;
 
@@ -462,6 +500,18 @@ const _webgpu = {
     destroyTexture(_textureId) {
         // texture destroy should be in the api, but it's not available in chrome canary yet...
         _webgpu._textures.remove(_textureId);
+    },
+
+    createSampler(_wasmId, _deviceId, _jsonPtr, _jsonLen) {
+        return _webgpu._samplers.insert(
+            _webgpu._devices.get(_deviceId).createSampler(
+                JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen))
+            )
+        );
+    },
+
+    destroySampler(_samplerId) {
+        _webgpu._samplers.remove(_samplerId);
     },
 
     createTextureView(_textureId) {
