@@ -49,23 +49,16 @@ const js = struct {
         wasm_id: main.WasmId,
         device_id: DeviceId,
         context_id: ContextId,
-        format_ptr: [*]const u8,
-        format_len: usize,
-        usage: GPUTextureUsageFlags,
-        width: GPUIntegerCoordinate,
-        height: GPUIntegerCoordinate,
+        bytes_ptr: [*]const u8,
+        bytes_len: usize,
     ) void;
-    extern fn requestAdapter(
-        wasm_id: main.WasmId,
-        json_ptr: [*]const u8,
-        json_len: usize,
-    ) void;
+    extern fn requestAdapter(wasm_id: main.WasmId, bytes_ptr: [*]const u8, bytes_len: usize) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
     extern fn requestDevice(
         wasm_id: main.WasmId,
         adapter_id: AdapterId,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        bytes_ptr: [*]const u8,
+        bytes_len: usize,
     ) void;
     extern fn destroyDevice(device_id: DeviceId) void;
     extern fn createShader(
@@ -79,41 +72,29 @@ const js = struct {
     extern fn createBindGroupLayout(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        desc_bytes_ptr: [*]const u8,
+        desc_bytes_len: usize,
     ) BindGroupLayoutId;
     extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
     extern fn createBindGroup(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        bind_group_layout_id: BindGroupLayoutId,
-        resource_types_ptr: [*]const u8,
-        resource_types_len: usize,
-        resource_ids_ptr: [*]const u8,
-        resource_ids_len: usize,
-        buffer_offsets_ptr: [*]const u8,
-        buffer_offsets_len: usize,
-        buffer_sizes_ptr: [*]const u8,
-        buffer_sizes_len: usize,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        desc_ptr: [*]const u8,
+        desc_len: usize,
     ) BindGroupId;
     extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
     extern fn createPipelineLayout(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        bind_group_layout_ids_ptr: [*]const u8,
-        bind_group_layout_ids_len: usize,
+        desc_ptr: [*]const u8,
+        desc_len: usize,
     ) PipelineLayoutId;
     extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
     extern fn createRenderPipeline(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        pipeline_layout_id: PipelineLayoutId,
-        vert_shader_id: ShaderId,
-        frag_shader_id: ShaderId,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        bytes_ptr: [*]const u8,
+        bytes_len: usize,
     ) RenderPipelineId;
     extern fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
@@ -121,16 +102,8 @@ const js = struct {
     extern fn beginRenderPass(
         wasm_id: main.WasmId,
         command_encoder_id: CommandEncoderId,
-        color_view_ids_ptr: [*]const u8,
-        color_view_ids_len: usize,
-        color_resolve_target_ids_ptr: [*]const u8,
-        color_resolve_target_ids_len: usize,
-        depth_stencil_view_id: TextureViewId,
-        occlusion_query_set_id: QuerySetId,
-        timestamp_query_set_ids_ptr: [*]const u8,
-        timestamp_query_set_ids_len: usize,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        bytes_ptr: [*]const u8,
+        bytes_len: usize,
     ) RenderPassId;
     extern fn setPipeline(
         render_pass_id: RenderPassId,
@@ -212,32 +185,24 @@ const js = struct {
     extern fn createBuffer(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        size: GPUSize64,
-        usage: GPUBufferUsageFlags,
-        data_ptr: [*]const u8,
-        data_len: usize,
+        desc_bytes_ptr: [*]const u8,
+        desc_bytes_len: usize,
+        init_data_ptr: [*]const u8,
+        init_data_len: usize,
     ) BufferId;
     extern fn destroyBuffer(buffer_id: BufferId) void;
     extern fn createTexture(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        usage: GPUTextureUsageFlags,
-        dimension_ptr: [*]const u8,
-        dimension_len: usize,
-        width: GPUIntegerCoordinate,
-        height: GPUIntegerCoordinate,
-        depth_or_array_layers: GPUIntegerCoordinate,
-        format_ptr: [*]const u8,
-        format_len: usize,
-        mip_level_count: GPUIntegerCoordinate,
-        sample_count: GPUSize32,
+        desc_bytes_ptr: [*]const u8,
+        desc_bytes_len: usize,
     ) TextureId;
     extern fn destroyTexture(texture_id: TextureId) void;
     extern fn createSampler(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        json_ptr: [*]const u8,
-        json_len: usize,
+        desc_bytes_ptr: [*]const u8,
+        desc_bytes_len: usize,
     ) SamplerId;
     extern fn destroySampler(sampler_id: SamplerId) void;
     extern fn createTextureView(texture_id: TextureId) TextureViewId;
@@ -253,7 +218,7 @@ pub const Instance = struct {
     pub fn createSurface(
         _: *Instance,
         window: *app.Window,
-        comptime _: gfx.SurfaceDesc,
+        _: gfx.SurfaceDesc,
     ) !Surface {
         return Surface{ .id = window.id };
     }
@@ -263,16 +228,17 @@ pub const Instance = struct {
 
     pub fn requestAdapter(
         _: *Instance,
-        surface: *const Surface,
-        comptime desc: gfx.AdapterDesc,
+        surface: *Surface,
+        desc: gfx.AdapterDesc,
     ) !Adapter {
         _ = surface;
-        const json = try stringifyDescComptime(desc);
-        return try await async requestAdapterAsync(json);
+        return try await async requestAdapterAsync(desc);
     }
 
-    fn requestAdapterAsync(json: []const u8) !Adapter {
-        js.requestAdapter(main.wasm_id, json.ptr, json.len);
+    fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
+        var bytes_buf: [128]u8 = undefined;
+        const bytes = try jsSerialize(desc, &bytes_buf);
+        js.requestAdapter(main.wasm_id, bytes.ptr, bytes.len);
         suspend {
             request_adapter_frame = @frame();
         }
@@ -300,14 +266,15 @@ pub const Adapter = struct {
 
     pub fn requestDevice(
         adapter: *Adapter,
-        comptime desc: gfx.DeviceDesc,
+        desc: gfx.DeviceDesc,
     ) !Device {
-        const json = try stringifyDescComptime(desc);
-        return try await async requestDeviceAsync(adapter, json);
+        return try await async requestDeviceAsync(adapter, desc);
     }
 
-    fn requestDeviceAsync(adapter: *Adapter, json: []const u8) !Device {
-        js.requestDevice(main.wasm_id, adapter.id, json.ptr, json.len);
+    fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
+        var bytes_buf: [1024]u8 = undefined;
+        const bytes = try jsSerialize(desc, &bytes_buf);
+        js.requestDevice(main.wasm_id, adapter.id, bytes.ptr, bytes.len);
         suspend {
             request_device_frame = @frame();
         }
@@ -333,21 +300,17 @@ pub const Device = struct {
     pub fn createSwapchain(
         device: *Device,
         surface: *Surface,
-        size: math.V2u32,
-        comptime desc: gfx.SwapchainDesc,
+        desc: gfx.SwapchainDesc,
     ) !Swapchain {
         const swapchain = Swapchain{ .id = js.createContext(surface.id) };
-        const texture_format = comptime getEnumNameJsComptime(desc.format);
-        const texture_usage = comptime getEnumFlagsJs(desc.usage);
+        var bytes_buf: [128]u8 = undefined;
+        const bytes = try jsSerialize(desc, &bytes_buf);
         js.configure(
             main.wasm_id,
             device.id,
             swapchain.id,
-            texture_format.ptr,
-            texture_format.len,
-            texture_usage,
-            size.x,
-            size.y,
+            bytes.ptr,
+            bytes.len,
         );
         return swapchain;
     }
@@ -389,93 +352,64 @@ pub const Device = struct {
 
     pub fn createBindGroupLayout(
         device: *Device,
-        comptime desc: gfx.BindGroupLayoutDesc,
+        desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
-        const json = try stringifyDescComptime(desc);
+        var desc_bytes_buf: [128]u8 = undefined;
+        var desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return BindGroupLayout{
-            .id = js.createBindGroupLayout(main.wasm_id, device.id, json.ptr, json.len),
+            .id = js.createBindGroupLayout(
+                main.wasm_id,
+                device.id,
+                desc_bytes.ptr,
+                desc_bytes.len,
+            ),
         };
     }
 
     pub fn createBindGroup(
         device: *Device,
-        layout: *const BindGroupLayout,
-        resources: []const gfx.BindGroupResource,
-        comptime desc: gfx.BindGroupDesc,
+        desc: gfx.BindGroupDesc,
     ) !BindGroup {
-        var resource_types: [desc.entries.len]u32 = undefined;
-        var resource_ids: [desc.entries.len]js.ObjectId = undefined;
-        var buffer_offsets: [desc.entries.len]usize = undefined;
-        var buffer_sizes: [desc.entries.len]usize = undefined;
-        inline for (desc.entries) |entry, i| {
-            resource_types[i] = @enumToInt(entry.resource_type);
-            switch (entry.resource_type) {
-                .buffer => {
-                    resource_ids[i] = resources[i].buffer.resource.id;
-                    buffer_offsets[i] = resources[i].buffer.offset;
-                    buffer_sizes[i] = resources[i].buffer.size;
-                },
-                .sampler => {
-                    resource_ids[i] = resources[i].sampler.id;
-                },
-                .texture_view => {
-                    resource_ids[i] = resources[i].texture_view.id;
-                },
-            }
-        }
-        const resource_types_bytes = std.mem.sliceAsBytes(&resource_types);
-        const resource_ids_bytes = std.mem.sliceAsBytes(&resource_ids);
-        const buffer_offsets_bytes = std.mem.sliceAsBytes(&buffer_offsets);
-        const buffer_sizes_bytes = std.mem.sliceAsBytes(&buffer_sizes);
-
-        const json = try stringifyDescComptime(desc);
+        var desc_bytes_buf: [1024]u8 = undefined;
+        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return BindGroup{
             .id = js.createBindGroup(
                 main.wasm_id,
                 device.id,
-                layout.id,
-                resource_types_bytes.ptr,
-                resource_types_bytes.len,
-                resource_ids_bytes.ptr,
-                resource_ids_bytes.len,
-                buffer_offsets_bytes.ptr,
-                buffer_offsets_bytes.len,
-                buffer_sizes_bytes.ptr,
-                buffer_sizes_bytes.len,
-                json.ptr,
-                json.len,
+                desc_bytes.ptr,
+                desc_bytes.len,
             ),
         };
     }
 
     pub fn createPipelineLayout(
         device: *Device,
-        bind_group_layouts: []const BindGroupLayout,
-        comptime _: gfx.PipelineLayoutDesc,
+        desc: gfx.PipelineLayoutDesc,
     ) !PipelineLayout {
-        const bytes = std.mem.sliceAsBytes(bind_group_layouts);
+        var desc_bytes_buf: [128]u8 = undefined;
+        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return PipelineLayout{
-            .id = js.createPipelineLayout(main.wasm_id, device.id, bytes.ptr, bytes.len),
+            .id = js.createPipelineLayout(
+                main.wasm_id,
+                device.id,
+                desc_bytes.ptr,
+                desc_bytes.len,
+            ),
         };
     }
 
     pub fn createRenderPipeline(
         device: *Device,
-        pipeline_layout: *const PipelineLayout,
-        vert_shader: *const Shader,
-        frag_shader: *const Shader,
-        comptime desc: gfx.RenderPipelineDesc,
+        desc: gfx.RenderPipelineDesc,
     ) !RenderPipeline {
-        const json = try stringifyDescComptime(desc);
+        var bytes_buf: [1024]u8 = undefined;
+        const bytes = try jsSerialize(desc, &bytes_buf);
         return RenderPipeline{
             .id = js.createRenderPipeline(
                 main.wasm_id,
                 device.id,
-                pipeline_layout.id,
-                vert_shader.id,
-                frag_shader.id,
-                json.ptr,
-                json.len,
+                bytes.ptr,
+                bytes.len,
             ),
         };
     }
@@ -490,17 +424,19 @@ pub const Device = struct {
 
     pub fn createBuffer(
         device: *Device,
+        desc: gfx.BufferDesc,
         data: ?[]const u8,
-        size: usize,
-        comptime desc: gfx.BufferDesc,
     ) !Buffer {
-        const init_data = if (data) |init_data| init_data else &[_]u8{};
+        // std.mem.alignForward(desc.size, 4),
+        var desc_bytes_buf: [128]u8 = undefined;
+        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
+        const init_data = data orelse &[_]u8{};
         return Buffer{
             .id = js.createBuffer(
                 main.wasm_id,
                 device.id,
-                std.mem.alignForward(size, 4),
-                comptime getEnumFlagsJs(desc.usage),
+                desc_bytes.ptr,
+                desc_bytes.len,
                 init_data.ptr,
                 init_data.len,
             ),
@@ -509,36 +445,33 @@ pub const Device = struct {
 
     pub fn createTexture(
         device: *Device,
-        size: gfx.Extent3d,
-        comptime desc: gfx.TextureDesc,
+        desc: gfx.TextureDesc,
     ) !Texture {
-        const dimension = comptime getEnumNameJsComptime(desc.dimension);
-        const format = comptime getEnumNameJsComptime(desc.format);
+        var desc_bytes_buf: [128]u8 = undefined;
+        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return Texture{
             .id = js.createTexture(
                 main.wasm_id,
                 device.id,
-                comptime getEnumFlagsJs(desc.usage),
-                dimension.ptr,
-                dimension.len,
-                size.width,
-                size.height,
-                size.depth_or_array_layers,
-                format.ptr,
-                format.len,
-                desc.mip_level_count,
-                desc.sample_count,
+                desc_bytes.ptr,
+                desc_bytes.len,
             ),
         };
     }
 
-    pub fn createSampler(device: *Device, comptime desc: gfx.SamplerDesc) !Sampler {
-        const json = try stringifyDescComptime(desc);
-        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, json.ptr, json.len) };
+    pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
+        var desc_bytes_buf: [128]u8 = undefined;
+        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
+        return Sampler{ .id = js.createSampler(
+            main.wasm_id,
+            device.id,
+            desc_bytes.ptr,
+            desc_bytes.len,
+        ) };
     }
 };
 
-pub const Buffer = packed struct {
+pub const Buffer = struct {
     id: js.BufferId,
 
     pub fn destroy(buffer: *Buffer) void {
@@ -546,7 +479,7 @@ pub const Buffer = packed struct {
     }
 };
 
-pub const Texture = packed struct {
+pub const Texture = struct {
     id: js.TextureId,
 
     pub fn createView(texture: *Texture) TextureView {
@@ -560,7 +493,7 @@ pub const Texture = packed struct {
     }
 };
 
-pub const TextureView = packed struct {
+pub const TextureView = struct {
     id: js.TextureViewId,
 
     pub fn destroy(view: *TextureView) void {
@@ -568,7 +501,7 @@ pub const TextureView = packed struct {
     }
 };
 
-pub const Sampler = packed struct {
+pub const Sampler = struct {
     id: js.SamplerId,
 
     pub fn destroy(sampler: *Sampler) void {
@@ -576,7 +509,7 @@ pub const Sampler = packed struct {
     }
 };
 
-pub const Shader = packed struct {
+pub const Shader = struct {
     id: js.ShaderId,
 
     pub fn destroy(shader: *Shader) void {
@@ -584,7 +517,7 @@ pub const Shader = packed struct {
     }
 };
 
-pub const Surface = packed struct {
+pub const Surface = struct {
     id: js.CanvasId,
 
     pub fn getPreferredFormat() gfx.TextureFormat {
@@ -594,7 +527,7 @@ pub const Surface = packed struct {
     pub fn destroy(_: *Surface) void {}
 };
 
-pub const Swapchain = packed struct {
+pub const Swapchain = struct {
     id: js.ContextId,
 
     pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
@@ -610,7 +543,7 @@ pub const Swapchain = packed struct {
     }
 };
 
-pub const BindGroupLayout = packed struct {
+pub const BindGroupLayout = struct {
     id: js.BindGroupLayoutId,
 
     pub fn destroy(bind_group_layout: *BindGroupLayout) void {
@@ -618,7 +551,7 @@ pub const BindGroupLayout = packed struct {
     }
 };
 
-pub const BindGroup = packed struct {
+pub const BindGroup = struct {
     id: js.BindGroupId,
 
     pub fn destroy(bind_group: *BindGroup) void {
@@ -626,7 +559,7 @@ pub const BindGroup = packed struct {
     }
 };
 
-pub const PipelineLayout = packed struct {
+pub const PipelineLayout = struct {
     id: js.PipelineLayoutId,
 
     pub fn destroy(pipeline_layout: *PipelineLayout) void {
@@ -634,7 +567,7 @@ pub const PipelineLayout = packed struct {
     }
 };
 
-pub const RenderPipeline = packed struct {
+pub const RenderPipeline = struct {
     id: js.RenderPipelineId,
 
     pub fn destroy(render_pipeline: *RenderPipeline) void {
@@ -642,7 +575,7 @@ pub const RenderPipeline = packed struct {
     }
 };
 
-pub const RenderPass = packed struct {
+pub const RenderPass = struct {
     id: js.RenderPassId,
 
     pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *RenderPipeline) void {
@@ -683,11 +616,12 @@ pub const RenderPass = packed struct {
     pub fn setIndexBuffer(
         render_pass: *RenderPass,
         buffer: *Buffer,
-        comptime index_format: gfx.IndexFormat,
+        index_format: gfx.IndexFormat,
         offset: usize,
         size: usize,
     ) void {
-        const index_format_name = comptime getEnumNameJsComptime(index_format);
+        var buf: [128]u8 = undefined;
+        const index_format_name = jsSerializeEnumName(index_format, &buf) catch unreachable;
         js.setIndexBuffer(
             main.wasm_id,
             render_pass.id,
@@ -732,62 +666,42 @@ pub const RenderPass = packed struct {
     }
 };
 
-pub const CommandEncoder = packed struct {
+pub const CommandEncoder = struct {
     id: js.CommandEncoderId,
 
     pub fn beginRenderPass(
         command_encoder: *CommandEncoder,
-        args: gfx.RenderPassArgs,
-        comptime desc: gfx.RenderPassDesc,
-    ) RenderPass {
-        const color_views_bytes = std.mem.sliceAsBytes(args.color_views);
-        const color_resolve_targets_bytes = std.mem.sliceAsBytes(args.color_resolve_targets);
-        const depth_stencil_view_id = if (args.depth_stencil_view) |depth_stencil_view|
-            depth_stencil_view.id
-        else
-            js.invalid_id;
-        const occlusion_query_set_id = if (args.occlusion_query_set) |occlusion_query_set|
-            occlusion_query_set.id
-        else
-            js.invalid_id;
-        const timestamp_query_set_ids = std.mem.sliceAsBytes(args.timestamp_query_sets);
-        const json = try stringifyDescComptime(desc);
-
+        desc: gfx.RenderPassDesc,
+    ) !RenderPass {
+        var bytes_buf: [2048]u8 = undefined;
+        const bytes = try jsSerialize(desc, &bytes_buf);
         return RenderPass{
             .id = js.beginRenderPass(
                 main.wasm_id,
                 command_encoder.id,
-                color_views_bytes.ptr,
-                color_views_bytes.len,
-                color_resolve_targets_bytes.ptr,
-                color_resolve_targets_bytes.len,
-                depth_stencil_view_id,
-                occlusion_query_set_id,
-                timestamp_query_set_ids.ptr,
-                timestamp_query_set_ids.len,
-                json.ptr,
-                json.len,
+                bytes.ptr,
+                bytes.len,
             ),
         };
     }
 
     pub fn finish(
         command_encoder: *CommandEncoder,
-        comptime _: gfx.CommandBufferDesc,
+        _: gfx.CommandBufferDesc,
     ) CommandBuffer {
         return CommandBuffer{ .id = js.finishCommandEncoder(command_encoder.id) };
     }
 };
 
-pub const CommandBuffer = packed struct {
+pub const CommandBuffer = struct {
     id: js.CommandBufferId,
 };
 
-pub const QuerySet = packed struct {
+pub const QuerySet = struct {
     id: js.QuerySetId,
 };
 
-pub const Queue = packed struct {
+pub const Queue = struct {
     id: js.DeviceId,
 
     pub fn writeBuffer(
@@ -815,7 +729,8 @@ pub const Queue = packed struct {
         data_layout: gfx.ImageDataLayout,
         size: gfx.Extent3d,
     ) void {
-        const aspect_name = getEnumNameJsRuntime(destination.aspect);
+        var aspect_name_buf: [128]u8 = undefined;
+        const aspect_name = jsSerializeEnumName(destination.aspect, &aspect_name_buf) catch unreachable;
         js.queueWriteTexture(
             main.wasm_id,
             queue.id,
@@ -844,461 +759,150 @@ pub const Queue = packed struct {
     }
 };
 
-fn stringifyDescComptime(comptime desc: anytype) ![]const u8 {
-    @setEvalBranchQuota(100000);
-    const json = comptime initJsonDesc(JsonDescType(@TypeOf(desc)), desc);
-    return comptime try stringifyComptime(json);
+fn jsSerialize(value: anytype, bytes: []u8) ![]u8 {
+    const bytes_begin = bytes;
+    var bytes_end = bytes;
+    try jsSerializeRef(value, &bytes_end);
+    return bytes_begin[0..(@ptrToInt(bytes_end.ptr) - @ptrToInt(bytes_begin.ptr))];
 }
 
-fn JsonDescType(comptime DescType: type) type {
-    comptime var json_info = @typeInfo(DescType);
-    switch (json_info) {
-        .Int, .Float, .Bool => {},
+fn jsSerializeRef(value: anytype, bytes: *[]u8) !void {
+    const bool_marker: u8 = 'b';
+    const int_marker: u8 = 'i';
+    const float_marker: u8 = 'f';
+    const string_marker: u8 = 's';
+    const slice_marker: u8 = 'a';
+    const struct_begin_marker: u8 = 'o';
+    const struct_end_marker: u8 = 'e';
+    const union_marker: u8 = 'u';
+    const max_enum_name_len: usize = 32;
+    const max_field_name_len: usize = 32;
+
+    switch (@typeInfo(@TypeOf(value))) {
+        .Bool => {
+            try jsSerializeBytes(std.mem.asBytes(&bool_marker), bytes);
+            try jsSerializeBytes(std.mem.asBytes(&value), bytes);
+        },
+        .Int => {
+            try jsSerializeBytes(std.mem.asBytes(&int_marker), bytes);
+            try jsSerializeBytes(std.mem.asBytes(&@intCast(u32, value)), bytes);
+        },
+        .Float => {
+            try jsSerializeBytes(std.mem.asBytes(&float_marker), bytes);
+            try jsSerializeBytes(std.mem.asBytes(&@floatCast(f32, value)), bytes);
+        },
         .Enum => {
-            json_info = @typeInfo([]const u8);
+            var buf: [max_enum_name_len]u8 = undefined;
+            try jsSerializeRef(try jsSerializeEnumName(value, &buf), bytes);
+        },
+        .Optional => {
+            try jsSerializeRef(value.?, bytes);
         },
         .Pointer => |P| {
-            json_info.Pointer.child = JsonDescType(P.child);
-        },
-        .Array => |A| {
-            json_info.Array.child = JsonDescType(A.child);
-        },
-        .Optional => |O| {
-            json_info.Optional.child = JsonDescType(O.child);
-        },
-        .Union => |U| {
-            comptime var json_fields: []const std.builtin.TypeInfo.UnionField = &.{};
-            inline for (U.fields) |desc_field| {
-                comptime var json_field = desc_field;
-                json_field.field_type = JsonDescType(desc_field.field_type);
-                json_fields = json_fields ++ [_]std.builtin.TypeInfo.UnionField{json_field};
+            switch (P.size) {
+                .One => try jsSerializeRef(value.*, bytes),
+                .Slice => {
+                    const value_len = @intCast(u32, value.len);
+                    if (P.child == u8) {
+                        try jsSerializeBytes(std.mem.asBytes(&string_marker), bytes);
+                        try jsSerializeBytes(std.mem.asBytes(&value_len), bytes);
+                        try jsSerializeBytes(value, bytes);
+                    } else {
+                        try jsSerializeBytes(std.mem.asBytes(&slice_marker), bytes);
+                        try jsSerializeBytes(std.mem.asBytes(&value_len), bytes);
+                        for (value) |v| {
+                            try jsSerializeRef(v, bytes);
+                        }
+                    }
+                },
+                else => return error.InvalidPointerSize,
             }
-
-            json_info.Union.fields = json_fields;
+        },
+        .Array => {
+            try jsSerializeRef(&value, bytes);
         },
         .Struct => |S| {
             if (S.layout == .Packed) {
-                json_info = @typeInfo(u32);
+                try jsSerializeRef(try jsSerializeFlags(value), bytes);
             } else {
-                comptime var json_fields: []const std.builtin.TypeInfo.StructField = &.{};
-                inline for (S.fields) |desc_field| {
-                    comptime var json_field = desc_field;
-                    json_field.name = snakeCaseToCamelCase(desc_field.name);
-                    json_field.field_type = JsonDescType(desc_field.field_type);
-                    const json_field_tag = std.meta.activeTag(@typeInfo(json_field.field_type));
-                    if (json_field_tag != .Optional and desc_field.default_value != null) {
-                        json_field.field_type = @Type(std.builtin.TypeInfo{
-                            .Optional = .{ .child = json_field.field_type },
-                        });
+                try jsSerializeBytes(std.mem.asBytes(&struct_begin_marker), bytes);
+                inline for (S.fields) |field| {
+                    var field_is_defined = if (field.default_value) |def_val_ptr| block: {
+                        const def_val = @ptrCast(*const field.field_type, def_val_ptr).*;
+                        break :block !std.meta.eql(@field(value, field.name), def_val);
+                    } else true;
+
+                    if (field_is_defined) {
+                        @setEvalBranchQuota(10000);
+                        comptime var buf: [max_field_name_len]u8 = undefined;
+                        try jsSerializeRef(
+                            comptime try jsSerializeFieldName(field.name, &buf),
+                            bytes,
+                        );
+                        try jsSerializeRef(@field(value, field.name), bytes);
                     }
-                    json_field.default_value = null;
-                    json_fields = json_fields ++ [_]std.builtin.TypeInfo.StructField{json_field};
                 }
-                json_info.Struct.fields = json_fields;
+                try jsSerializeBytes(std.mem.asBytes(&struct_end_marker), bytes);
             }
         },
-        else => |T| {
-            const name = @tagName(T);
-            @compileError("Unsupported field type (" ++ name ++ ") for JSON desc type!");
-        },
-    }
-
-    return @Type(json_info);
-}
-
-fn initJsonDesc(comptime JsonType: type, comptime desc: anytype) JsonType {
-    comptime var json_desc: JsonType = undefined;
-    inline for (@typeInfo(@TypeOf(desc)).Struct.fields) |desc_field, i| {
-        comptime var json_field = @typeInfo(JsonType).Struct.fields[i];
-        if (std.meta.activeTag(@typeInfo(json_field.field_type)) == .Optional and
-            std.meta.eql(desc_field.default_value.?, @field(desc, desc_field.name)))
-        {
-            @field(json_desc, json_field.name) = null;
-        } else {
-            @field(json_desc, json_field.name) = initJsonDescField(
-                json_field.field_type,
-                @field(desc, desc_field.name),
-            );
-        }
-    }
-
-    return json_desc;
-}
-
-fn initJsonDescField(comptime JsonFieldType: type, comptime desc_field: anytype) JsonFieldType {
-    const json_field_info = @typeInfo(JsonFieldType);
-    const JsonFieldOptionalType = if (std.meta.activeTag(json_field_info) == .Optional)
-        json_field_info.Optional.child
-    else
-        JsonFieldType;
-
-    return switch (@typeInfo(@TypeOf(desc_field))) {
-        .Int, .Float, .Bool => desc_field,
-        .Enum => comptime getEnumNameJsComptime(desc_field),
-        .Pointer => |P| block: {
-            const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Pointer.child;
-            comptime var json_desc_field: JsonFieldOptionalType = undefined;
-            switch (P.size) {
-                .Slice => {
-                    json_desc_field = &.{};
-                    for (desc_field) |desc_field_elem| {
-                        json_desc_field = json_desc_field ++ &[_]JsonFieldOptionalTypeChild{
-                            initJsonDescField(JsonFieldOptionalTypeChild, desc_field_elem),
-                        };
-                    }
-                },
-                else => @compileError("Unsupported pointer size for JSON desc!"),
-            }
-            break :block json_desc_field;
-        },
-        .Array => block: {
-            const JsonFieldOptionalTypeChild = @typeInfo(JsonFieldOptionalType).Array.child;
-            comptime var json_desc_field: JsonFieldOptionalType = undefined;
-            for (desc_field) |desc_field_elem, i| {
-                json_desc_field[i] = initJsonDescField(
-                    JsonFieldOptionalTypeChild,
-                    desc_field_elem,
-                );
-            }
-            break :block json_desc_field;
-        },
-        .Optional => initJsonDescField(JsonFieldOptionalType, desc_field.?),
-        .Union => block: {
-            const field_name = @tagName(desc_field);
-            inline for (json_field_info.Union.fields) |field| {
-                if (std.mem.eql(u8, field.name, field_name)) {
-                    break :block @unionInit(
-                        JsonFieldOptionalType,
-                        field_name,
-                        initJsonDescField(field.field_type, @field(desc_field, field_name)),
-                    );
+        .Union => |U| {
+            try jsSerializeBytes(std.mem.asBytes(&union_marker), bytes);
+            try jsSerializeRef(@enumToInt(std.meta.activeTag(value)), bytes);
+            inline for (U.fields) |field| {
+                if (std.mem.eql(u8, field.name, @tagName(value))) {
+                    try jsSerializeRef(@field(value, field.name), bytes);
+                    break;
                 }
             }
         },
-        .Struct => |S| block: {
-            if (S.layout == .Packed) {
-                break :block comptime getEnumFlagsJs(desc_field);
-            } else {
-                break :block initJsonDesc(JsonFieldOptionalType, desc_field);
-            }
+        else => {
+            return error.InvalidType;
         },
-        else => |T| {
-            const name = @tagName(T);
-            @compileError("Unsupported field type (" ++ name ++ ") for JSON desc!");
-        },
-    };
-}
-
-fn stringifyComptime(value: anytype) ![]const u8 {
-    const FixedBufferStream = struct {
-        const Self = @This();
-        pub const Writer = std.io.Writer(*Self, Error, write);
-        pub const Error = error{OutOfMemory};
-
-        buffer: []u8,
-        write_index: usize,
-
-        pub fn init(buffer: []u8) Self {
-            return .{ .buffer = buffer, .write_index = 0 };
-        }
-
-        pub fn writer(self: *Self) Writer {
-            return .{ .context = self };
-        }
-
-        fn write(self: *Self, bytes: []const u8) Error!usize {
-            if (self.write_index + bytes.len > self.buffer.len) {
-                return Error.OutOfMemory;
-            }
-
-            for (bytes) |byte, i| {
-                self.buffer[self.write_index + i] = byte;
-            }
-
-            self.write_index += bytes.len;
-            return bytes.len;
-        }
-    };
-
-    @setEvalBranchQuota(100000);
-    comptime var json: [2048]u8 = undefined;
-    comptime var buffer_stream = FixedBufferStream.init(json[0..]);
-    try std.json.stringify(
-        value,
-        .{
-            .emit_null_optional_fields = false,
-        },
-        buffer_stream.writer(),
-    );
-    return &[_]u8{} ++ json[0..buffer_stream.write_index];
-}
-
-fn testStringifyDescComptime(comptime desc: anytype, comptime expected: []const u8) !void {
-    try std.testing.expectEqualStrings(
-        "{" ++ expected ++ "}",
-        try stringifyDescComptime(desc),
-    );
-}
-
-test "stringifyAdapterDescComptime" {
-    comptime var str: []const u8 = "";
-    comptime var adapter_desc = gfx.AdapterDesc{};
-    try testStringifyDescComptime(adapter_desc, str);
-
-    adapter_desc.power_preference = .low_power;
-    str = str ++ "\"powerPreference\":\"low-power\"";
-    try testStringifyDescComptime(adapter_desc, str);
-
-    adapter_desc.force_fallback_adapter = true;
-    str = str ++ ",\"forceFallbackAdapter\":true";
-    try testStringifyDescComptime(adapter_desc, str);
-}
-
-test "stringifyDeviceDescComptime" {
-    comptime var str: []const u8 = "";
-    comptime var device_desc = gfx.DeviceDesc{};
-    try testStringifyDescComptime(device_desc, str);
-
-    device_desc.label = "hello";
-    str = str ++ "\"label\":\"hello\"";
-    try testStringifyDescComptime(device_desc, str);
-
-    device_desc.required_features = &.{.timestamp_query};
-    str = str ++ ",\"requiredFeatures\":[\"timestamp-query\"]";
-    try testStringifyDescComptime(device_desc, str);
-
-    device_desc.required_limits = .{ .max_vertex_buffers = 4 };
-    str = str ++ ",\"requiredLimits\":{\"maxVertexBuffers\":4}";
-    try testStringifyDescComptime(device_desc, str);
-}
-
-test "stringifyBindGroupLayoutDescComptime" {
-    const entries: []const gfx.BindGroupLayoutEntry = &.{
-        .{ .binding = 0, .visibility = .{ .vertex = true }, .sampler = .{} },
-    };
-    const str = "\"entries\":[{\"binding\":0,\"visibility\":1,\"sampler\":{}}]";
-
-    const bind_group_layout_desc = gfx.BindGroupLayoutDesc{ .entries = entries };
-    try testStringifyDescComptime(bind_group_layout_desc, str);
-}
-
-test "stringifyBindGroupDescComptime" {
-    const entries: []const gfx.BindGroupEntry = &.{
-        .{ .binding = 2, .resource_type = .texture_view },
-    };
-    const str = "\"entries\":[{\"binding\":2,\"resourceType\":\"texture-view\"}]";
-
-    const bind_group_desc = gfx.BindGroupDesc{ .entries = entries };
-    try testStringifyDescComptime(bind_group_desc, str);
-}
-
-test "stringifyRenderPipelineDescComptime" {
-    const render_pipeline_desc: gfx.RenderPipelineDesc = .{
-        .vertex = .{
-            .entry_point = "main",
-            .buffers = &.{
-                .{
-                    .array_stride = 8,
-                    .attributes = &.{.{ .format = .uint8x4, .offset = 2, .shader_location = 1 }},
-                },
-            },
-        },
-        .primitive = .{
-            .topology = .line_list,
-            .strip_index_format = .uint16,
-            .front_face = .cw,
-            .cull_mode = .back,
-        },
-        .depth_stencil = .{
-            .format = .r8unorm,
-            .depth_write_enabled = true,
-            .depth_compare = .never,
-            .stencil_front = .{
-                .compare = .greater,
-                .fail_op = .zero,
-                .depth_fail_op = .increment_wrap,
-                .pass_op = .invert,
-            },
-            .stencil_read_mask = 0,
-        },
-        .multisample = .{
-            .count = 2,
-            .mask = 0,
-            .alpha_to_coverage_enabled = true,
-        },
-        .fragment = .{
-            .entry_point = "main",
-            .targets = &.{
-                .{
-                    .format = .rg8unorm,
-                    .blend = .{
-                        .color = .{
-                            .operation = .min,
-                            .src_factor = .dst,
-                            .dst_factor = .dst_alpha,
-                        },
-                    },
-                    .write_mask = .{
-                        .red = true,
-                        .green = true,
-                        .blue = false,
-                        .alpha = false,
-                    },
-                },
-            },
-        },
-    };
-
-    comptime var str: []const u8 = &.{};
-    str = str ++ "\"vertex\":{\"entryPoint\":\"main\",\"buffers\":[{\"arrayStride\":8";
-    str = str ++ ",\"attributes\":[{\"format\":\"uint8x4\",\"offset\":2";
-    str = str ++ ",\"shaderLocation\":1}]}]}";
-    str = str ++ ",\"primitive\":{\"topology\":\"line-list\",\"stripIndexFormat\":\"uint16\"";
-    str = str ++ ",\"frontFace\":\"cw\",\"cullMode\":\"back\"}";
-    str = str ++ ",\"depthStencil\":{\"format\":\"r8unorm\",\"depthWriteEnabled\":true";
-    str = str ++ ",\"depthCompare\":\"never\",\"stencilFront\":{\"compare\":\"greater\"";
-    str = str ++ ",\"failOp\":\"zero\",\"depthFailOp\":\"increment-wrap\",\"passOp\":\"invert\"}";
-    str = str ++ ",\"stencilReadMask\":0}";
-    str = str ++ ",\"multisample\":{\"count\":2,\"mask\":0,\"alphaToCoverageEnabled\":true}";
-    str = str ++ ",\"fragment\":{\"entryPoint\":\"main\",\"targets\":[{\"format\":\"rg8unorm\"";
-    str = str ++ ",\"blend\":{\"color\":{\"operation\":\"min\",\"srcFactor\":\"dst\"";
-    str = str ++ ",\"dstFactor\":\"dst-alpha\"}},\"writeMask\":3}]}";
-    try testStringifyDescComptime(render_pipeline_desc, str);
-}
-
-test "stringifyRenderPassDescComptime" {
-    const render_pass_desc: gfx.RenderPassDesc = .{
-        .color_attachments = &.{
-            .{
-                .load_value = .{ .load = .load },
-                .store_op = .store,
-            },
-        },
-        .depth_stencil_attachment = .{
-            .depth_load_value = .{ .clear = 0.0 },
-            .depth_store_op = .discard,
-            .depth_read_only = true,
-            .stencil_load_value = .{ .clear = 1 },
-            .stencil_store_op = .store,
-        },
-        .timestamp_writes = &.{
-            .{
-                .query_index = 2,
-                .location = .end,
-            },
-        },
-    };
-
-    comptime var str: []const u8 = "";
-    str = str ++ "\"colorAttachments\":[{\"loadValue\":\"load\",\"storeOp\":\"store\"}]";
-    str = str ++ ",\"depthStencilAttachment\":{\"depthLoadValue\":0.0e+00";
-    str = str ++ ",\"depthStoreOp\":\"discard\",\"depthReadOnly\":true";
-    str = str ++ ",\"stencilLoadValue\":1,\"stencilStoreOp\":\"store\"}";
-    str = str ++ ",\"timestampWrites\":[{\"queryIndex\":2,\"location\":\"end\"}]";
-    try testStringifyDescComptime(render_pass_desc, str);
-}
-
-fn getEnumNameJsComptime(comptime value: anytype) []const u8 {
-    const string = @tagName(value);
-    comptime var buf: [string.len]u8 = undefined;
-    _ = std.mem.replace(u8, string, "_", "-", buf[0..]);
-    return buf[0..];
-}
-
-test "getEnumNameJsComptime" {
-    const EnumTest = enum {
-        nounderscore,
-        has_underscore,
-    };
-    try std.testing.expectEqualStrings(
-        "nounderscore",
-        comptime getEnumNameJsComptime(EnumTest.nounderscore),
-    );
-    try std.testing.expectEqualStrings(
-        "has-underscore",
-        comptime getEnumNameJsComptime(EnumTest.has_underscore),
-    );
-}
-
-threadlocal var enum_name_buf: [32]u8 = undefined;
-fn getEnumNameJsRuntime(value: anytype) []const u8 {
-    const string = @tagName(value);
-    _ = std.mem.replace(u8, string, "_", "-", enum_name_buf[0..string.len]);
-    return enum_name_buf[0..string.len];
-}
-
-test "getEnumNameJsRuntime" {
-    const EnumTest = enum {
-        nounderscore,
-        has_underscore,
-    };
-    try std.testing.expectEqualStrings(
-        "nounderscore",
-        getEnumNameJsRuntime(EnumTest.nounderscore),
-    );
-    try std.testing.expectEqualStrings(
-        "has-underscore",
-        getEnumNameJsRuntime(EnumTest.has_underscore),
-    );
-}
-
-fn getEnumFlagsJs(value: anytype) js.GPUFlagsConstant {
-    var flags: js.GPUFlagsConstant = 0;
-    inline for (@typeInfo(@TypeOf(value)).Struct.fields) |field, i| {
-        if (@field(value, field.name)) {
-            flags |= 1 << i;
-        }
     }
-    return flags;
 }
 
-test "getEnumFlagsJs" {
-    const EnumTest = packed struct {
-        a: bool,
-        b: bool,
-        c: bool,
-    };
-    try std.testing.expectEqual(
-        0,
-        comptime getEnumFlagsJs(EnumTest{ .a = false, .b = false, .c = false }),
-    );
-    try std.testing.expectEqual(
-        1,
-        comptime getEnumFlagsJs(EnumTest{ .a = true, .b = false, .c = false }),
-    );
-    try std.testing.expectEqual(
-        6,
-        comptime getEnumFlagsJs(EnumTest{ .a = false, .b = true, .c = true }),
-    );
+fn jsSerializeBytes(value_bytes: []const u8, bytes: *[]u8) !void {
+    if (bytes.len < value_bytes.len) {
+        return error.OutOfMemory;
+    }
+    std.mem.copy(u8, bytes.*, value_bytes);
+    bytes.* = bytes.*[value_bytes.len..];
 }
 
-fn snakeCaseToCamelCase(comptime string: []const u8) []const u8 {
-    comptime var buf: [string.len]u8 = undefined;
-    comptime var write_index = 0;
-    comptime var write_upper = false;
-    inline for (string) |byte| {
+fn jsSerializeEnumName(value: anytype, buf: []u8) ![]const u8 {
+    const name = @tagName(value);
+    if (buf.len < name.len) {
+        return error.InvalidBufLen;
+    }
+    for (name) |byte, i| {
+        buf[i] = if (byte == '_') '-' else byte;
+    }
+    return buf[0..name.len];
+}
+
+fn jsSerializeFieldName(value: []const u8, buf: []u8) ![]const u8 {
+    if (buf.len < value.len) {
+        return error.InvalidBufLen;
+    }
+    var i: usize = 0;
+    var next_is_upper: bool = false;
+    for (value) |byte| {
         if (byte == '_') {
-            write_upper = true;
+            next_is_upper = true;
         } else {
-            if (write_upper) {
-                buf[write_index] = std.ascii.toUpper(byte);
-                write_upper = false;
-            } else {
-                buf[write_index] = byte;
-            }
-            write_index += 1;
+            buf[i] = if (next_is_upper) std.ascii.toUpper(byte) else byte;
+            next_is_upper = false;
+            i += 1;
         }
     }
-    return &[_]u8{} ++ buf[0..write_index];
+    return buf[0..i];
 }
 
-test "snakeCaseToCamelCase" {
-    try std.testing.expectEqualStrings(
-        "nounderscore",
-        comptime snakeCaseToCamelCase("nounderscore"),
-    );
-    try std.testing.expectEqualStrings(
-        "hasUnderscore",
-        comptime snakeCaseToCamelCase("has_underscore"),
-    );
+fn jsSerializeFlags(value: anytype) !u32 {
+    const Type = @TypeOf(value);
+    if (@typeInfo(Type) != .Struct or @typeInfo(Type).Struct.layout != .Packed) {
+        return error.InvalidFlagsType;
+    }
+    const IntType = @Type(.{ .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(Type) } });
+    return @intCast(u32, @bitCast(IntType, value));
 }

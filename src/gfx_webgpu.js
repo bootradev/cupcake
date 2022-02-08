@@ -44,17 +44,16 @@ const _webgpu = {
         return _context._texId;
     },
 
-    configure(_wasmId, _deviceId, _contextId, _formatPtr, _formatLen, _usage, _width, _height) {
-        const _desc = {};
-        _desc.device = _webgpu._devices.get(_deviceId);
-        _desc.format = _main.getString(_wasmId, _formatPtr, _formatLen);
-        _desc.usage = _usage;
-        _desc.size = [_width, _height];
-        _webgpu._contexts.get(_contextId)._obj.configure(_desc);
+    configure(_wasmId, _deviceId, _contextId, _bytesPtr, _bytesLen) {
+        const desc = _webgpu.parse(_wasmId, _bytesPtr, _bytesLen);
+        desc.device = _webgpu._devices.get(_deviceId);
+        _webgpu._contexts.get(_contextId)._obj.configure(
+            desc
+        );
     },
 
-    requestAdapter(_wasmId, _jsonPtr, _jsonLen) {
-        navigator.gpu.requestAdapter(JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen)))
+    requestAdapter(_wasmId, _bytesPtr, _bytesLen) {
+        navigator.gpu.requestAdapter(_webgpu.parse(_wasmId, _bytesPtr, _bytesLen))
             .then(_adapter => {
                 _main._wasms.get(_wasmId)._obj.requestAdapterComplete(
                     _webgpu._adapters.insert(_adapter)
@@ -70,9 +69,10 @@ const _webgpu = {
         _webgpu._adapters.remove(_adapterId);
     },
 
-    requestDevice(_wasmId, _adapterId, _jsonPtr, _jsonLen) {
-        const _desc = JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen));
-        _webgpu._adapters.get(_adapterId).requestDevice(_desc)
+    requestDevice(_wasmId, _adapterId, _bytesPtr, _bytesLen) {
+        _webgpu._adapters.get(_adapterId).requestDevice(
+            _webgpu.parse(_wasmId, _bytesPtr, _bytesLen)
+        )
             .then(_device=> {
                 _main._wasms.get(_wasmId)._obj.requestDeviceComplete(
                     _webgpu._devices.insert(_device)
@@ -114,8 +114,8 @@ const _webgpu = {
             });
     },
 
-    createBindGroupLayout(_wasmId, _deviceId, _jsonPtr, _jsonLen) {
-        const _desc = JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen));
+    createBindGroupLayout(_wasmId, _deviceId, _descPtr, _descLen) {
+        const _desc = _webgpu.parse(_wasmId, _descPtr, _descLen);
         return _webgpu._bindGroupLayouts.insert(
             _webgpu._devices.get(_deviceId).createBindGroupLayout(_desc)
         );
@@ -128,43 +128,28 @@ const _webgpu = {
     createBindGroup(
         _wasmId,
         _deviceId,
-        _bindGroupLayoutId,
-        _resourceTypesPtr,
-        _resourceTypesLen,
-        _resourceIdsPtr,
-        _resourceIdsLen,
-        _bufferOffsetsPtr,
-        _bufferOffsetsLen,
-        _bufferSizesPtr,
-        _bufferSizesLen,
-        _jsonPtr,
-        _jsonLen
+        _descPtr,
+        _descLen,
     ) {
-        const _desc = JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen));
-        _desc.layout = _webgpu._bindGroupLayouts.get(_bindGroupLayoutId);
-
-        const _resourceTypes = _main.u32Array(_wasmId, _resourceTypesPtr, _resourceTypesLen);
-        const _resourceIds = _main.u32Array(_wasmId, _resourceIdsPtr, _resourceIdsLen);
-        const _bufferOffsets = _main.u32Array(_wasmId, _bufferOffsetsPtr, _bufferOffsetsLen);
-        const _bufferSizes = _main.u32Array(_wasmId, _bufferSizesPtr, _bufferSizesLen);
-        for (let _i = 0; _i < _resourceTypes.length; ++_i) {
-            _desc.entries[_i].resource = {};
-            switch (_resourceTypes[_i]) {
+        const _desc = _webgpu.parse(_wasmId, _descPtr, _descLen);
+        _desc.layout = _webgpu._bindGroupLayouts.get(_desc.layout.id);
+        for (let i = 0; i < _desc.entries.length; ++i) {
+            switch (_desc.entries[i].resource.activeTag) {
                 case _BindTypeBuffer:
-                    _desc.entries[_i].resource.buffer = _webgpu._buffers.get(_resourceIds[_i]);
-                    if (_bufferOffsets[_i] != 0) {
-                        _desc.entries[_i].resource.offset = _bufferOffsets[_i];
-                    }
-                    if (_bufferSizes[_i] != _WholeSize) {
-                        _desc.entries[_i].resource.size = _bufferSizes[_i];
-                    }
-                    break;
+                    _desc.entries[i].resource.buffer = _webgpu._buffers.get(
+                        _desc.entries[i].resource.buffer.id
+                    );
+                break;
                 case _BindTypeSampler:
-                    _desc.entries[_i].resource = _webgpu._samplers.get(_resourceIds[_i]);
-                    break;
+                    _desc.entries[i].resource = _webgpu._samplers.get(
+                        _desc.entries[i].resource.id
+                    );
+                break;
                 case _BindTypeTextureView:
-                    _desc.entries[_i].resource = _webgpu.getTextureView(_resourceIds[_i]);
-                    break;
+                    _desc.entries[i].resource = _webgpu.getTextureView(
+                        _desc.entries[i].resource.id
+                    );
+                break;
             }
         }
 
@@ -177,15 +162,13 @@ const _webgpu = {
         _webgpu._bindGroups.remove(_bindGroupId);
     },
 
-    createPipelineLayout(_wasmId, _deviceId, _layoutIdsPtr, _layoutIdsLen) {
-        const _bindGroupLayoutIds = _main.u32Array(_wasmId, _layoutIdsPtr, _layoutIdsLen);
-        const _bindGroupLayouts = [];
-        for (let _i = 0; _i < _bindGroupLayoutIds.length; ++_i) {
-            _bindGroupLayouts.push(_webgpu._bindGroupLayouts.get(_bindGroupLayoutIds[_i]));
+    createPipelineLayout(_wasmId, _deviceId, _descPtr, _descLen) {
+        const _desc = _webgpu.parse(_wasmId, _descPtr, _descLen);
+        for (let i = 0; i < _desc.bindGroupLayouts.length; ++i) {
+            _desc.bindGroupLayouts[i] = _webgpu._bindGroupLayouts.get(
+                _desc.bindGroupLayouts[i].id
+            );
         }
-
-        const _desc = {};
-        _desc.bindGroupLayouts = _bindGroupLayouts;
         return _webgpu._pipelineLayouts.insert(
             _webgpu._devices.get(_deviceId).createPipelineLayout(_desc)
         );
@@ -198,17 +181,14 @@ const _webgpu = {
     createRenderPipeline(
         _wasmId,
         _deviceId,
-        _pipelineLayoutId,
-        _vertShaderId,
-        _fragShaderId,
-        _jsonPtr,
-        _jsonLen
+        _bytesPtr,
+        _bytesLen,
     ) {
-        const _desc = JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen));
-        _desc.layout = _webgpu._pipelineLayouts.get(_pipelineLayoutId);
-        _desc.vertex.module = _webgpu._shaders.get(_vertShaderId);
-        if (_fragShaderId != _InvalidId) {
-            _desc.fragment.module = _webgpu._shaders.get(_fragShaderId);
+        const _desc = _webgpu.parse(_wasmId, _bytesPtr, _bytesLen);
+        _desc.layout = _webgpu._pipelineLayouts.get(_desc.layout.id);
+        _desc.vertex.module = _webgpu._shaders.get(_desc.vertex.module.id);
+        if (_desc.fragment.module.id !== _InvalidId) {
+            _desc.fragment.module = _webgpu._shaders.get(_desc.fragment.module.id);
         }
         return _webgpu._renderPipelines.insert(
             _webgpu._devices.get(_deviceId).createRenderPipeline(_desc)
@@ -236,53 +216,38 @@ const _webgpu = {
     beginRenderPass(
         _wasmId,
         _commandEncoderId,
-        _colorViewIdsPtr,
-        _colorViewIdsLen,
-        _colorResolveTargetsPtr,
-        _colorResolveTargetsLen,
-        _depthStencilViewId,
-        _occlusionQuerySetId,
-        _timestampQuerySetIdsPtr,
-        _timestampQuerySetIdsLen,
-        _jsonPtr,
-        _jsonLen
+        _bytesPtr,
+        _bytesLen
     ) {
+        const _desc = _webgpu.parse(_wasmId, _bytesPtr, _bytesLen);
+        for (let i = 0; i < _desc.colorAttachments.length; ++i) {
+            _desc.colorAttachments[i].view = _webgpu.getTextureView(
+                _desc.colorAttachments[i].view.id
+            );
 
-        const _desc = JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen));
-        const _colorViewIds = _main.u32Array(_wasmId, _colorViewIdsPtr, _colorViewIdsLen);
-        const _colorResolveTargetIds = _main.u32Array(
-            _wasmId,
-            _colorResolveTargetsPtr,
-            _colorResolveTargetsLen
-        );
-        const _timestampQuerySetIds = _main.u32Array(
-            _wasmId,
-            _timestampQuerySetIdsPtr,
-            _timestampQuerySetIdsLen
-        );
-
-        for (let _i = 0; _i < _colorViewIds.length; ++_i) {
-            _desc.colorAttachments[_i].view = _webgpu.getTextureView(_colorViewIds[_i]);
+            if (_desc.colorAttachments[i].resolveTarget !== undefined) {
+                _desc.colorAttachments[i].resolveTarget = _webgpu.getTextureView(
+                    _desc.colorAttachments[i].resolveTarget.id
+                );
+            }
         }
 
-        for (let _i = 0; _i < _colorResolveTargetIds.length; ++_i) {
-            _desc.colorAttachments[_i].resolveTarget = _webgpu.getTextureView(
-                _colorResolveTargetIds[_i]
+        if (_desc.depthStencilAttachment !== undefined) {
+            _desc.depthStencilAttachment.view = _webgpu.getTextureView(
+                _desc.depthStencilAttachment.view.id
             );
         }
 
-        if (_depthStencilViewId != _InvalidId) {
-            _desc.depthStencilAttachment.view = _webgpu.getTextureView(_depthStencilViewId);
+        if (_desc.occlusionQuerySet !== undefined) {
+            _desc.occlusionQuerySet = _webgpu._querySets.get(_desc.occlusionQuerySet.id);
         }
 
-        if (_occlusionQuerySetId != _InvalidId) {
-            _desc.occlusionQuerySet = _webgpu._querySets.get(_occlusionQuerySetId);
-        }
-
-        for (let _i = 0; _i < _timestampQuerySetIds.length; ++_i) {
-            _desc.timestampWrites[_i].querySet = _webgpu._querySets.get(
-                _timestampQuerySetIds[_i]
-            );
+        if (_desc.timestampWrites !== undefined) {
+            for (let i = 0; i < _desc.timestampWrites.length; ++i) {
+                _desc.timestampWrites[i].querySet = _webgpu._querySets.get(
+                    _desc.timestampWrites[i].querySet.id
+                );
+            }
         }
 
         return _webgpu._renderPasses.insert(
@@ -443,16 +408,12 @@ const _webgpu = {
         );
     },
 
-    createBuffer(_wasmId, _deviceId, _size, _usage, _dataPtr, _dataLen) {
-        const _mappedAtCreation = _dataLen > 0;
-
-        const _desc = {};
-        _desc.size = _size;
-        _desc.usage = _usage;
-        _desc.mappedAtCreation = _mappedAtCreation;
+    createBuffer(_wasmId, _deviceId, _descPtr, _descLen, _dataPtr, _dataLen) {
+        const _desc = _webgpu.parse(_wasmId, _descPtr, _descLen);
+        _desc.mappedAtCreation = _dataLen > 0;
         const _buffer = _webgpu._devices.get(_deviceId).createBuffer(_desc);
 
-        if (_mappedAtCreation) {
+        if (_desc.mappedAtCreation) {
             const _src = new Uint8Array(_main.u8Array(_wasmId, _dataPtr, _dataLen));
             const _dst = new Uint8Array(_buffer.getMappedRange());
             _dst.set(_src);
@@ -470,27 +431,10 @@ const _webgpu = {
     createTexture(
         _wasmId,
         _deviceId,
-        _usage,
-        _dimensionPtr,
-        _dimensionLen,
-        _width,
-        _height,
-        _depthOrArrayLayers,
-        _formatPtr,
-        _formatLen,
-        _mipLevelCount,
-        _sampleCount,
+        _descPtr,
+        _descLen,
     ) {
-        const _desc = {};
-        _desc.usage = _usage;
-        _desc.dimension = _main.getString(_wasmId, _dimensionPtr, _dimensionLen);
-        _desc.size = {};
-        _desc.size.width = _width;
-        _desc.size.height = _height;
-        _desc.size.depthOrArrayLayers = _depthOrArrayLayers;
-        _desc.format = _main.getString(_wasmId, _formatPtr, _formatLen);
-        _desc.mipLevelCount = _mipLevelCount;
-        _desc.sampleCount = _sampleCount;
+        const _desc = _webgpu.parse(_wasmId, _descPtr, _descLen);
         return _webgpu._textures.insert({
             _obj: _webgpu._devices.get(_deviceId).createTexture(_desc),
             _views: new Objs()
@@ -502,10 +446,10 @@ const _webgpu = {
         _webgpu._textures.remove(_textureId);
     },
 
-    createSampler(_wasmId, _deviceId, _jsonPtr, _jsonLen) {
+    createSampler(_wasmId, _deviceId, _descPtr, _descLen) {
         return _webgpu._samplers.insert(
             _webgpu._devices.get(_deviceId).createSampler(
-                JSON.parse(_main.getString(_wasmId, _jsonPtr, _jsonLen))
+                _webgpu.parse(_wasmId, _descPtr, _descLen)
             )
         );
     },
@@ -527,5 +471,67 @@ const _webgpu = {
         return _webgpu._textures.get(_textureViewId >>> 16)._views.get(
             _textureViewId & 0x0000FFFF
         );
+    },
+
+    parse(_wasmId, _bytesPtr, _bytesLen) {
+        const _data = new DataView(
+            _main._wasms.get(_wasmId)._obj.memory.buffer, _bytesPtr, _bytesLen
+        );
+        const _it = { _index: 0 };
+        return _webgpu.parseData(_data, _it);
+    },
+
+    parseData(_data, _it) {
+        let _value = undefined;
+        const _marker = _data.getUint8(_it._index);
+        _it._index++;
+        switch (_marker) {
+            case 98: // b
+                _value = _data.getUint8(_it._index) === 1;
+                _it._index++;
+                break;
+            case 105: // i
+                _value = _data.getUint32(_it._index, true);
+                _it._index += 4;
+                break;
+            case 102: // f
+                _value = _data.getFloat32(_it._index, true);
+                _it._index += 4;
+                break;
+            case 115: // s
+                const _slen = _data.getUint32(_it._index, true);
+                _it._index += 4;
+                _value = new TextDecoder().decode(
+                    new Uint8Array(_data.buffer, _data.byteOffset + _it._index, _slen)
+                );
+                _it._index += _slen;
+                break;
+            case 97: // a
+                const _alen = _data.getUint32(_it._index, true);
+                _it._index += 4;
+                _value = [];
+                for (let _i = 0; _i < _alen; _i++) {
+                    _value[_i] = _webgpu.parseData(_data, _it);
+                }
+                break;
+            case 111: // o
+                _value = {};
+                while (true) {
+                    if (_data.getUint8(_it._index) === 101) { // e
+                        _it._index++;
+                        break;
+                    }
+                    _value[_webgpu.parseData(_data, _it)] = _webgpu.parseData(_data, _it);
+                }
+                break;
+            case 117: // u
+                let _tag = _webgpu.parseData(_data, _it);
+                _value = _webgpu.parseData(_data, _it);
+                _value.activeTag = _tag;
+                break;
+            default:
+                console.log("invalid marker byte!", _marker);
+        }
+        return _value;
     },
 };

@@ -72,10 +72,11 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var args = std.process.ArgIterator.init();
+    var args = try std.process.ArgIterator.initWithAllocator(allocator);
+    defer args.deinit();
+
     if (args.skip() == false) return error.InvalidArgs;
-    const manifest_path = if (args.next(allocator)) |arg| try arg else return error.InvalidArgs;
-    defer allocator.free(manifest_path);
+    const manifest_path = if (args.next()) |arg| arg else return error.InvalidArgs;
 
     std.log.info("building manifest {s}", .{manifest_path});
 

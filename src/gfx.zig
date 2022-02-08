@@ -98,8 +98,9 @@ pub const PresentMode = enum {
 
 pub const SwapchainDesc = struct {
     label: []const u8 = "",
-    usage: TextureUsage = .{ .render_attachment = true },
+    size: Extent3d,
     format: TextureFormat,
+    usage: TextureUsage = .{ .render_attachment = true },
     present_mode: PresentMode = .fifo,
 };
 
@@ -196,7 +197,7 @@ pub const BindType = enum {
 };
 
 pub const BufferBinding = struct {
-    resource: *Buffer,
+    buffer: *Buffer,
     offset: usize = 0,
     size: usize = whole_size,
 };
@@ -209,16 +210,18 @@ pub const BindGroupResource = union(BindType) {
 
 pub const BindGroupEntry = struct {
     binding: u32,
-    resource_type: BindType,
+    resource: BindGroupResource,
 };
 
 pub const BindGroupDesc = struct {
     label: []const u8 = "",
+    layout: *BindGroupLayout,
     entries: []const BindGroupEntry,
 };
 
 pub const PipelineLayoutDesc = struct {
     label: []const u8 = "",
+    bind_group_layouts: []const BindGroupLayout = &.{},
 };
 
 pub const ConstantEntry = struct {
@@ -278,6 +281,7 @@ pub const VertexBufferLayout = struct {
 };
 
 pub const VertexState = struct {
+    module: *Shader,
     entry_point: []const u8,
     constants: []const ConstantEntry = &.{},
     buffers: []const VertexBufferLayout,
@@ -413,6 +417,7 @@ pub const ColorTargetState = struct {
 };
 
 pub const FragmentState = struct {
+    module: *const Shader,
     entry_point: []const u8,
     constants: ?[]const ConstantEntry = null,
     targets: []const ColorTargetState,
@@ -420,6 +425,7 @@ pub const FragmentState = struct {
 
 pub const RenderPipelineDesc = struct {
     label: []const u8 = "",
+    layout: *PipelineLayout,
     vertex: VertexState,
     primitive: PrimitiveState = .{},
     depth_stencil: ?DepthStencilState = null,
@@ -438,20 +444,12 @@ pub const Color = struct {
     a: f32,
 };
 
+pub const default_clear_color: Color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
+
 pub const LoadOp = enum {
     load,
+    clear,
 };
-
-fn LoadValue(comptime ClearType: type) type {
-    return union(enum) {
-        clear: ClearType,
-        load: LoadOp,
-    };
-}
-
-pub const ColorLoadValue = LoadValue(Color);
-pub const DepthLoadValue = LoadValue(f32);
-pub const StencilLoadValue = LoadValue(u32);
 
 pub const StoreOp = enum {
     store,
@@ -459,19 +457,21 @@ pub const StoreOp = enum {
 };
 
 pub const ColorAttachment = struct {
-    load_value: ColorLoadValue,
+    view: *TextureView,
+    resolve_target: ?*TextureView = null,
+    load_op: LoadOp,
+    clear_value: Color = .{ .r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0 },
     store_op: StoreOp,
 };
 
-pub const default_clear_color: ColorLoadValue = .{
-    .clear = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 },
-};
-
 pub const DepthStencilAttachment = struct {
-    depth_load_value: DepthLoadValue,
+    view: *TextureView,
+    depth_load_op: LoadOp,
+    depth_clear_value: f32 = 0,
     depth_store_op: StoreOp,
     depth_read_only: bool = false,
-    stencil_load_value: StencilLoadValue,
+    stencil_load_op: LoadOp,
+    stencil_clear_value: u32 = 0,
     stencil_store_op: StoreOp,
     stencil_read_only: bool = false,
 };
@@ -482,27 +482,22 @@ pub const RenderPassTimestampLocation = enum {
 };
 
 pub const RenderPassTimestampWrite = struct {
+    quert_set: QuerySet,
     query_index: u32,
     location: RenderPassTimestampLocation,
 };
 
 pub const RenderPassDesc = struct {
     label: []const u8 = "",
-    color_attachments: []const ColorAttachment,
+    color_attachments: []ColorAttachment,
     depth_stencil_attachment: ?DepthStencilAttachment = null,
-    timestamp_writes: []const RenderPassTimestampWrite = &.{},
-};
-
-pub const RenderPassArgs = struct {
-    color_views: []const TextureView,
-    color_resolve_targets: []const TextureView = &.{},
-    depth_stencil_view: ?*const TextureView = null,
-    occlusion_query_set: ?*const QuerySet = null,
-    timestamp_query_sets: []const QuerySet = &.{},
+    occlusion_query_set: ?*QuerySet = null,
+    timestamp_writes: ?[]RenderPassTimestampWrite = null,
 };
 
 pub const BufferDesc = struct {
     label: []const u8 = "",
+    size: usize,
     usage: BufferUsage,
 };
 
@@ -533,6 +528,7 @@ pub const Extent3d = struct {
 
 pub const TextureDesc = struct {
     label: []const u8 = "",
+    size: Extent3d,
     usage: TextureUsage,
     dimension: TextureDimension = .@"2d",
     format: TextureFormat,

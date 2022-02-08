@@ -20,12 +20,14 @@ pub fn init() !void {
     example.adapter = try example.instance.requestAdapter(&example.surface, .{});
     example.device = try example.adapter.requestDevice(.{});
 
-    const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
+    const swapchain_format = cc.gfx.Surface.getPreferredFormat();
 
     example.swapchain = try example.device.createSwapchain(
         &example.surface,
-        example.window.size,
-        .{ .format = swapchain_format },
+        .{
+            .size = .{ .width = example.window.size.x, .height = example.window.size.y },
+            .format = swapchain_format,
+        },
     );
 
     const vert_shader_res = try cc.res.load(res.triangle_vert_shader, .{});
@@ -36,24 +38,25 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(&.{}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(.{});
     defer pipeline_layout.destroy();
 
-    example.render_pipeline = try example.device.createRenderPipeline(
-        &pipeline_layout,
-        &vert_shader,
-        &frag_shader,
-        .{
-            .vertex = .{
-                .entry_point = "vs_main",
-                .buffers = &.{},
-            },
-            .fragment = .{
-                .entry_point = "fs_main",
-                .targets = &.{.{ .format = swapchain_format }},
-            },
-        },
-    );
+    const vert_state: cc.gfx.VertexState = .{
+        .module = &vert_shader,
+        .entry_point = "vs_main",
+        .buffers = &.{},
+    };
+    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
+    const frag_state: cc.gfx.FragmentState = .{
+        .module = &frag_shader,
+        .entry_point = "fs_main",
+        .targets = frag_targets,
+    };
+    example.render_pipeline = try example.device.createRenderPipeline(.{
+        .layout = &pipeline_layout,
+        .vertex = vert_state,
+        .fragment = frag_state,
+    });
 }
 
 pub fn update() !void {
@@ -61,19 +64,18 @@ pub fn update() !void {
     defer swapchain_view.destroy();
 
     var command_encoder = example.device.createCommandEncoder();
-    var render_pass = command_encoder.beginRenderPass(
+
+    const color_attachments = &[_]cc.gfx.ColorAttachment{
         .{
-            .color_views = &.{swapchain_view},
+            .view = &swapchain_view,
+            .load_op = .clear,
+            .clear_value = cc.gfx.default_clear_color,
+            .store_op = .store,
         },
-        .{
-            .color_attachments = &.{
-                .{
-                    .load_value = cc.gfx.default_clear_color,
-                    .store_op = .store,
-                },
-            },
-        },
-    );
+    };
+    var render_pass = try command_encoder.beginRenderPass(.{
+        .color_attachments = color_attachments,
+    });
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();

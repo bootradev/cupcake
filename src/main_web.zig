@@ -6,7 +6,6 @@ const js = struct {
     extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
 };
 
-threadlocal var log_buf: [2048]u8 = undefined;
 pub fn log(
     comptime message_level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),
@@ -17,14 +16,15 @@ pub fn log(
     const prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     const msg = level_txt ++ prefix ++ format;
 
-    const msg_buf = std.fmt.bufPrint(log_buf[0..], msg, args) catch return;
+    var log_buf: [2048]u8 = undefined;
+    const msg_buf = std.fmt.bufPrint(&log_buf, msg, args) catch return;
     js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
 }
 
 pub const main = struct {
     pub const WasmId = u32;
     pub var wasm_id: WasmId = undefined;
-    var init_in_progress = true;
+    var init_complete = false;
 
     pub export fn init(id: WasmId) void {
         wasm_id = id;
@@ -33,7 +33,7 @@ pub const main = struct {
 
     fn appInit() void {
         app.init() catch |err| handleError(err);
-        init_in_progress = false;
+        init_complete = true;
     }
 
     pub export fn update() void {
@@ -41,11 +41,9 @@ pub const main = struct {
     }
 
     fn appUpdate() void {
-        if (init_in_progress) {
-            return;
+        if (init_complete) {
+            app.update() catch |err| handleError(err);
         }
-
-        app.update() catch |err| handleError(err);
     }
 
     pub export fn deinit() void {

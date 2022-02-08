@@ -49,21 +49,18 @@ pub fn init() !void {
 
     example.swapchain = try example.device.createSwapchain(
         &example.surface,
-        example.window.size,
-        .{ .format = swapchain_format },
+        .{ .size = .{ .width = example.window.size.x, .height = example.window.size.y }, .format = swapchain_format },
     );
 
     const quad_vertices_bytes = std.mem.sliceAsBytes(quad_data.vertices);
     example.vertex_buffer = try example.device.createBuffer(
+        .{ .size = quad_vertices_bytes.len, .usage = .{ .vertex = true } },
         quad_vertices_bytes,
-        quad_vertices_bytes.len,
-        .{ .usage = .{ .vertex = true } },
     );
     const quad_indices_bytes = std.mem.sliceAsBytes(quad_data.indices);
     example.index_buffer = try example.device.createBuffer(
+        .{ .size = quad_indices_bytes.len, .usage = .{ .index = true } },
         quad_indices_bytes,
-        quad_indices_bytes.len,
-        .{ .usage = .{ .index = true } },
     );
 
     const texture_res = try cc.res.load(
@@ -75,13 +72,12 @@ pub fn init() !void {
     );
 
     example.texture = try example.device.createTexture(
-        .{ .width = texture_res.width, .height = texture_res.height },
         .{
-            .usage = .{ .copy_dst = true, .texture_binding = true, .render_attachment = true },
+            .size = .{ .width = texture_res.width, .height = texture_res.height },
             .format = .rgba8unorm,
+            .usage = .{ .copy_dst = true, .texture_binding = true, .render_attachment = true },
         },
     );
-
     example.texture_view = example.texture.createView();
 
     example.sampler = try example.device.createSampler(.{
@@ -105,19 +101,13 @@ pub fn init() !void {
     });
     defer layout.destroy();
 
-    example.bind_group = try example.device.createBindGroup(
-        &layout,
-        &.{
-            .{ .sampler = &example.sampler },
-            .{ .texture_view = &example.texture_view },
+    example.bind_group = try example.device.createBindGroup(.{
+        .layout = &layout,
+        .entries = &.{
+            .{ .binding = 1, .resource = .{ .sampler = &example.sampler } },
+            .{ .binding = 2, .resource = .{ .texture_view = &example.texture_view } },
         },
-        .{
-            .entries = &.{
-                .{ .binding = 1, .resource_type = .sampler },
-                .{ .binding = 2, .resource_type = .texture_view },
-            },
-        },
-    );
+    });
 
     const vert_shader_res = try cc.res.load(res.texture_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -127,44 +117,49 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(&.{layout}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(.{
+        .bind_group_layouts = &.{layout},
+    });
     defer pipeline_layout.destroy();
-    example.render_pipeline = try example.device.createRenderPipeline(
-        &pipeline_layout,
-        &vert_shader,
-        &frag_shader,
+
+    const vert_attrs = &[_]cc.gfx.VertexAttribute{
         .{
-            .vertex = .{
-                .entry_point = "vs_main",
-                .buffers = &.{
-                    .{
-                        .array_stride = quad_data.array_stride,
-                        .attributes = &.{
-                            .{
-                                // position
-                                .shader_location = 0,
-                                .offset = quad_data.position_offset,
-                                .format = .float32x2,
-                            },
-                            .{
-                                // color
-                                .shader_location = 1,
-                                .offset = quad_data.uv_offset,
-                                .format = .float32x2,
-                            },
-                        },
-                    },
-                },
-            },
-            .fragment = .{
-                .entry_point = "fs_main",
-                .targets = &.{.{ .format = swapchain_format }},
-            },
-            .primitive = .{
-                .cull_mode = .back,
-            },
+            // position
+            .shader_location = 0,
+            .offset = quad_data.position_offset,
+            .format = .float32x2,
         },
-    );
+        .{
+            // uv
+            .shader_location = 1,
+            .offset = quad_data.uv_offset,
+            .format = .float32x2,
+        },
+    };
+    const vert_buffers = &[_]cc.gfx.VertexBufferLayout{
+        .{
+            .array_stride = quad_data.array_stride,
+            .attributes = vert_attrs,
+        },
+    };
+    const vert_state = cc.gfx.VertexState{
+        .module = &vert_shader,
+        .entry_point = "vs_main",
+        .buffers = vert_buffers,
+    };
+    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
+    const frag_state = cc.gfx.FragmentState{
+        .module = &frag_shader,
+        .entry_point = "fs_main",
+        .targets = frag_targets,
+    };
+    const prim_state: cc.gfx.PrimitiveState = .{ .cull_mode = .back };
+    example.render_pipeline = try example.device.createRenderPipeline(.{
+        .layout = &pipeline_layout,
+        .vertex = vert_state,
+        .fragment = frag_state,
+        .primitive = prim_state,
+    });
 }
 
 pub fn update() !void {
@@ -172,14 +167,15 @@ pub fn update() !void {
     defer swapchain_view.destroy();
 
     var command_encoder = example.device.createCommandEncoder();
-    var render_pass = command_encoder.beginRenderPass(
-        .{ .color_views = &.{swapchain_view} },
-        .{
-            .color_attachments = &.{
-                .{ .load_value = cc.gfx.default_clear_color, .store_op = .store },
-            },
-        },
-    );
+    const color_attachments = &[_]cc.gfx.ColorAttachment{.{
+        .view = &swapchain_view,
+        .load_op = .clear,
+        .clear_value = cc.gfx.default_clear_color,
+        .store_op = .store,
+    }};
+    var render_pass = try command_encoder.beginRenderPass(.{
+        .color_attachments = color_attachments,
+    });
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);

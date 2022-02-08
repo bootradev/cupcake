@@ -56,35 +56,35 @@ pub fn init() !void {
     example.adapter = try example.instance.requestAdapter(&example.surface, .{});
     example.device = try example.adapter.requestDevice(.{});
 
-    const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
+    const swapchain_format = cc.gfx.Surface.getPreferredFormat();
 
     example.swapchain = try example.device.createSwapchain(
         &example.surface,
-        example.window.size,
-        .{ .format = swapchain_format },
+        .{
+            .size = .{ .width = example.window.size.x, .height = example.window.size.y },
+            .format = swapchain_format,
+        },
     );
 
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
     example.vertex_buffer = try example.device.createBuffer(
+        .{ .size = cube_vertices_bytes.len, .usage = .{ .vertex = true } },
         cube_vertices_bytes,
-        cube_vertices_bytes.len,
-        .{ .usage = .{ .vertex = true } },
     );
     const cube_indices_bytes = std.mem.sliceAsBytes(cube_data.indices);
     example.index_buffer = try example.device.createBuffer(
+        .{ .size = cube_indices_bytes.len, .usage = .{ .index = true } },
         cube_indices_bytes,
-        cube_indices_bytes.len,
-        .{ .usage = .{ .index = true } },
     );
-    example.depth_texture = try example.device.createTexture(
-        .{ .width = example.window.size.x, .height = example.window.size.y },
-        .{ .format = .depth24plus, .usage = .{ .render_attachment = true } },
-    );
+    example.depth_texture = try example.device.createTexture(.{
+        .size = .{ .width = example.window.size.x, .height = example.window.size.y },
+        .format = .depth24plus,
+        .usage = .{ .render_attachment = true },
+    });
     example.depth_texture_view = example.depth_texture.createView();
     example.uniform_buffer = try example.device.createBuffer(
+        .{ .size = 64, .usage = .{ .uniform = true, .copy_dst = true } },
         null,
-        64, // mat4x4 float = 4x4x4 bytes
-        .{ .usage = .{ .uniform = true, .copy_dst = true } },
     );
 
     var uniform_layout = try example.device.createBindGroupLayout(.{
@@ -94,11 +94,12 @@ pub fn init() !void {
     });
     defer uniform_layout.destroy();
 
-    example.uniform_bind_group = try example.device.createBindGroup(
-        &uniform_layout,
-        &.{.{ .buffer = .{ .resource = &example.uniform_buffer } }},
-        .{ .entries = &.{.{ .binding = 0, .resource_type = .buffer }} },
-    );
+    example.uniform_bind_group = try example.device.createBindGroup(.{
+        .layout = &uniform_layout,
+        .entries = &.{
+            .{ .binding = 0, .resource = .{ .buffer = .{ .buffer = &example.uniform_buffer } } },
+        },
+    });
 
     const vert_shader_res = try cc.res.load(res.cube_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -108,49 +109,55 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(&.{uniform_layout}, .{});
+    var pipeline_layout = try example.device.createPipelineLayout(.{
+        .bind_group_layouts = &.{uniform_layout},
+    });
     defer pipeline_layout.destroy();
-    example.render_pipeline = try example.device.createRenderPipeline(
-        &pipeline_layout,
-        &vert_shader,
-        &frag_shader,
+
+    const vert_attrs = &[_]cc.gfx.VertexAttribute{
         .{
-            .vertex = .{
-                .entry_point = "vs_main",
-                .buffers = &.{
-                    .{
-                        .array_stride = cube_data.array_stride,
-                        .attributes = &.{
-                            .{
-                                // position
-                                .shader_location = 0,
-                                .offset = cube_data.position_offset,
-                                .format = .float32x4,
-                            },
-                            .{
-                                // color
-                                .shader_location = 1,
-                                .offset = cube_data.color_offset,
-                                .format = .float32x4,
-                            },
-                        },
-                    },
-                },
-            },
-            .fragment = .{
-                .entry_point = "fs_main",
-                .targets = &.{.{ .format = swapchain_format }},
-            },
-            .primitive = .{
-                .cull_mode = .back,
-            },
-            .depth_stencil = .{
-                .depth_write_enabled = true,
-                .depth_compare = .less,
-                .format = .depth24plus,
-            },
+            // position
+            .shader_location = 0,
+            .offset = cube_data.position_offset,
+            .format = .float32x4,
         },
-    );
+        .{
+            // color
+            .shader_location = 1,
+            .offset = cube_data.color_offset,
+            .format = .float32x4,
+        },
+    };
+    const vert_buffers = &[_]cc.gfx.VertexBufferLayout{
+        .{
+            .array_stride = cube_data.array_stride,
+            .attributes = vert_attrs,
+        },
+    };
+    const vert_state: cc.gfx.VertexState = .{
+        .module = &vert_shader,
+        .entry_point = "vs_main",
+        .buffers = vert_buffers,
+    };
+    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
+    const frag_state: cc.gfx.FragmentState = .{
+        .module = &frag_shader,
+        .entry_point = "fs_main",
+        .targets = frag_targets,
+    };
+    const prim_state: cc.gfx.PrimitiveState = .{ .cull_mode = .back };
+    const depth_stencil_state: cc.gfx.DepthStencilState = .{
+        .depth_write_enabled = true,
+        .depth_compare = .less,
+        .format = .depth24plus,
+    };
+    example.render_pipeline = try example.device.createRenderPipeline(.{
+        .layout = &pipeline_layout,
+        .vertex = vert_state,
+        .fragment = frag_state,
+        .primitive = prim_state,
+        .depth_stencil = depth_stencil_state,
+    });
 }
 
 pub fn update() !void {
@@ -179,26 +186,28 @@ pub fn update() !void {
     defer swapchain_view.destroy();
 
     var command_encoder = example.device.createCommandEncoder();
-    var render_pass = command_encoder.beginRenderPass(
+
+    const color_attachments = &[_]cc.gfx.ColorAttachment{
         .{
-            .color_views = &.{swapchain_view},
-            .depth_stencil_view = &example.depth_texture_view,
+            .view = &swapchain_view,
+            .load_op = .clear,
+            .clear_value = cc.gfx.default_clear_color,
+            .store_op = .store,
         },
-        .{
-            .color_attachments = &.{
-                .{
-                    .load_value = cc.gfx.default_clear_color,
-                    .store_op = .store,
-                },
-            },
-            .depth_stencil_attachment = .{
-                .depth_load_value = .{ .clear = 1.0 },
-                .depth_store_op = .store,
-                .stencil_load_value = .{ .clear = 0 },
-                .stencil_store_op = .store,
-            },
-        },
-    );
+    };
+    const depth_stencil_attachment: cc.gfx.DepthStencilAttachment = .{
+        .view = &example.depth_texture_view,
+        .depth_load_op = .clear,
+        .depth_clear_value = 1.0,
+        .depth_store_op = .store,
+        .stencil_load_op = .clear,
+        .stencil_clear_value = 0,
+        .stencil_store_op = .store,
+    };
+    var render_pass = try command_encoder.beginRenderPass(.{
+        .color_attachments = color_attachments,
+        .depth_stencil_attachment = depth_stencil_attachment,
+    });
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.uniform_bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
