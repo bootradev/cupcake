@@ -22,6 +22,7 @@ const js = struct {
     const GPUIntegerCoordinate = u32;
 
     const ObjectId = u32;
+    const DescId = ObjectId;
     const CanvasId = ObjectId;
     const ContextId = ObjectId;
     const AdapterId = ObjectId;
@@ -41,6 +42,35 @@ const js = struct {
     const BufferId = ObjectId;
 
     const invalid_id: ObjectId = 0;
+    const BindType = enum {
+        buffer,
+        sampler,
+        texture_view,
+    };
+
+    extern fn createDesc() DescId;
+    extern fn destroyDesc(desc_id: DescId) void;
+    extern fn destoryDesc(desc_id: DescId) void;
+    extern fn setDescField(
+        wasm_id: main.WasmId,
+        desc_id: DescId,
+        field_ptr: [*]const u8,
+        field_len: usize,
+    ) void;
+    extern fn setDescString(
+        wasm_id: main.WasmId,
+        desc_id: DescId,
+        value_ptr: [*]const u8,
+        value_len: usize,
+    ) void;
+    extern fn setDescBool(desc_id: DescId, value: bool) void;
+    extern fn setDescU32(desc_id: DescId, value: u32) void;
+    extern fn setDescI32(desc_id: DescId, value: i32) void;
+    extern fn setDescF32(desc_id: DescId, value: f32) void;
+    extern fn beginDescArray(desc_id: DescId) void;
+    extern fn endDescArray(desc_id: DescId) void;
+    extern fn beginDescChild(desc_id: DescId) void;
+    extern fn endDescChild(desc_id: DescId) void;
 
     extern fn createContext(canvas_id: ObjectId) ContextId;
     extern fn destroyContext(contex_id: ContextId) void;
@@ -49,18 +79,15 @@ const js = struct {
         wasm_id: main.WasmId,
         device_id: DeviceId,
         context_id: ContextId,
-        bytes_ptr: [*]const u8,
-        bytes_len: usize,
+        desc_id: DescId,
     ) void;
-    extern fn requestAdapter(wasm_id: main.WasmId, bytes_ptr: [*]const u8, bytes_len: usize) void;
+
+    extern fn requestAdapter(wasm_id: main.WasmId, desc_id: DescId) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
-    extern fn requestDevice(
-        wasm_id: main.WasmId,
-        adapter_id: AdapterId,
-        bytes_ptr: [*]const u8,
-        bytes_len: usize,
-    ) void;
+
+    extern fn requestDevice(wasm_id: main.WasmId, adapter_id: AdapterId, desc_id: DescId) void;
     extern fn destroyDevice(device_id: DeviceId) void;
+
     extern fn createShader(
         wasm_id: main.WasmId,
         device_id: DeviceId,
@@ -69,41 +96,40 @@ const js = struct {
     ) ShaderId;
     extern fn destroyShader(shader_id: ShaderId) void;
     extern fn checkShaderCompile(wasm_id: main.WasmId, shader_id: ShaderId) void;
+
     extern fn createBindGroupLayout(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_bytes_ptr: [*]const u8,
-        desc_bytes_len: usize,
+        desc_id: DescId,
     ) BindGroupLayoutId;
     extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
     extern fn createBindGroup(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_ptr: [*]const u8,
-        desc_len: usize,
+        desc_id: DescId,
     ) BindGroupId;
     extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
+
     extern fn createPipelineLayout(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_ptr: [*]const u8,
-        desc_len: usize,
+        desc_id: DescId,
     ) PipelineLayoutId;
     extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
     extern fn createRenderPipeline(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        bytes_ptr: [*]const u8,
-        bytes_len: usize,
+        desc_id: DescId,
     ) RenderPipelineId;
     extern fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
+
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
+
     extern fn beginRenderPass(
         wasm_id: main.WasmId,
         command_encoder_id: CommandEncoderId,
-        bytes_ptr: [*]const u8,
-        bytes_len: usize,
+        desc_id: DescId,
     ) RenderPassId;
     extern fn setPipeline(
         render_pass_id: RenderPassId,
@@ -149,6 +175,7 @@ const js = struct {
         first_instance: GPUSize32,
     ) void;
     extern fn endRenderPass(render_pass_id: RenderPassId) void;
+
     extern fn queueSubmit(
         wasm_id: main.WasmId,
         device_id: DeviceId,
@@ -166,47 +193,1572 @@ const js = struct {
     extern fn queueWriteTexture(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        texture_id: TextureId,
-        mip_level: GPUIntegerCoordinate,
-        origin_x: GPUIntegerCoordinate,
-        origin_y: GPUIntegerCoordinate,
-        origin_z: GPUIntegerCoordinate,
-        aspect_ptr: [*]const u8,
-        aspect_len: usize,
+        destination_id: DescId,
         data_ptr: [*]const u8,
         data_len: usize,
-        layout_offset: GPUSize64,
-        layout_bytes_per_row: GPUSize32,
-        layout_rows_per_image: GPUSize32,
+        data_layout_id: DescId,
         size_width: GPUIntegerCoordinate,
         size_height: GPUIntegerCoordinate,
         size_depth_or_array_layers: GPUIntegerCoordinate,
     ) void;
+
     extern fn createBuffer(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_bytes_ptr: [*]const u8,
-        desc_bytes_len: usize,
+        desc_id: DescId,
         init_data_ptr: [*]const u8,
         init_data_len: usize,
     ) BufferId;
     extern fn destroyBuffer(buffer_id: BufferId) void;
+
     extern fn createTexture(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_bytes_ptr: [*]const u8,
-        desc_bytes_len: usize,
+        desc_id: DescId,
     ) TextureId;
     extern fn destroyTexture(texture_id: TextureId) void;
+    extern fn createTextureView(texture_id: TextureId) TextureViewId;
+    extern fn destroyTextureView(texture_view_id: TextureViewId) void;
+
     extern fn createSampler(
         wasm_id: main.WasmId,
         device_id: DeviceId,
-        desc_bytes_ptr: [*]const u8,
-        desc_bytes_len: usize,
+        desc_id: DescId,
     ) SamplerId;
     extern fn destroySampler(sampler_id: SamplerId) void;
-    extern fn createTextureView(texture_id: TextureId) TextureViewId;
-    extern fn destroyTextureView(texture_view_id: TextureViewId) void;
+};
+
+fn getEnumName(value: anytype) []const u8 {
+    @setEvalBranchQuota(10000);
+    comptime var enum_names: []const []const u8 = &.{};
+    inline for (@typeInfo(@TypeOf(value)).Enum.fields) |field| {
+        comptime var enum_name: []const u8 = &.{};
+        inline for (field.name) |char| {
+            enum_name = enum_name ++ &[_]u8{if (char == '_') '-' else char};
+        }
+        enum_names = enum_names ++ &[_][]const u8{enum_name};
+    }
+    return enum_names[@enumToInt(value)];
+}
+
+fn setDescField(id: js.DescId, field: []const u8) void {
+    js.setDescField(main.wasm_id, id, field.ptr, field.len);
+}
+
+fn setDescString(id: js.DescId, value: []const u8) void {
+    js.setDescString(main.wasm_id, id, value.ptr, value.len);
+}
+
+fn setDescBool(id: js.DescId, value: bool) void {
+    js.setDescBool(id, value);
+}
+
+fn setDescU32(id: js.DescId, value: u32) void {
+    js.setDescU32(id, value);
+}
+
+fn setDescI32(id: js.DescId, value: i32) void {
+    js.setDescI32(id, value);
+}
+
+fn setDescF32(id: js.DescId, value: f32) void {
+    js.setDescF32(id, value);
+}
+
+fn setDescEnum(id: js.DescId, value: anytype) void {
+    setDescString(id, getEnumName(value));
+}
+
+fn setDescFlags(id: js.DescId, value: anytype) void {
+    const BitType = @Type(.{
+        .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
+    });
+    setDescU32(id, @intCast(u32, @bitCast(BitType, value)));
+}
+
+fn beginDescArray(id: js.DescId) void {
+    js.beginDescArray(id);
+}
+
+fn endDescArray(id: js.DescId) void {
+    js.endDescArray(id);
+}
+
+fn beginDescChild(id: js.DescId) void {
+    js.beginDescChild(id);
+}
+
+fn endDescChild(id: js.DescId) void {
+    js.endDescChild(id);
+}
+
+pub const SurfaceDesc = struct {
+    id: js.DescId,
+
+    pub fn init() SurfaceDesc {
+        return SurfaceDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: SurfaceDesc) void {
+        js.destroyDesc(desc.id);
+    }
+};
+
+pub const AdapterDesc = struct {
+    id: js.DescId,
+
+    pub fn init() AdapterDesc {
+        return AdapterDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: AdapterDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn powerPreference(desc: AdapterDesc, value: gfx.PowerPreference) AdapterDesc {
+        setDescField(desc.id, "powerPreference");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn forceFallbackAdapter(desc: AdapterDesc, value: bool) AdapterDesc {
+        setDescField(desc.id, "forceFallbackAdapter");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+};
+
+pub const DeviceDesc = struct {
+    id: js.DescId,
+
+    pub fn init() DeviceDesc {
+        return DeviceDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: DeviceDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn requiredFeatures(desc: DeviceDesc, values: []const gfx.FeatureName) DeviceDesc {
+        setDescField(desc.id, "requiredFeatures");
+        beginDescArray(desc.id);
+        for (values) |value| {
+            setDescEnum(desc.id, value);
+        }
+        endDescArray(desc.id);
+        return desc;
+    }
+
+    pub fn requiredLimits(desc: DeviceDesc) LimitsDesc {
+        setDescField(desc.id, "requiredLimits");
+        beginDescChild(desc.id);
+        return LimitsDesc{ .parent = desc, .id = desc.id };
+    }
+};
+
+pub const LimitsDesc = struct {
+    parent: DeviceDesc,
+    id: js.DescId,
+
+    pub fn maxTextureDimension1D(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxTextureDimension1D");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxTextureDimension2D(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxTextureDimension2D");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxTextureDimension3D(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxTextureDimension3D");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxTextureArrayLayers(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxTextureArrayLayers");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxBindGroups(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxBindGroups");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxDynamicUniformBuffersPerPipelineLayout(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxDynamicUniformBuffersPerPipelineLayout");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxDynamicStorageBuffersPerPipelineLayout(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxDynamicStorageBuffersPerPipelineLayout");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxSampledTexturesPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxSampledTexturesPerShaderStage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxSamplersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxSamplersPerShaderStage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxStorageBuffersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxStorageBuffersPerShaderStage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxStorageTexturesPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxStorageTexturesPerShaderStage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxUniformBuffersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxUniformBuffersPerShaderStage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxUniformBufferBindingSize(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxUniformBufferBindingSize");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxStorageBufferBindingSize(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxStorageBufferBindingSize");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn minUniformBufferOffsetAlignment(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "minUniformBufferOffsetAlignment");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn minStorageBufferOffsetAlignment(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "minStorageBufferOffsetAlignment");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxVertexBuffers(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxVertexBuffers");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxVertexAttributes(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxVertexAttributes");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxVertexBufferArrayStride(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxVertexBufferArrayStride");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxInterStageShaderComponents(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxInterStageShaderComponents");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeWorkgroupStorageSize(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeWorkgroupStorageSize");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeInvocationsPerWorkgroup(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeInvocationsPerWorkgroup");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeWorkgroupSizeX(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeWorkgroupSizeX");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeWorkgroupSizeY(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeWorkgroupSizeY");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeWorkgroupSizeZ(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeWorkgroupSizeZ");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxComputeWorkgroupsPerDimension(desc: LimitsDesc, value: u32) LimitsDesc {
+        setDescField(desc.id, "maxComputeWorkgroupsPerDimension");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: LimitsDesc) DeviceDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const SwapchainDesc = struct {
+    id: js.DescId,
+
+    pub fn init() SwapchainDesc {
+        return SwapchainDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: SwapchainDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn size(desc: SwapchainDesc, value: gfx.Extent3d) SwapchainDesc {
+        setDescField(desc.id, "size");
+        beginDescArray(desc.id);
+        setDescU32(desc.id, value.width);
+        setDescU32(desc.id, value.height);
+        setDescU32(desc.id, value.depth_or_array_layers);
+        endDescArray(desc.id);
+        return desc;
+    }
+
+    pub fn format(desc: SwapchainDesc, value: gfx.TextureFormat) SwapchainDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn usage(desc: SwapchainDesc, value: gfx.TextureUsage) SwapchainDesc {
+        setDescField(desc.id, "usage");
+        setDescFlags(desc.id, value);
+        return desc;
+    }
+
+    pub fn presentMode(desc: SwapchainDesc, value: gfx.PresentMode) SwapchainDesc {
+        setDescField(desc.id, "presentMode");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+};
+
+pub const BindGroupLayoutDesc = struct {
+    id: js.DescId,
+
+    pub fn init() BindGroupLayoutDesc {
+        return BindGroupLayoutDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: BindGroupLayoutDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn entries(desc: BindGroupLayoutDesc) BindGroupLayoutEntryDescArray {
+        setDescField(desc.id, "entries");
+        beginDescArray(desc.id);
+        return BindGroupLayoutEntryDescArray{ .parent = desc, .id = desc.id };
+    }
+};
+
+pub const BindGroupLayoutEntryDescArray = struct {
+    parent: BindGroupLayoutDesc,
+    id: js.DescId,
+
+    pub fn entry(desc: BindGroupLayoutEntryDescArray) BindGroupLayoutEntryDesc {
+        beginDescChild(desc.id);
+        return BindGroupLayoutEntryDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: BindGroupLayoutEntryDescArray) BindGroupLayoutDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BindGroupLayoutEntryDesc = struct {
+    parent: BindGroupLayoutEntryDescArray,
+    id: js.DescId,
+
+    pub fn binding(desc: BindGroupLayoutEntryDesc, value: u32) BindGroupLayoutEntryDesc {
+        setDescField(desc.id, "binding");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn visibility(
+        desc: BindGroupLayoutEntryDesc,
+        value: gfx.ShaderStage,
+    ) BindGroupLayoutEntryDesc {
+        setDescField(desc.id, "visibility");
+        setDescFlags(desc.id, value);
+        return desc;
+    }
+
+    pub fn buffer(desc: BindGroupLayoutEntryDesc) BufferBindingLayoutDesc {
+        setDescField(desc.id, "buffer");
+        beginDescChild(desc.id);
+        return BufferBindingLayoutDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn sampler(desc: BindGroupLayoutEntryDesc) SamplerBindingLayoutDesc {
+        setDescField(desc.id, "sampler");
+        beginDescChild(desc.id);
+        return SamplerBindingLayoutDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn texture(desc: BindGroupLayoutEntryDesc) TextureBindingLayoutDesc {
+        setDescField(desc.id, "texture");
+        beginDescChild(desc.id);
+        return TextureBindingLayoutDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn storageTexture(desc: BindGroupLayoutEntryDesc) StorageTextureBindingLayoutDesc {
+        setDescField(desc.id, "storageTexture");
+        beginDescChild(desc.id);
+        return StorageTextureBindingLayoutDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: BindGroupLayoutEntryDesc) BindGroupLayoutEntryDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BufferBindingLayoutDesc = struct {
+    parent: BindGroupLayoutEntryDesc,
+    id: js.DescId,
+
+    pub fn @"type"(
+        desc: BufferBindingLayoutDesc,
+        value: gfx.BufferBindingType,
+    ) BufferBindingLayoutDesc {
+        setDescField(desc.id, "type");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn hasDynamicOffset(
+        desc: BufferBindingLayoutDesc,
+        value: bool,
+    ) BufferBindingLayoutDesc {
+        setDescField(desc.id, "hasDynamicOffset");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn minBindingSize(desc: BufferBindingLayoutDesc, value: u32) BufferBindingLayoutDesc {
+        setDescField(desc.id, "minBindingSize");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: BufferBindingLayoutDesc) BindGroupLayoutEntryDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const SamplerBindingLayoutDesc = struct {
+    parent: BindGroupLayoutEntryDesc,
+    id: js.DescId,
+
+    pub fn @"type"(
+        desc: SamplerBindingLayoutDesc,
+        value: gfx.SamplerBindingType,
+    ) SamplerBindingLayoutDesc {
+        setDescField(desc.id, "type");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: SamplerBindingLayoutDesc) BindGroupLayoutEntryDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const TextureBindingLayoutDesc = struct {
+    parent: BindGroupLayoutEntryDesc,
+    id: js.DescId,
+
+    pub fn sampleType(
+        desc: TextureBindingLayoutDesc,
+        value: gfx.TextureSampleType,
+    ) TextureBindingLayoutDesc {
+        setDescField(desc.id, "sampleType");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn viewDimension(
+        desc: TextureBindingLayoutDesc,
+        value: gfx.TextureViewDimension,
+    ) TextureBindingLayoutDesc {
+        setDescField(desc.id, "viewDimension");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn multisampled(desc: TextureBindingLayoutDesc, value: bool) TextureBindingLayoutDesc {
+        setDescField(desc.id, "multisampled");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: TextureBindingLayoutDesc) BindGroupLayoutEntryDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const StorageTextureBindingLayoutDesc = struct {
+    parent: BindGroupLayoutEntryDesc,
+    id: js.DescId,
+
+    pub fn access(
+        desc: StorageTextureBindingLayoutDesc,
+        value: gfx.StorageTextureAccess,
+    ) StorageTextureBindingLayoutDesc {
+        setDescField(desc.id, "access");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn format(
+        desc: StorageTextureBindingLayoutDesc,
+        value: gfx.TextureFormat,
+    ) StorageTextureBindingLayoutDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn viewDimension(
+        desc: StorageTextureBindingLayoutDesc,
+        value: gfx.TextureViewDimension,
+    ) StorageTextureBindingLayoutDesc {
+        setDescField(desc.id, "viewDimension");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: StorageTextureBindingLayoutDesc) BindGroupLayoutEntryDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BindGroupDesc = struct {
+    id: js.DescId,
+
+    pub fn init() BindGroupDesc {
+        return BindGroupDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: BindGroupDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn layout(desc: BindGroupDesc, value: BindGroupLayout) BindGroupDesc {
+        setDescField(desc.id, "layout");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn entries(desc: BindGroupDesc) BindGroupEntryDescArray {
+        setDescField(desc.id, "entries");
+        beginDescArray(desc.id);
+        return BindGroupEntryDescArray{ .parent = desc, .id = desc.id };
+    }
+};
+
+pub const BindGroupEntryDescArray = struct {
+    parent: BindGroupDesc,
+    id: js.DescId,
+
+    pub fn entry(desc: BindGroupEntryDescArray) BindGroupEntryDesc {
+        beginDescChild(desc.id);
+        return BindGroupEntryDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: BindGroupEntryDescArray) BindGroupDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BindGroupEntryDesc = struct {
+    parent: BindGroupEntryDescArray,
+    id: js.DescId,
+
+    pub fn binding(desc: BindGroupEntryDesc, value: u32) BindGroupEntryDesc {
+        setDescField(desc.id, "binding");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn resource(desc: BindGroupEntryDesc) BindingResourceDesc {
+        return BindingResourceDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: BindGroupEntryDesc) BindGroupEntryDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BindingResourceDesc = struct {
+    parent: BindGroupEntryDesc,
+    id: js.DescId,
+
+    pub fn buffer(desc: BindingResourceDesc) BufferBindingResourceDesc {
+        setDescField(desc.id, "resourceType");
+        setDescU32(desc.id, @enumToInt(js.BindType.buffer));
+        setDescField(desc.id, "resource");
+        beginDescChild(desc.id);
+        return BufferBindingResourceDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn sampler(desc: BindingResourceDesc, value: Sampler) BindingResourceDesc {
+        setDescField(desc.id, "resourceType");
+        setDescU32(desc.id, @enumToInt(js.BindType.sampler));
+        setDescField(desc.id, "resource");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn textureView(desc: BindingResourceDesc, value: TextureView) BindingResourceDesc {
+        setDescField(desc.id, "resourceType");
+        setDescU32(desc.id, @enumToInt(js.BindType.texture_view));
+        setDescField(desc.id, "resource");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn end(desc: BindingResourceDesc) BindGroupEntryDesc {
+        return desc.parent;
+    }
+};
+
+pub const BufferBindingResourceDesc = struct {
+    parent: BindingResourceDesc,
+    id: js.DescId,
+
+    pub fn buffer(desc: BufferBindingResourceDesc, value: Buffer) BufferBindingResourceDesc {
+        setDescField(desc.id, "buffer");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn offset(desc: BufferBindingResourceDesc, value: u32) BufferBindingResourceDesc {
+        setDescField(desc.id, "offset");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn size(desc: BufferBindingResourceDesc, value: u32) BufferBindingResourceDesc {
+        setDescField(desc.id, "size");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: BufferBindingResourceDesc) BindingResourceDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const PipelineLayoutDesc = struct {
+    id: js.DescId,
+
+    pub fn init() PipelineLayoutDesc {
+        return PipelineLayoutDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: PipelineLayoutDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn bindGroupLayouts(
+        desc: PipelineLayoutDesc,
+        values: []const BindGroupLayout,
+    ) PipelineLayoutDesc {
+        setDescField(desc.id, "bindGroupLayouts");
+        beginDescArray(desc.id);
+        for (values) |value| {
+            setDescU32(desc.id, value.id);
+        }
+        endDescArray(desc.id);
+        return desc;
+    }
+};
+
+pub const RenderPipelineDesc = struct {
+    id: js.DescId,
+
+    pub fn init() RenderPipelineDesc {
+        return RenderPipelineDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: RenderPipelineDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn layout(desc: RenderPipelineDesc, value: PipelineLayout) RenderPipelineDesc {
+        setDescField(desc.id, "layout");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn vertex(desc: RenderPipelineDesc) VertexStateDesc {
+        setDescField(desc.id, "vertex");
+        beginDescChild(desc.id);
+        return VertexStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn primitive(desc: RenderPipelineDesc) PrimitiveStateDesc {
+        setDescField(desc.id, "primitive");
+        beginDescChild(desc.id);
+        return PrimitiveStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn depthStencil(desc: RenderPipelineDesc) DepthStencilStateDesc {
+        setDescField(desc.id, "depthStencil");
+        beginDescChild(desc.id);
+        return DepthStencilStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn multisample(desc: RenderPipelineDesc) MultisampleStateDesc {
+        setDescField(desc.id, "multisample");
+        beginDescChild(desc.id);
+        return MultisampleStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn fragment(desc: RenderPipelineDesc) FragmentStateDesc {
+        setDescField(desc.id, "fragment");
+        beginDescChild(desc.id);
+        return FragmentStateDesc{ .parent = desc, .id = desc.id };
+    }
+};
+
+pub const VertexStateDesc = struct {
+    parent: RenderPipelineDesc,
+    id: js.DescId,
+
+    pub fn module(desc: VertexStateDesc, value: Shader) VertexStateDesc {
+        setDescField(desc.id, "module");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn entryPoint(desc: VertexStateDesc, value: []const u8) VertexStateDesc {
+        setDescField(desc.id, "entryPoint");
+        setDescString(desc.id, value);
+        return desc;
+    }
+
+    pub fn buffers(desc: VertexStateDesc) VertexBufferLayoutDescArray {
+        setDescField(desc.id, "buffers");
+        beginDescArray(desc.id);
+        return VertexBufferLayoutDescArray{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: VertexStateDesc) RenderPipelineDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const VertexBufferLayoutDescArray = struct {
+    parent: VertexStateDesc,
+    id: js.DescId,
+
+    pub fn buffer(desc: VertexBufferLayoutDescArray) VertexBufferLayoutDesc {
+        beginDescChild(desc.id);
+        return VertexBufferLayoutDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: VertexBufferLayoutDescArray) VertexStateDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const VertexBufferLayoutDesc = struct {
+    parent: VertexBufferLayoutDescArray,
+    id: js.DescId,
+
+    pub fn arrayStride(desc: VertexBufferLayoutDesc, value: u32) VertexBufferLayoutDesc {
+        setDescField(desc.id, "arrayStride");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn stepMode(
+        desc: VertexBufferLayoutDesc,
+        value: gfx.VertexStepMode,
+    ) VertexBufferLayoutDesc {
+        setDescField(desc.id, "stepMode");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn attributes(desc: VertexBufferLayoutDesc) VertexAttributeDescArray {
+        setDescField(desc.id, "attributes");
+        beginDescArray(desc.id);
+        return VertexAttributeDescArray{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: VertexBufferLayoutDesc) VertexBufferLayoutDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const VertexAttributeDescArray = struct {
+    parent: VertexBufferLayoutDesc,
+    id: js.DescId,
+
+    pub fn attribute(desc: VertexAttributeDescArray) VertexAttributeDesc {
+        beginDescChild(desc.id);
+        return VertexAttributeDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: VertexAttributeDescArray) VertexBufferLayoutDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const VertexAttributeDesc = struct {
+    parent: VertexAttributeDescArray,
+    id: js.DescId,
+
+    pub fn format(desc: VertexAttributeDesc, value: gfx.VertexFormat) VertexAttributeDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn offset(desc: VertexAttributeDesc, value: u32) VertexAttributeDesc {
+        setDescField(desc.id, "offset");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn shaderLocation(desc: VertexAttributeDesc, value: u32) VertexAttributeDesc {
+        setDescField(desc.id, "shaderLocation");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: VertexAttributeDesc) VertexAttributeDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const PrimitiveStateDesc = struct {
+    parent: RenderPipelineDesc,
+    id: js.DescId,
+
+    pub fn topology(desc: PrimitiveStateDesc, value: gfx.PrimitiveTopology) PrimitiveStateDesc {
+        setDescField(desc.id, "topology");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn stripIndexFormat(
+        desc: PrimitiveStateDesc,
+        value: gfx.IndexFormat,
+    ) PrimitiveStateDesc {
+        setDescField(desc.id, "stripIndexFormat");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn frontFace(desc: PrimitiveStateDesc, value: gfx.FrontFace) PrimitiveStateDesc {
+        setDescField(desc.id, "frontFace");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn cullMode(desc: PrimitiveStateDesc, value: gfx.CullMode) PrimitiveStateDesc {
+        setDescField(desc.id, "cullMode");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: PrimitiveStateDesc) RenderPipelineDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const DepthStencilStateDesc = struct {
+    parent: RenderPipelineDesc,
+    id: js.DescId,
+
+    pub fn format(desc: DepthStencilStateDesc, value: gfx.TextureFormat) DepthStencilStateDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthWriteEnabled(desc: DepthStencilStateDesc, value: bool) DepthStencilStateDesc {
+        setDescField(desc.id, "depthWriteEnabled");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthCompare(
+        desc: DepthStencilStateDesc,
+        value: gfx.CompareFunction,
+    ) DepthStencilStateDesc {
+        setDescField(desc.id, "depthCompare");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilFront(desc: DepthStencilStateDesc) StencilFaceStateDesc {
+        setDescField(desc.id, "stencilFront");
+        beginDescChild(desc.id);
+        return StencilFaceStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn stencilBack(desc: DepthStencilStateDesc) StencilFaceStateDesc {
+        setDescField(desc.id, "stencilBack");
+        beginDescChild(desc.id);
+        return StencilFaceStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn stencilReadMask(desc: DepthStencilStateDesc, value: u32) DepthStencilStateDesc {
+        setDescField(desc.id, "stencilReadMask");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilWriteMask(desc: DepthStencilStateDesc, value: u32) DepthStencilStateDesc {
+        setDescField(desc.id, "stencilWriteMask");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthBias(desc: DepthStencilStateDesc, value: i32) DepthStencilStateDesc {
+        setDescField(desc.id, "depthBias");
+        setDescI32(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthBiasSlopeScale(desc: DepthStencilStateDesc, value: f32) DepthStencilStateDesc {
+        setDescField(desc.id, "depthBiasSlopeScale");
+        setDescF32(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthBiasClamp(desc: DepthStencilStateDesc, value: f32) DepthStencilStateDesc {
+        setDescField(desc.id, "depthBiasClamp");
+        setDescF32(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: DepthStencilStateDesc) RenderPipelineDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const StencilFaceStateDesc = struct {
+    parent: DepthStencilStateDesc,
+    id: js.DescId,
+
+    pub fn compare(desc: StencilFaceStateDesc, value: gfx.CompareFunction) StencilFaceStateDesc {
+        setDescField(desc.id, "compare");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn failOp(desc: StencilFaceStateDesc, value: gfx.StencilOperation) StencilFaceStateDesc {
+        setDescField(desc.id, "failOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthFailOp(
+        desc: StencilFaceStateDesc,
+        value: gfx.StencilOperation,
+    ) StencilFaceStateDesc {
+        setDescField(desc.id, "depthFailOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn passOp(desc: StencilFaceStateDesc, value: gfx.StencilOperation) StencilFaceStateDesc {
+        setDescField(desc.id, "passOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: StencilFaceStateDesc) DepthStencilStateDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const MultisampleStateDesc = struct {
+    parent: RenderPipelineDesc,
+    id: js.DescId,
+
+    pub fn count(desc: MultisampleStateDesc, value: u32) MultisampleStateDesc {
+        setDescField(desc.id, "count");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn mask(desc: MultisampleStateDesc, value: u32) MultisampleStateDesc {
+        setDescField(desc.id, "mask");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn alphaToCoverageEnabled(desc: MultisampleStateDesc, value: bool) MultisampleStateDesc {
+        setDescField(desc.id, "alphaToCoverageEnabled");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: MultisampleStateDesc) RenderPipelineDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const FragmentStateDesc = struct {
+    parent: RenderPipelineDesc,
+    id: js.DescId,
+
+    pub fn module(desc: FragmentStateDesc, value: Shader) FragmentStateDesc {
+        setDescField(desc.id, "module");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn entryPoint(desc: FragmentStateDesc, value: []const u8) FragmentStateDesc {
+        setDescField(desc.id, "entryPoint");
+        setDescString(desc.id, value);
+        return desc;
+    }
+
+    pub fn targets(desc: FragmentStateDesc) ColorTargetStateDescArray {
+        setDescField(desc.id, "targets");
+        beginDescArray(desc.id);
+        return ColorTargetStateDescArray{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: FragmentStateDesc) RenderPipelineDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const ColorTargetStateDescArray = struct {
+    parent: FragmentStateDesc,
+    id: js.DescId,
+
+    pub fn target(desc: ColorTargetStateDescArray) ColorTargetStateDesc {
+        beginDescChild(desc.id);
+        return ColorTargetStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: ColorTargetStateDescArray) FragmentStateDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const ColorTargetStateDesc = struct {
+    parent: ColorTargetStateDescArray,
+    id: js.DescId,
+
+    pub fn format(desc: ColorTargetStateDesc, value: gfx.TextureFormat) ColorTargetStateDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn blend(desc: ColorTargetStateDesc) BlendStateDesc {
+        setDescField(desc.id, "blend");
+        beginDescChild(desc.id);
+        return BlendStateDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn writeMask(
+        desc: ColorTargetStateDesc,
+        value: gfx.ColorWriteMask,
+    ) ColorTargetStateDesc {
+        setDescField(desc.id, "writeMask");
+        setDescFlags(desc.id, value);
+    }
+
+    pub fn end(desc: ColorTargetStateDesc) ColorTargetStateDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BlendStateDesc = struct {
+    parent: ColorTargetStateDesc,
+    id: js.DescId,
+
+    pub fn color(desc: BlendStateDesc) BlendComponentDesc {
+        setDescField(desc.id, "color");
+        beginDescChild(desc.id);
+        return BlendComponentDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn alpha(desc: BlendStateDesc) BlendComponentDesc {
+        setDescField(desc.id, "alpha");
+        beginDescChild(desc.id);
+        return BlendComponentDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: BlendStateDesc) ColorTargetStateDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BlendComponentDesc = struct {
+    parent: BlendStateDesc,
+    id: js.DescId,
+
+    pub fn operation(desc: BlendComponentDesc, value: gfx.BlendOperation) BlendComponentDesc {
+        setDescField(desc.id, "operation");
+        setDescEnum(desc.id, value);
+    }
+
+    pub fn srcFactor(desc: BlendComponentDesc, value: gfx.BlendFactor) BlendComponentDesc {
+        setDescField(desc.id, "srcFactor");
+        setDescEnum(desc.id, value);
+    }
+
+    pub fn dstFactor(desc: BlendComponentDesc, value: gfx.BlendFactor) BlendComponentDesc {
+        setDescField(desc.id, "dstFactor");
+        setDescEnum(desc.id, value);
+    }
+};
+
+pub const RenderPassDesc = struct {
+    id: js.DescId,
+
+    pub fn init() RenderPassDesc {
+        return RenderPassDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: RenderPassDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn colorAttachments(desc: RenderPassDesc) ColorAttachmentDescArray {
+        setDescField(desc.id, "colorAttachments");
+        beginDescArray(desc.id);
+        return ColorAttachmentDescArray{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn depthStencilAttachment(desc: RenderPassDesc) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "depthStencilAttachment");
+        beginDescChild(desc.id);
+        return DepthStencilAttachmentDesc{ .parent = desc, .id = desc.id };
+    }
+};
+
+pub const ColorAttachmentDescArray = struct {
+    parent: RenderPassDesc,
+    id: js.DescId,
+
+    pub fn colorAttachment(desc: ColorAttachmentDescArray) ColorAttachmentDesc {
+        beginDescChild(desc.id);
+        return ColorAttachmentDesc{ .parent = desc, .id = desc.id };
+    }
+
+    pub fn end(desc: ColorAttachmentDescArray) RenderPassDesc {
+        endDescArray(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const ColorAttachmentDesc = struct {
+    parent: ColorAttachmentDescArray,
+    id: js.DescId,
+
+    pub fn view(desc: ColorAttachmentDesc, value: TextureView) ColorAttachmentDesc {
+        setDescField(desc.id, "view");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn resolveTarget(desc: ColorAttachmentDesc, value: TextureView) ColorAttachmentDesc {
+        setDescField(desc.id, "resolveTarget");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn loadOp(desc: ColorAttachmentDesc, value: gfx.LoadOp) ColorAttachmentDesc {
+        setDescField(desc.id, "loadOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn clearValue(desc: ColorAttachmentDesc, value: gfx.Color) ColorAttachmentDesc {
+        setDescField(desc.id, "clearValue");
+        beginDescArray(desc.id);
+        setDescF32(desc.id, value.r);
+        setDescF32(desc.id, value.g);
+        setDescF32(desc.id, value.b);
+        setDescF32(desc.id, value.a);
+        endDescArray(desc.id);
+        return desc;
+    }
+
+    pub fn storeOp(desc: ColorAttachmentDesc, value: gfx.StoreOp) ColorAttachmentDesc {
+        setDescField(desc.id, "storeOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: ColorAttachmentDesc) ColorAttachmentDescArray {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const DepthStencilAttachmentDesc = struct {
+    parent: RenderPassDesc,
+    id: js.DescId,
+
+    pub fn view(
+        desc: DepthStencilAttachmentDesc,
+        value: TextureView,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "view");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn depthLoadOp(
+        desc: DepthStencilAttachmentDesc,
+        value: gfx.LoadOp,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "depthLoadOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthClearValue(
+        desc: DepthStencilAttachmentDesc,
+        value: f32,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "depthClearValue");
+        setDescF32(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthStoreOp(
+        desc: DepthStencilAttachmentDesc,
+        value: gfx.StoreOp,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "depthStoreOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn depthReadOnly(
+        desc: DepthStencilAttachmentDesc,
+        value: bool,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "depthReadOnly");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilLoadOp(
+        desc: DepthStencilAttachmentDesc,
+        value: gfx.LoadOp,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "stencilLoadOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilClearValue(
+        desc: DepthStencilAttachmentDesc,
+        value: u32,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "stencilClearValue");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilStoreOp(
+        desc: DepthStencilAttachmentDesc,
+        value: gfx.StoreOp,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "stencilStoreOp");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn stencilReadOnly(
+        desc: DepthStencilAttachmentDesc,
+        value: bool,
+    ) DepthStencilAttachmentDesc {
+        setDescField(desc.id, "stencilReadOnly");
+        setDescBool(desc.id, value);
+        return desc;
+    }
+
+    pub fn end(desc: DepthStencilAttachmentDesc) RenderPassDesc {
+        endDescChild(desc.id);
+        return desc.parent;
+    }
+};
+
+pub const BufferDesc = struct {
+    id: js.DescId,
+
+    pub fn init() BufferDesc {
+        return BufferDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: BufferDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn size(desc: BufferDesc, value: u32) BufferDesc {
+        setDescField(desc.id, "size");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn usage(desc: BufferDesc, value: gfx.BufferUsage) BufferDesc {
+        setDescField(desc.id, "usage");
+        setDescFlags(desc.id, value);
+        return desc;
+    }
+};
+
+pub const TextureDesc = struct {
+    id: js.DescId,
+
+    pub fn init() TextureDesc {
+        return TextureDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: TextureDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn size(desc: TextureDesc, value: gfx.Extent3d) TextureDesc {
+        setDescField(desc.id, "size");
+        beginDescArray(desc.id);
+        setDescU32(desc.id, value.width);
+        setDescU32(desc.id, value.height);
+        setDescU32(desc.id, value.depth_or_array_layers);
+        endDescArray(desc.id);
+        return desc;
+    }
+
+    pub fn usage(desc: TextureDesc, value: gfx.TextureUsage) TextureDesc {
+        setDescField(desc.id, "usage");
+        setDescFlags(desc.id, value);
+        return desc;
+    }
+
+    pub fn dimension(desc: TextureDesc, value: gfx.TextureDimension) TextureDesc {
+        setDescField(desc.id, "dimension");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn format(desc: TextureDesc, value: gfx.TextureFormat) TextureDesc {
+        setDescField(desc.id, "format");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn mipLevelCount(desc: TextureDesc, value: u32) TextureDesc {
+        setDescField(desc.id, "mipLevelCount");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn sampleCount(desc: TextureDesc, value: u32) TextureDesc {
+        setDescField(desc.id, "sampleCount");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+};
+
+pub const SamplerDesc = struct {
+    id: js.DescId,
+
+    pub fn init() SamplerDesc {
+        return SamplerDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: SamplerDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn addressModeU(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
+        setDescField(desc.id, "addressModeU");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn addressModeV(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
+        setDescField(desc.id, "addressModeV");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn addressModeW(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
+        setDescField(desc.id, "addressModeW");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn magFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
+        setDescField(desc.id, "magFilter");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn minFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
+        setDescField(desc.id, "minFilter");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn mipmapFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
+        setDescField(desc.id, "mipmapFilter");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn lodMinClamp(desc: SamplerDesc, value: f32) SamplerDesc {
+        setDescField(desc.id, "lodMinClamp");
+        setDescF32(desc.id, value);
+        return desc;
+    }
+
+    pub fn lodMaxClamp(desc: SamplerDesc, value: f32) SamplerDesc {
+        setDescField(desc.id, "lodMaxClamp");
+        setDescF32(desc.id, value);
+        return desc;
+    }
+
+    pub fn compare(desc: SamplerDesc, value: gfx.CompareFunction) SamplerDesc {
+        setDescField(desc.id, "compare");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+
+    pub fn maxAnisotropy(desc: SamplerDesc, value: u32) SamplerDesc {
+        setDescField(desc.id, "maxAnisotropy");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+};
+
+pub const ImageCopyTextureDesc = struct {
+    id: js.DescId,
+
+    pub fn init() ImageCopyTextureDesc {
+        return ImageCopyTextureDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: ImageCopyTextureDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn texture(desc: ImageCopyTextureDesc, value: Texture) ImageCopyTextureDesc {
+        setDescField(desc.id, "texture");
+        setDescU32(desc.id, value.id);
+        return desc;
+    }
+
+    pub fn mipLevel(desc: ImageCopyTextureDesc, value: u32) ImageCopyTextureDesc {
+        setDescField(desc.id, "mipLevel");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn origin(desc: ImageCopyTextureDesc, value: gfx.Origin3d) ImageCopyTextureDesc {
+        setDescField(desc.id, "origin");
+        beginDescArray(desc.id);
+        setDescU32(desc.id, value.x);
+        setDescU32(desc.id, value.y);
+        setDescU32(desc.id, value.z);
+        endDescArray(desc.id);
+        return desc;
+    }
+
+    pub fn aspect(desc: ImageCopyTextureDesc, value: gfx.TextureAspect) ImageCopyTextureDesc {
+        setDescField(desc.id, "aspect");
+        setDescEnum(desc.id, value);
+        return desc;
+    }
+};
+
+pub const ImageDataLayoutDesc = struct {
+    id: js.DescId,
+
+    pub fn init() ImageDataLayoutDesc {
+        return ImageDataLayoutDesc{ .id = js.createDesc() };
+    }
+
+    pub fn deinit(desc: ImageDataLayoutDesc) void {
+        js.destroyDesc(desc.id);
+    }
+
+    pub fn offset(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
+        setDescField(desc.id, "offset");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn bytesPerRow(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
+        setDescField(desc.id, "bytesPerRow");
+        setDescU32(desc.id, value);
+        return desc;
+    }
+
+    pub fn rowsPerImage(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
+        setDescField(desc.id, "rowsPerImage");
+        setDescU32(desc.id, value);
+        return desc;
+    }
 };
 
 pub const Instance = struct {
@@ -236,9 +1788,7 @@ pub const Instance = struct {
     }
 
     fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
-        var bytes_buf: [128]u8 = undefined;
-        const bytes = try jsSerialize(desc, &bytes_buf);
-        js.requestAdapter(main.wasm_id, bytes.ptr, bytes.len);
+        js.requestAdapter(main.wasm_id, desc.id);
         suspend {
             request_adapter_frame = @frame();
         }
@@ -272,9 +1822,7 @@ pub const Adapter = struct {
     }
 
     fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
-        var bytes_buf: [1024]u8 = undefined;
-        const bytes = try jsSerialize(desc, &bytes_buf);
-        js.requestDevice(main.wasm_id, adapter.id, bytes.ptr, bytes.len);
+        js.requestDevice(main.wasm_id, adapter.id, desc.id);
         suspend {
             request_device_frame = @frame();
         }
@@ -303,15 +1851,7 @@ pub const Device = struct {
         desc: gfx.SwapchainDesc,
     ) !Swapchain {
         const swapchain = Swapchain{ .id = js.createContext(surface.id) };
-        var bytes_buf: [128]u8 = undefined;
-        const bytes = try jsSerialize(desc, &bytes_buf);
-        js.configure(
-            main.wasm_id,
-            device.id,
-            swapchain.id,
-            bytes.ptr,
-            bytes.len,
-        );
+        js.configure(main.wasm_id, device.id, swapchain.id, desc.id);
         return swapchain;
     }
 
@@ -354,14 +1894,11 @@ pub const Device = struct {
         device: *Device,
         desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
-        var desc_bytes_buf: [128]u8 = undefined;
-        var desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return BindGroupLayout{
             .id = js.createBindGroupLayout(
                 main.wasm_id,
                 device.id,
-                desc_bytes.ptr,
-                desc_bytes.len,
+                desc.id,
             ),
         };
     }
@@ -370,46 +1907,28 @@ pub const Device = struct {
         device: *Device,
         desc: gfx.BindGroupDesc,
     ) !BindGroup {
-        var desc_bytes_buf: [1024]u8 = undefined;
-        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return BindGroup{
             .id = js.createBindGroup(
                 main.wasm_id,
                 device.id,
-                desc_bytes.ptr,
-                desc_bytes.len,
+                desc.id,
             ),
         };
     }
 
-    pub fn createPipelineLayout(
-        device: *Device,
-        desc: gfx.PipelineLayoutDesc,
-    ) !PipelineLayout {
-        var desc_bytes_buf: [128]u8 = undefined;
-        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
-        return PipelineLayout{
-            .id = js.createPipelineLayout(
-                main.wasm_id,
-                device.id,
-                desc_bytes.ptr,
-                desc_bytes.len,
-            ),
-        };
+    pub fn createPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
+        return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, desc.id) };
     }
 
     pub fn createRenderPipeline(
         device: *Device,
         desc: gfx.RenderPipelineDesc,
     ) !RenderPipeline {
-        var bytes_buf: [1024]u8 = undefined;
-        const bytes = try jsSerialize(desc, &bytes_buf);
         return RenderPipeline{
             .id = js.createRenderPipeline(
                 main.wasm_id,
                 device.id,
-                bytes.ptr,
-                bytes.len,
+                desc.id,
             ),
         };
     }
@@ -428,15 +1947,12 @@ pub const Device = struct {
         data: ?[]const u8,
     ) !Buffer {
         // std.mem.alignForward(desc.size, 4),
-        var desc_bytes_buf: [128]u8 = undefined;
-        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         const init_data = data orelse &[_]u8{};
         return Buffer{
             .id = js.createBuffer(
                 main.wasm_id,
                 device.id,
-                desc_bytes.ptr,
-                desc_bytes.len,
+                desc.id,
                 init_data.ptr,
                 init_data.len,
             ),
@@ -447,26 +1963,20 @@ pub const Device = struct {
         device: *Device,
         desc: gfx.TextureDesc,
     ) !Texture {
-        var desc_bytes_buf: [128]u8 = undefined;
-        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return Texture{
             .id = js.createTexture(
                 main.wasm_id,
                 device.id,
-                desc_bytes.ptr,
-                desc_bytes.len,
+                desc.id,
             ),
         };
     }
 
     pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
-        var desc_bytes_buf: [128]u8 = undefined;
-        const desc_bytes = try jsSerialize(desc, &desc_bytes_buf);
         return Sampler{ .id = js.createSampler(
             main.wasm_id,
             device.id,
-            desc_bytes.ptr,
-            desc_bytes.len,
+            desc.id,
         ) };
     }
 };
@@ -620,8 +2130,7 @@ pub const RenderPass = struct {
         offset: usize,
         size: usize,
     ) void {
-        var buf: [128]u8 = undefined;
-        const index_format_name = jsSerializeEnumName(index_format, &buf) catch unreachable;
+        const index_format_name = getEnumName(index_format);
         js.setIndexBuffer(
             main.wasm_id,
             render_pass.id,
@@ -673,14 +2182,11 @@ pub const CommandEncoder = struct {
         command_encoder: *CommandEncoder,
         desc: gfx.RenderPassDesc,
     ) !RenderPass {
-        var bytes_buf: [2048]u8 = undefined;
-        const bytes = try jsSerialize(desc, &bytes_buf);
         return RenderPass{
             .id = js.beginRenderPass(
                 main.wasm_id,
                 command_encoder.id,
-                bytes.ptr,
-                bytes.len,
+                desc.id,
             ),
         };
     }
@@ -724,28 +2230,18 @@ pub const Queue = struct {
 
     pub fn writeTexture(
         queue: *Queue,
-        destination: gfx.ImageCopyTexture,
+        destination: gfx.ImageCopyTextureDesc,
         data: []const u8,
-        data_layout: gfx.ImageDataLayout,
+        data_layout: gfx.ImageDataLayoutDesc,
         size: gfx.Extent3d,
     ) void {
-        var aspect_name_buf: [128]u8 = undefined;
-        const aspect_name = jsSerializeEnumName(destination.aspect, &aspect_name_buf) catch unreachable;
         js.queueWriteTexture(
             main.wasm_id,
             queue.id,
-            destination.texture.id,
-            destination.mip_level,
-            destination.origin.x,
-            destination.origin.y,
-            destination.origin.z,
-            aspect_name.ptr,
-            aspect_name.len,
+            destination.id,
             data.ptr,
             data.len,
-            data_layout.offset,
-            data_layout.bytes_per_row,
-            data_layout.rows_per_image,
+            data_layout.id,
             size.width,
             size.height,
             size.depth_or_array_layers,
@@ -758,151 +2254,3 @@ pub const Queue = struct {
         }
     }
 };
-
-fn jsSerialize(value: anytype, bytes: []u8) ![]u8 {
-    const bytes_begin = bytes;
-    var bytes_end = bytes;
-    try jsSerializeRef(value, &bytes_end);
-    return bytes_begin[0..(@ptrToInt(bytes_end.ptr) - @ptrToInt(bytes_begin.ptr))];
-}
-
-fn jsSerializeRef(value: anytype, bytes: *[]u8) !void {
-    const bool_marker: u8 = 'b';
-    const int_marker: u8 = 'i';
-    const float_marker: u8 = 'f';
-    const string_marker: u8 = 's';
-    const slice_marker: u8 = 'a';
-    const struct_begin_marker: u8 = 'o';
-    const struct_end_marker: u8 = 'e';
-    const union_marker: u8 = 'u';
-    const max_enum_name_len: usize = 32;
-    const max_field_name_len: usize = 32;
-
-    switch (@typeInfo(@TypeOf(value))) {
-        .Bool => {
-            try jsSerializeBytes(std.mem.asBytes(&bool_marker), bytes);
-            try jsSerializeBytes(std.mem.asBytes(&value), bytes);
-        },
-        .Int => {
-            try jsSerializeBytes(std.mem.asBytes(&int_marker), bytes);
-            try jsSerializeBytes(std.mem.asBytes(&@intCast(u32, value)), bytes);
-        },
-        .Float => {
-            try jsSerializeBytes(std.mem.asBytes(&float_marker), bytes);
-            try jsSerializeBytes(std.mem.asBytes(&@floatCast(f32, value)), bytes);
-        },
-        .Enum => {
-            var buf: [max_enum_name_len]u8 = undefined;
-            try jsSerializeRef(try jsSerializeEnumName(value, &buf), bytes);
-        },
-        .Optional => {
-            try jsSerializeRef(value.?, bytes);
-        },
-        .Pointer => |P| {
-            switch (P.size) {
-                .One => try jsSerializeRef(value.*, bytes),
-                .Slice => {
-                    const value_len = @intCast(u32, value.len);
-                    if (P.child == u8) {
-                        try jsSerializeBytes(std.mem.asBytes(&string_marker), bytes);
-                        try jsSerializeBytes(std.mem.asBytes(&value_len), bytes);
-                        try jsSerializeBytes(value, bytes);
-                    } else {
-                        try jsSerializeBytes(std.mem.asBytes(&slice_marker), bytes);
-                        try jsSerializeBytes(std.mem.asBytes(&value_len), bytes);
-                        for (value) |v| {
-                            try jsSerializeRef(v, bytes);
-                        }
-                    }
-                },
-                else => return error.InvalidPointerSize,
-            }
-        },
-        .Array => {
-            try jsSerializeRef(&value, bytes);
-        },
-        .Struct => |S| {
-            if (S.layout == .Packed) {
-                try jsSerializeRef(try jsSerializeFlags(value), bytes);
-            } else {
-                try jsSerializeBytes(std.mem.asBytes(&struct_begin_marker), bytes);
-                inline for (S.fields) |field| {
-                    var field_is_defined = if (field.default_value) |def_val_ptr| block: {
-                        const def_val = @ptrCast(*const field.field_type, def_val_ptr).*;
-                        break :block !std.meta.eql(@field(value, field.name), def_val);
-                    } else true;
-
-                    if (field_is_defined) {
-                        @setEvalBranchQuota(10000);
-                        comptime var buf: [max_field_name_len]u8 = undefined;
-                        try jsSerializeRef(
-                            comptime try jsSerializeFieldName(field.name, &buf),
-                            bytes,
-                        );
-                        try jsSerializeRef(@field(value, field.name), bytes);
-                    }
-                }
-                try jsSerializeBytes(std.mem.asBytes(&struct_end_marker), bytes);
-            }
-        },
-        .Union => |U| {
-            try jsSerializeBytes(std.mem.asBytes(&union_marker), bytes);
-            try jsSerializeRef(@enumToInt(std.meta.activeTag(value)), bytes);
-            inline for (U.fields) |field| {
-                if (std.mem.eql(u8, field.name, @tagName(value))) {
-                    try jsSerializeRef(@field(value, field.name), bytes);
-                    break;
-                }
-            }
-        },
-        else => {
-            return error.InvalidType;
-        },
-    }
-}
-
-fn jsSerializeBytes(value_bytes: []const u8, bytes: *[]u8) !void {
-    if (bytes.len < value_bytes.len) {
-        return error.OutOfMemory;
-    }
-    std.mem.copy(u8, bytes.*, value_bytes);
-    bytes.* = bytes.*[value_bytes.len..];
-}
-
-fn jsSerializeEnumName(value: anytype, buf: []u8) ![]const u8 {
-    const name = @tagName(value);
-    if (buf.len < name.len) {
-        return error.InvalidBufLen;
-    }
-    for (name) |byte, i| {
-        buf[i] = if (byte == '_') '-' else byte;
-    }
-    return buf[0..name.len];
-}
-
-fn jsSerializeFieldName(value: []const u8, buf: []u8) ![]const u8 {
-    if (buf.len < value.len) {
-        return error.InvalidBufLen;
-    }
-    var i: usize = 0;
-    var next_is_upper: bool = false;
-    for (value) |byte| {
-        if (byte == '_') {
-            next_is_upper = true;
-        } else {
-            buf[i] = if (next_is_upper) std.ascii.toUpper(byte) else byte;
-            next_is_upper = false;
-            i += 1;
-        }
-    }
-    return buf[0..i];
-}
-
-fn jsSerializeFlags(value: anytype) !u32 {
-    const Type = @TypeOf(value);
-    if (@typeInfo(Type) != .Struct or @typeInfo(Type).Struct.layout != .Packed) {
-        return error.InvalidFlagsType;
-    }
-    const IntType = @Type(.{ .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(Type) } });
-    return @intCast(u32, @bitCast(IntType, value));
-}

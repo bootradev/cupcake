@@ -16,19 +16,25 @@ var example: Example = undefined;
 pub fn init() !void {
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(&example.window, .{});
-    example.adapter = try example.instance.requestAdapter(&example.surface, .{});
-    example.device = try example.adapter.requestDevice(.{});
+
+    const surface_desc = cc.gfx.SurfaceDesc.init();
+    defer surface_desc.deinit();
+    example.surface = try example.instance.createSurface(&example.window, surface_desc);
+
+    const adapter_desc = cc.gfx.AdapterDesc.init();
+    defer adapter_desc.deinit();
+    example.adapter = try example.instance.requestAdapter(&example.surface, adapter_desc);
+
+    const device_desc = cc.gfx.DeviceDesc.init();
+    defer device_desc.deinit();
+    example.device = try example.adapter.requestDevice(device_desc);
 
     const swapchain_format = cc.gfx.Surface.getPreferredFormat();
-
-    example.swapchain = try example.device.createSwapchain(
-        &example.surface,
-        .{
-            .size = .{ .width = example.window.size.x, .height = example.window.size.y },
-            .format = swapchain_format,
-        },
-    );
+    const swapchain_desc = cc.gfx.SwapchainDesc.init()
+        .size(.{ .width = example.window.size.x, .height = example.window.size.y })
+        .format(swapchain_format);
+    defer swapchain_desc.deinit();
+    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
 
     const vert_shader_res = try cc.res.load(res.triangle_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -38,25 +44,25 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(.{});
+    const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init().bindGroupLayouts(&.{});
+    defer pipeline_layout_desc.deinit();
+    var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
     defer pipeline_layout.destroy();
 
-    const vert_state: cc.gfx.VertexState = .{
-        .module = &vert_shader,
-        .entry_point = "vs_main",
-        .buffers = &.{},
-    };
-    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
-    const frag_state: cc.gfx.FragmentState = .{
-        .module = &frag_shader,
-        .entry_point = "fs_main",
-        .targets = frag_targets,
-    };
-    example.render_pipeline = try example.device.createRenderPipeline(.{
-        .layout = &pipeline_layout,
-        .vertex = vert_state,
-        .fragment = frag_state,
-    });
+    const render_pipeline_desc = cc.gfx.RenderPipelineDesc.init()
+        .layout(pipeline_layout)
+        .vertex()
+        .module(vert_shader)
+        .entryPoint("vs_main")
+        .buffers().end()
+        .end()
+        .fragment()
+        .module(frag_shader)
+        .entryPoint("fs_main")
+        .targets().target().format(swapchain_format).end().end()
+        .end();
+    defer render_pipeline_desc.deinit();
+    example.render_pipeline = try example.device.createRenderPipeline(render_pipeline_desc);
 }
 
 pub fn update() !void {
@@ -64,18 +70,17 @@ pub fn update() !void {
     defer swapchain_view.destroy();
 
     var command_encoder = example.device.createCommandEncoder();
-
-    const color_attachments = &[_]cc.gfx.ColorAttachment{
-        .{
-            .view = &swapchain_view,
-            .load_op = .clear,
-            .clear_value = cc.gfx.default_clear_color,
-            .store_op = .store,
-        },
-    };
-    var render_pass = try command_encoder.beginRenderPass(.{
-        .color_attachments = color_attachments,
-    });
+    const render_pass_desc = cc.gfx.RenderPassDesc.init()
+        .colorAttachments()
+        .colorAttachment()
+        .view(swapchain_view)
+        .loadOp(.clear)
+        .clearValue(cc.gfx.default_clear_color)
+        .storeOp(.store)
+        .end()
+        .end();
+    defer render_pass_desc.deinit();
+    var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();

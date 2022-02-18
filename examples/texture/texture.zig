@@ -41,25 +41,43 @@ pub fn init() !void {
     example.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(&example.window, .{});
-    example.adapter = try example.instance.requestAdapter(&example.surface, .{});
-    example.device = try example.adapter.requestDevice(.{});
+
+    const surface_desc = cc.gfx.SurfaceDesc.init();
+    defer surface_desc.deinit();
+    example.surface = try example.instance.createSurface(&example.window, surface_desc);
+
+    const adapter_desc = cc.gfx.AdapterDesc.init();
+    defer adapter_desc.deinit();
+    example.adapter = try example.instance.requestAdapter(&example.surface, adapter_desc);
+
+    const device_desc = cc.gfx.DeviceDesc.init();
+    defer device_desc.deinit();
+    example.device = try example.adapter.requestDevice(device_desc);
 
     const swapchain_format = comptime cc.gfx.Surface.getPreferredFormat();
-
-    example.swapchain = try example.device.createSwapchain(
-        &example.surface,
-        .{ .size = .{ .width = example.window.size.x, .height = example.window.size.y }, .format = swapchain_format },
-    );
+    const swapchain_desc = cc.gfx.SwapchainDesc.init()
+        .size(.{ .width = example.window.size.x, .height = example.window.size.y })
+        .format(swapchain_format);
+    defer swapchain_desc.deinit();
+    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
 
     const quad_vertices_bytes = std.mem.sliceAsBytes(quad_data.vertices);
+    const vertex_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(quad_vertices_bytes.len)
+        .usage(.{ .vertex = true });
+    defer vertex_buffer_desc.deinit();
     example.vertex_buffer = try example.device.createBuffer(
-        .{ .size = quad_vertices_bytes.len, .usage = .{ .vertex = true } },
+        vertex_buffer_desc,
         quad_vertices_bytes,
     );
+
     const quad_indices_bytes = std.mem.sliceAsBytes(quad_data.indices);
+    const index_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(quad_indices_bytes.len)
+        .usage(.{ .index = true });
+    defer index_buffer_desc.deinit();
     example.index_buffer = try example.device.createBuffer(
-        .{ .size = quad_indices_bytes.len, .usage = .{ .index = true } },
+        index_buffer_desc,
         quad_indices_bytes,
     );
 
@@ -71,43 +89,45 @@ pub fn init() !void {
         },
     );
 
-    example.texture = try example.device.createTexture(
-        .{
-            .size = .{ .width = texture_res.width, .height = texture_res.height },
-            .format = .rgba8unorm,
-            .usage = .{ .copy_dst = true, .texture_binding = true, .render_attachment = true },
-        },
-    );
+    const texture_desc = cc.gfx.TextureDesc.init()
+        .size(.{ .width = texture_res.width, .height = texture_res.height })
+        .format(.rgba8unorm)
+        .usage(.{ .copy_dst = true, .texture_binding = true, .render_attachment = true });
+    defer texture_desc.deinit();
+    example.texture = try example.device.createTexture(texture_desc);
     example.texture_view = example.texture.createView();
 
-    example.sampler = try example.device.createSampler(.{
-        .mag_filter = .linear,
-        .min_filter = .linear,
-    });
+    const sampler_desc = cc.gfx.SamplerDesc.init().magFilter(.linear).minFilter(.linear);
+    defer sampler_desc.deinit();
+    example.sampler = try example.device.createSampler(sampler_desc);
 
+    const copy_dest_desc = cc.gfx.ImageCopyTextureDesc.init().texture(example.texture);
+    defer copy_dest_desc.deinit();
+    const copy_layout_desc = cc.gfx.ImageDataLayoutDesc.init()
+        .bytesPerRow(texture_res.width * 4)
+        .rowsPerImage(texture_res.height);
+    defer copy_layout_desc.deinit();
+    const copy_size = cc.gfx.Extent3d{ .width = texture_res.width, .height = texture_res.height };
     var queue = example.device.getQueue();
-    queue.writeTexture(
-        .{ .texture = &example.texture },
-        texture_res.data,
-        .{ .bytes_per_row = texture_res.width * 4, .rows_per_image = texture_res.height },
-        .{ .width = texture_res.width, .height = texture_res.height },
-    );
+    queue.writeTexture(copy_dest_desc, texture_res.data, copy_layout_desc, copy_size);
 
-    var layout = try example.device.createBindGroupLayout(.{
-        .entries = &.{
-            .{ .binding = 1, .visibility = .{ .fragment = true }, .sampler = .{} },
-            .{ .binding = 2, .visibility = .{ .fragment = true }, .texture = .{} },
-        },
-    });
+    const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
+        .entries()
+        .entry().binding(1).visibility(.{ .fragment = true }).sampler().end().end()
+        .entry().binding(2).visibility(.{ .fragment = true }).texture().end().end()
+        .end();
+    defer bind_group_layout_desc.deinit();
+    var layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
     defer layout.destroy();
 
-    example.bind_group = try example.device.createBindGroup(.{
-        .layout = &layout,
-        .entries = &.{
-            .{ .binding = 1, .resource = .{ .sampler = &example.sampler } },
-            .{ .binding = 2, .resource = .{ .texture_view = &example.texture_view } },
-        },
-    });
+    const bind_group_desc = cc.gfx.BindGroupDesc.init()
+        .layout(layout)
+        .entries()
+        .entry().binding(1).resource().sampler(example.sampler).end().end()
+        .entry().binding(2).resource().textureView(example.texture_view).end().end()
+        .end();
+    defer bind_group_desc.deinit();
+    example.bind_group = try example.device.createBindGroup(bind_group_desc);
 
     const vert_shader_res = try cc.res.load(res.texture_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -117,49 +137,35 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(.{
-        .bind_group_layouts = &.{layout},
-    });
+    const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init()
+        .bindGroupLayouts(&.{layout});
+    defer pipeline_layout_desc.deinit();
+    var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
     defer pipeline_layout.destroy();
 
-    const vert_attrs = &[_]cc.gfx.VertexAttribute{
-        .{
-            // position
-            .shader_location = 0,
-            .offset = quad_data.position_offset,
-            .format = .float32x2,
-        },
-        .{
-            // uv
-            .shader_location = 1,
-            .offset = quad_data.uv_offset,
-            .format = .float32x2,
-        },
-    };
-    const vert_buffers = &[_]cc.gfx.VertexBufferLayout{
-        .{
-            .array_stride = quad_data.array_stride,
-            .attributes = vert_attrs,
-        },
-    };
-    const vert_state = cc.gfx.VertexState{
-        .module = &vert_shader,
-        .entry_point = "vs_main",
-        .buffers = vert_buffers,
-    };
-    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
-    const frag_state = cc.gfx.FragmentState{
-        .module = &frag_shader,
-        .entry_point = "fs_main",
-        .targets = frag_targets,
-    };
-    const prim_state: cc.gfx.PrimitiveState = .{ .cull_mode = .back };
-    example.render_pipeline = try example.device.createRenderPipeline(.{
-        .layout = &pipeline_layout,
-        .vertex = vert_state,
-        .fragment = frag_state,
-        .primitive = prim_state,
-    });
+    const render_pipeline_desc = cc.gfx.RenderPipelineDesc.init()
+        .layout(pipeline_layout)
+        .vertex()
+        .module(vert_shader)
+        .entryPoint("vs_main")
+        .buffers()
+        .buffer()
+        .arrayStride(quad_data.array_stride)
+        .attributes()
+        .attribute().shaderLocation(0).offset(quad_data.position_offset).format(.float32x2).end()
+        .attribute().shaderLocation(1).offset(quad_data.uv_offset).format(.float32x2).end()
+        .end()
+        .end()
+        .end()
+        .end()
+        .primitive().cullMode(.back).end()
+        .fragment()
+        .module(frag_shader)
+        .entryPoint("fs_main")
+        .targets().target().format(swapchain_format).end().end()
+        .end();
+    defer render_pipeline_desc.deinit();
+    example.render_pipeline = try example.device.createRenderPipeline(render_pipeline_desc);
 }
 
 pub fn update() !void {
@@ -167,15 +173,17 @@ pub fn update() !void {
     defer swapchain_view.destroy();
 
     var command_encoder = example.device.createCommandEncoder();
-    const color_attachments = &[_]cc.gfx.ColorAttachment{.{
-        .view = &swapchain_view,
-        .load_op = .clear,
-        .clear_value = cc.gfx.default_clear_color,
-        .store_op = .store,
-    }};
-    var render_pass = try command_encoder.beginRenderPass(.{
-        .color_attachments = color_attachments,
-    });
+    const render_pass_desc = cc.gfx.RenderPassDesc.init()
+        .colorAttachments()
+        .colorAttachment()
+        .view(swapchain_view)
+        .loadOp(.clear)
+        .clearValue(cc.gfx.default_clear_color)
+        .storeOp(.store)
+        .end()
+        .end();
+    defer render_pass_desc.deinit();
+    var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);

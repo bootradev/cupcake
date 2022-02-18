@@ -52,54 +52,75 @@ pub fn init() !void {
     example.game_clock = try cc.time.Timer.start();
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(&example.window, .{});
-    example.adapter = try example.instance.requestAdapter(&example.surface, .{});
-    example.device = try example.adapter.requestDevice(.{});
+
+    const surface_desc = cc.gfx.SurfaceDesc.init();
+    defer surface_desc.deinit();
+    example.surface = try example.instance.createSurface(&example.window, surface_desc);
+
+    const adapter_desc = cc.gfx.AdapterDesc.init();
+    defer adapter_desc.deinit();
+    example.adapter = try example.instance.requestAdapter(&example.surface, adapter_desc);
+
+    const device_desc = cc.gfx.DeviceDesc.init();
+    defer device_desc.deinit();
+    example.device = try example.adapter.requestDevice(device_desc);
 
     const swapchain_format = cc.gfx.Surface.getPreferredFormat();
-
-    example.swapchain = try example.device.createSwapchain(
-        &example.surface,
-        .{
-            .size = .{ .width = example.window.size.x, .height = example.window.size.y },
-            .format = swapchain_format,
-        },
-    );
+    const swapchain_desc = cc.gfx.SwapchainDesc.init()
+        .size(.{ .width = example.window.size.x, .height = example.window.size.y })
+        .format(swapchain_format);
+    defer swapchain_desc.deinit();
+    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
 
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
+    const vertex_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(cube_vertices_bytes.len)
+        .usage(.{ .vertex = true });
+    defer vertex_buffer_desc.deinit();
     example.vertex_buffer = try example.device.createBuffer(
-        .{ .size = cube_vertices_bytes.len, .usage = .{ .vertex = true } },
+        vertex_buffer_desc,
         cube_vertices_bytes,
     );
+
     const cube_indices_bytes = std.mem.sliceAsBytes(cube_data.indices);
+    const index_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(cube_indices_bytes.len)
+        .usage(.{ .index = true });
+    defer index_buffer_desc.deinit();
     example.index_buffer = try example.device.createBuffer(
-        .{ .size = cube_indices_bytes.len, .usage = .{ .index = true } },
+        index_buffer_desc,
         cube_indices_bytes,
     );
-    example.depth_texture = try example.device.createTexture(.{
-        .size = .{ .width = example.window.size.x, .height = example.window.size.y },
-        .format = .depth24plus,
-        .usage = .{ .render_attachment = true },
-    });
-    example.depth_texture_view = example.depth_texture.createView();
-    example.uniform_buffer = try example.device.createBuffer(
-        .{ .size = 64, .usage = .{ .uniform = true, .copy_dst = true } },
-        null,
-    );
 
-    var uniform_layout = try example.device.createBindGroupLayout(.{
-        .entries = &.{
-            .{ .binding = 0, .visibility = .{ .vertex = true }, .buffer = .{} },
-        },
-    });
+    const depth_texture_desc = cc.gfx.TextureDesc.init()
+        .size(.{ .width = example.window.size.x, .height = example.window.size.y })
+        .format(.depth24plus)
+        .usage(.{ .render_attachment = true });
+    defer depth_texture_desc.deinit();
+    example.depth_texture = try example.device.createTexture(depth_texture_desc);
+    example.depth_texture_view = example.depth_texture.createView();
+
+    const uniform_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(64)
+        .usage(.{ .uniform = true, .copy_dst = true });
+    defer uniform_buffer_desc.deinit();
+    example.uniform_buffer = try example.device.createBuffer(uniform_buffer_desc, null);
+
+    const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
+        .entries()
+        .entry().binding(0).visibility(.{ .vertex = true }).buffer().end().end()
+        .end();
+    defer bind_group_layout_desc.deinit();
+    var uniform_layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
     defer uniform_layout.destroy();
 
-    example.uniform_bind_group = try example.device.createBindGroup(.{
-        .layout = &uniform_layout,
-        .entries = &.{
-            .{ .binding = 0, .resource = .{ .buffer = .{ .buffer = &example.uniform_buffer } } },
-        },
-    });
+    const bind_group_desc = cc.gfx.BindGroupDesc.init()
+        .layout(uniform_layout)
+        .entries()
+        .entry().binding(0).resource().buffer().buffer(example.uniform_buffer).end().end().end()
+        .end();
+    defer bind_group_desc.deinit();
+    example.uniform_bind_group = try example.device.createBindGroup(bind_group_desc);
 
     const vert_shader_res = try cc.res.load(res.cube_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -109,55 +130,36 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    var pipeline_layout = try example.device.createPipelineLayout(.{
-        .bind_group_layouts = &.{uniform_layout},
-    });
+    const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init()
+        .bindGroupLayouts(&.{uniform_layout});
+    defer pipeline_layout_desc.deinit();
+    var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
     defer pipeline_layout.destroy();
 
-    const vert_attrs = &[_]cc.gfx.VertexAttribute{
-        .{
-            // position
-            .shader_location = 0,
-            .offset = cube_data.position_offset,
-            .format = .float32x4,
-        },
-        .{
-            // color
-            .shader_location = 1,
-            .offset = cube_data.color_offset,
-            .format = .float32x4,
-        },
-    };
-    const vert_buffers = &[_]cc.gfx.VertexBufferLayout{
-        .{
-            .array_stride = cube_data.array_stride,
-            .attributes = vert_attrs,
-        },
-    };
-    const vert_state: cc.gfx.VertexState = .{
-        .module = &vert_shader,
-        .entry_point = "vs_main",
-        .buffers = vert_buffers,
-    };
-    const frag_targets = &[_]cc.gfx.ColorTargetState{.{ .format = swapchain_format }};
-    const frag_state: cc.gfx.FragmentState = .{
-        .module = &frag_shader,
-        .entry_point = "fs_main",
-        .targets = frag_targets,
-    };
-    const prim_state: cc.gfx.PrimitiveState = .{ .cull_mode = .back };
-    const depth_stencil_state: cc.gfx.DepthStencilState = .{
-        .depth_write_enabled = true,
-        .depth_compare = .less,
-        .format = .depth24plus,
-    };
-    example.render_pipeline = try example.device.createRenderPipeline(.{
-        .layout = &pipeline_layout,
-        .vertex = vert_state,
-        .fragment = frag_state,
-        .primitive = prim_state,
-        .depth_stencil = depth_stencil_state,
-    });
+    const render_pipeline_desc = cc.gfx.RenderPipelineDesc.init()
+        .layout(pipeline_layout)
+        .vertex()
+        .module(vert_shader)
+        .entryPoint("vs_main")
+        .buffers()
+        .buffer()
+        .arrayStride(cube_data.array_stride)
+        .attributes()
+        .attribute().shaderLocation(0).offset(cube_data.position_offset).format(.float32x4).end()
+        .attribute().shaderLocation(1).offset(cube_data.color_offset).format(.float32x4).end()
+        .end()
+        .end()
+        .end()
+        .end()
+        .primitive().cullMode(.back).end()
+        .depthStencil().depthWriteEnabled(true).depthCompare(.less).format(.depth24plus).end()
+        .fragment()
+        .module(frag_shader)
+        .entryPoint("fs_main")
+        .targets().target().format(swapchain_format).end().end()
+        .end();
+    defer render_pipeline_desc.deinit();
+    example.render_pipeline = try example.device.createRenderPipeline(render_pipeline_desc);
 }
 
 pub fn update() !void {
@@ -187,27 +189,26 @@ pub fn update() !void {
 
     var command_encoder = example.device.createCommandEncoder();
 
-    const color_attachments = &[_]cc.gfx.ColorAttachment{
-        .{
-            .view = &swapchain_view,
-            .load_op = .clear,
-            .clear_value = cc.gfx.default_clear_color,
-            .store_op = .store,
-        },
-    };
-    const depth_stencil_attachment: cc.gfx.DepthStencilAttachment = .{
-        .view = &example.depth_texture_view,
-        .depth_load_op = .clear,
-        .depth_clear_value = 1.0,
-        .depth_store_op = .store,
-        .stencil_load_op = .clear,
-        .stencil_clear_value = 0,
-        .stencil_store_op = .store,
-    };
-    var render_pass = try command_encoder.beginRenderPass(.{
-        .color_attachments = color_attachments,
-        .depth_stencil_attachment = depth_stencil_attachment,
-    });
+    const render_pass_desc = cc.gfx.RenderPassDesc.init()
+        .colorAttachments()
+        .colorAttachment()
+        .view(swapchain_view)
+        .loadOp(.clear)
+        .clearValue(cc.gfx.default_clear_color)
+        .storeOp(.store)
+        .end()
+        .end()
+        .depthStencilAttachment()
+        .view(example.depth_texture_view)
+        .depthLoadOp(.clear)
+        .depthClearValue(1.0)
+        .depthStoreOp(.store)
+        .stencilLoadOp(.clear)
+        .stencilClearValue(0)
+        .stencilStoreOp(.store)
+        .end();
+    defer render_pass_desc.deinit();
+    var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
     render_pass.setPipeline(&example.render_pipeline);
     render_pass.setBindGroup(0, &example.uniform_bind_group, null);
     render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
