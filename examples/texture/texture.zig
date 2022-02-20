@@ -123,8 +123,8 @@ pub fn init() !void {
     const bind_group_desc = cc.gfx.BindGroupDesc.init()
         .layout(layout)
         .entries()
-        .entry().binding(1).resource().sampler(example.sampler).end().end()
-        .entry().binding(2).resource().textureView(example.texture_view).end().end()
+        .entry().binding(1).sampler(example.sampler).end()
+        .entry().binding(2).textureView(example.texture_view).end()
         .end();
     defer bind_group_desc.deinit();
     example.bind_group = try example.device.createBindGroup(bind_group_desc);

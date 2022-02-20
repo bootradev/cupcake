@@ -11,14 +11,6 @@ const js = struct {
     const GPUSize64 = usize;
     const GPUIndex32 = u32;
     const GPUSignedOffset32 = i32;
-    const GPUSampleMask = u32;
-    const GPUColorWriteFlags = u32;
-    const GPUTextureUsageFlags = u32;
-    const GPUBufferUsageFlags = u32;
-    const GPUShaderStageFlags = u32;
-    const GPUStencilValue = u32;
-    const GPUDepthBias = i32;
-    const GPUFlagsConstant = u32;
     const GPUIntegerCoordinate = u32;
 
     const ObjectId = u32;
@@ -42,7 +34,8 @@ const js = struct {
     const BufferId = ObjectId;
 
     const invalid_id: ObjectId = 0;
-    const BindType = enum {
+
+    const BindType = enum(u32) {
         buffer,
         sampler,
         texture_view,
@@ -241,1525 +234,882 @@ fn getEnumName(value: anytype) []const u8 {
     return enum_names[@enumToInt(value)];
 }
 
-fn setDescField(id: js.DescId, field: []const u8) void {
-    js.setDescField(main.wasm_id, id, field.ptr, field.len);
+fn setDescFieldValue(desc: anytype, field: []const u8, value: anytype) @TypeOf(desc) {
+    js.setDescField(main.wasm_id, desc.id, field.ptr, field.len);
+    setDescValue(desc, value);
+    return desc;
 }
 
-fn setDescString(id: js.DescId, value: []const u8) void {
-    js.setDescString(main.wasm_id, id, value.ptr, value.len);
-}
-
-fn setDescBool(id: js.DescId, value: bool) void {
-    js.setDescBool(id, value);
-}
-
-fn setDescU32(id: js.DescId, value: u32) void {
-    js.setDescU32(id, value);
-}
-
-fn setDescI32(id: js.DescId, value: i32) void {
-    js.setDescI32(id, value);
-}
-
-fn setDescF32(id: js.DescId, value: f32) void {
-    js.setDescF32(id, value);
-}
-
-fn setDescEnum(id: js.DescId, value: anytype) void {
-    setDescString(id, getEnumName(value));
-}
-
-fn setDescFlags(id: js.DescId, value: anytype) void {
-    const BitType = @Type(.{
-        .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
-    });
-    setDescU32(id, @intCast(u32, @bitCast(BitType, value)));
-}
-
-fn beginDescArray(id: js.DescId) void {
-    js.beginDescArray(id);
-}
-
-fn endDescArray(id: js.DescId) void {
-    js.endDescArray(id);
-}
-
-fn beginDescChild(id: js.DescId) void {
-    js.beginDescChild(id);
-}
-
-fn endDescChild(id: js.DescId) void {
-    js.endDescChild(id);
-}
-
-pub const SurfaceDesc = struct {
-    id: js.DescId,
-
-    pub fn init() SurfaceDesc {
-        return SurfaceDesc{ .id = js.createDesc() };
+fn setDescValue(desc: anytype, value: anytype) void {
+    switch (@typeInfo(@TypeOf(value))) {
+        .Bool => js.setDescBool(desc.id, value),
+        .Int => |I| {
+            if (I.bits != 32) {
+                @compileError("Desc ints must be 32 bits!");
+            }
+            switch (I.signedness) {
+                .signed => js.setDescI32(desc.id, value),
+                .unsigned => js.setDescU32(desc.id, value),
+            }
+        },
+        .Float => |F| {
+            if (F.bits != 32) {
+                @compileError("Desc floats must be 32 bits!");
+            }
+            js.setDescF32(desc.id, value);
+        },
+        .Enum => {
+            const enum_name = getEnumName(value);
+            js.setDescString(main.wasm_id, desc.id, enum_name.ptr, enum_name.len);
+        },
+        .Pointer => |P| {
+            switch (P.size) {
+                .Slice => {
+                    if (P.child == u8) {
+                        js.setDescString(main.wasm_id, desc.id, value.ptr, value.len);
+                    } else {
+                        js.beginDescArray(desc.id);
+                        for (value) |v| {
+                            setDescValue(desc, v);
+                        }
+                        js.endDescArray(desc.id);
+                    }
+                },
+                else => @compileError("Invalid desc pointer size!"),
+            }
+        },
+        .Struct => |S| {
+            if (S.layout == .Packed) {
+                const BitType = @Type(.{
+                    .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
+                });
+                js.setDescU32(desc.id, @intCast(u32, @bitCast(BitType, value)));
+            } else if (S.fields.len == 1 and comptime std.mem.eql(u8, S.fields[0].name, "id")) {
+                js.setDescU32(desc.id, value.id);
+            } else {
+                js.beginDescArray(desc.id);
+                inline for (S.fields) |field| {
+                    setDescValue(desc, @field(value, field.name));
+                }
+                js.endDescArray(desc.id);
+            }
+        },
+        else => @compileError("Invalid desc type!"),
     }
+}
 
-    pub fn deinit(desc: SurfaceDesc) void {
-        js.destroyDesc(desc.id);
+fn setDescFieldChild(desc: anytype, field: []const u8, comptime Child: type) Child {
+    js.setDescField(main.wasm_id, desc.id, field.ptr, field.len);
+    return setDescChild(desc, Child);
+}
+
+fn setDescChild(desc: anytype, comptime Child: type) Child {
+    if (Child.is_array) {
+        js.beginDescArray(desc.id);
+    } else {
+        js.beginDescChild(desc.id);
     }
-};
+    return Child{ .id = desc.id, .parent = desc };
+}
 
-pub const AdapterDesc = struct {
-    id: js.DescId,
+const DescApiFn = fn (type) type;
 
-    pub fn init() AdapterDesc {
-        return AdapterDesc{ .id = js.createDesc() };
+fn Desc(comptime DescApi: DescApiFn, comptime ParentType: ?type, is_array: bool) type {
+    if (ParentType) |Parent| {
+        return struct {
+            const Self = @This();
+            const is_array = is_array;
+            pub usingnamespace DescApi(Self);
+
+            parent: Parent,
+            id: js.DescId,
+
+            pub fn end(desc: Self) Parent {
+                if (is_array) {
+                    js.endDescArray(desc.id);
+                } else {
+                    js.endDescChild(desc.id);
+                }
+                return desc.parent;
+            }
+        };
+    } else {
+        return struct {
+            const Self = @This();
+            const is_array = is_array;
+            pub usingnamespace DescApi(Self);
+
+            id: js.DescId,
+
+            pub fn init() Self {
+                return Self{ .id = js.createDesc() };
+            }
+
+            pub fn deinit(self: Self) void {
+                return js.destroyDesc(self.id);
+            }
+        };
     }
+}
 
-    pub fn deinit(desc: AdapterDesc) void {
-        js.destroyDesc(desc.id);
-    }
+fn SurfaceDescApi(comptime _: type) type {
+    return struct {};
+}
+pub const SurfaceDesc = Desc(SurfaceDescApi, null, false);
 
-    pub fn powerPreference(desc: AdapterDesc, value: gfx.PowerPreference) AdapterDesc {
-        setDescField(desc.id, "powerPreference");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn forceFallbackAdapter(desc: AdapterDesc, value: bool) AdapterDesc {
-        setDescField(desc.id, "forceFallbackAdapter");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-};
-
-pub const DeviceDesc = struct {
-    id: js.DescId,
-
-    pub fn init() DeviceDesc {
-        return DeviceDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: DeviceDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn requiredFeatures(desc: DeviceDesc, values: []const gfx.FeatureName) DeviceDesc {
-        setDescField(desc.id, "requiredFeatures");
-        beginDescArray(desc.id);
-        for (values) |value| {
-            setDescEnum(desc.id, value);
+fn AdapterDescApi(comptime Self: type) type {
+    return struct {
+        pub fn powerPreference(self: Self, value: gfx.PowerPreference) Self {
+            return setDescFieldValue(self, "powerPreference", value);
         }
-        endDescArray(desc.id);
-        return desc;
-    }
-
-    pub fn requiredLimits(desc: DeviceDesc) LimitsDesc {
-        setDescField(desc.id, "requiredLimits");
-        beginDescChild(desc.id);
-        return LimitsDesc{ .parent = desc, .id = desc.id };
-    }
-};
-
-pub const LimitsDesc = struct {
-    parent: DeviceDesc,
-    id: js.DescId,
-
-    pub fn maxTextureDimension1D(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxTextureDimension1D");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxTextureDimension2D(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxTextureDimension2D");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxTextureDimension3D(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxTextureDimension3D");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxTextureArrayLayers(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxTextureArrayLayers");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxBindGroups(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxBindGroups");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxDynamicUniformBuffersPerPipelineLayout(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxDynamicUniformBuffersPerPipelineLayout");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxDynamicStorageBuffersPerPipelineLayout(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxDynamicStorageBuffersPerPipelineLayout");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxSampledTexturesPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxSampledTexturesPerShaderStage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxSamplersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxSamplersPerShaderStage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxStorageBuffersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxStorageBuffersPerShaderStage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxStorageTexturesPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxStorageTexturesPerShaderStage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxUniformBuffersPerShaderStage(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxUniformBuffersPerShaderStage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxUniformBufferBindingSize(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxUniformBufferBindingSize");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxStorageBufferBindingSize(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxStorageBufferBindingSize");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn minUniformBufferOffsetAlignment(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "minUniformBufferOffsetAlignment");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn minStorageBufferOffsetAlignment(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "minStorageBufferOffsetAlignment");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxVertexBuffers(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxVertexBuffers");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxVertexAttributes(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxVertexAttributes");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxVertexBufferArrayStride(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxVertexBufferArrayStride");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxInterStageShaderComponents(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxInterStageShaderComponents");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeWorkgroupStorageSize(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeWorkgroupStorageSize");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeInvocationsPerWorkgroup(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeInvocationsPerWorkgroup");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeWorkgroupSizeX(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeWorkgroupSizeX");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeWorkgroupSizeY(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeWorkgroupSizeY");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeWorkgroupSizeZ(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeWorkgroupSizeZ");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxComputeWorkgroupsPerDimension(desc: LimitsDesc, value: u32) LimitsDesc {
-        setDescField(desc.id, "maxComputeWorkgroupsPerDimension");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: LimitsDesc) DeviceDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const SwapchainDesc = struct {
-    id: js.DescId,
-
-    pub fn init() SwapchainDesc {
-        return SwapchainDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: SwapchainDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn size(desc: SwapchainDesc, value: gfx.Extent3d) SwapchainDesc {
-        setDescField(desc.id, "size");
-        beginDescArray(desc.id);
-        setDescU32(desc.id, value.width);
-        setDescU32(desc.id, value.height);
-        setDescU32(desc.id, value.depth_or_array_layers);
-        endDescArray(desc.id);
-        return desc;
-    }
-
-    pub fn format(desc: SwapchainDesc, value: gfx.TextureFormat) SwapchainDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn usage(desc: SwapchainDesc, value: gfx.TextureUsage) SwapchainDesc {
-        setDescField(desc.id, "usage");
-        setDescFlags(desc.id, value);
-        return desc;
-    }
-
-    pub fn presentMode(desc: SwapchainDesc, value: gfx.PresentMode) SwapchainDesc {
-        setDescField(desc.id, "presentMode");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-};
-
-pub const BindGroupLayoutDesc = struct {
-    id: js.DescId,
-
-    pub fn init() BindGroupLayoutDesc {
-        return BindGroupLayoutDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: BindGroupLayoutDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn entries(desc: BindGroupLayoutDesc) BindGroupLayoutEntryDescArray {
-        setDescField(desc.id, "entries");
-        beginDescArray(desc.id);
-        return BindGroupLayoutEntryDescArray{ .parent = desc, .id = desc.id };
-    }
-};
-
-pub const BindGroupLayoutEntryDescArray = struct {
-    parent: BindGroupLayoutDesc,
-    id: js.DescId,
-
-    pub fn entry(desc: BindGroupLayoutEntryDescArray) BindGroupLayoutEntryDesc {
-        beginDescChild(desc.id);
-        return BindGroupLayoutEntryDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: BindGroupLayoutEntryDescArray) BindGroupLayoutDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BindGroupLayoutEntryDesc = struct {
-    parent: BindGroupLayoutEntryDescArray,
-    id: js.DescId,
-
-    pub fn binding(desc: BindGroupLayoutEntryDesc, value: u32) BindGroupLayoutEntryDesc {
-        setDescField(desc.id, "binding");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn visibility(
-        desc: BindGroupLayoutEntryDesc,
-        value: gfx.ShaderStage,
-    ) BindGroupLayoutEntryDesc {
-        setDescField(desc.id, "visibility");
-        setDescFlags(desc.id, value);
-        return desc;
-    }
-
-    pub fn buffer(desc: BindGroupLayoutEntryDesc) BufferBindingLayoutDesc {
-        setDescField(desc.id, "buffer");
-        beginDescChild(desc.id);
-        return BufferBindingLayoutDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn sampler(desc: BindGroupLayoutEntryDesc) SamplerBindingLayoutDesc {
-        setDescField(desc.id, "sampler");
-        beginDescChild(desc.id);
-        return SamplerBindingLayoutDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn texture(desc: BindGroupLayoutEntryDesc) TextureBindingLayoutDesc {
-        setDescField(desc.id, "texture");
-        beginDescChild(desc.id);
-        return TextureBindingLayoutDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn storageTexture(desc: BindGroupLayoutEntryDesc) StorageTextureBindingLayoutDesc {
-        setDescField(desc.id, "storageTexture");
-        beginDescChild(desc.id);
-        return StorageTextureBindingLayoutDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: BindGroupLayoutEntryDesc) BindGroupLayoutEntryDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BufferBindingLayoutDesc = struct {
-    parent: BindGroupLayoutEntryDesc,
-    id: js.DescId,
-
-    pub fn @"type"(
-        desc: BufferBindingLayoutDesc,
-        value: gfx.BufferBindingType,
-    ) BufferBindingLayoutDesc {
-        setDescField(desc.id, "type");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn hasDynamicOffset(
-        desc: BufferBindingLayoutDesc,
-        value: bool,
-    ) BufferBindingLayoutDesc {
-        setDescField(desc.id, "hasDynamicOffset");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn minBindingSize(desc: BufferBindingLayoutDesc, value: u32) BufferBindingLayoutDesc {
-        setDescField(desc.id, "minBindingSize");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: BufferBindingLayoutDesc) BindGroupLayoutEntryDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const SamplerBindingLayoutDesc = struct {
-    parent: BindGroupLayoutEntryDesc,
-    id: js.DescId,
-
-    pub fn @"type"(
-        desc: SamplerBindingLayoutDesc,
-        value: gfx.SamplerBindingType,
-    ) SamplerBindingLayoutDesc {
-        setDescField(desc.id, "type");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: SamplerBindingLayoutDesc) BindGroupLayoutEntryDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const TextureBindingLayoutDesc = struct {
-    parent: BindGroupLayoutEntryDesc,
-    id: js.DescId,
-
-    pub fn sampleType(
-        desc: TextureBindingLayoutDesc,
-        value: gfx.TextureSampleType,
-    ) TextureBindingLayoutDesc {
-        setDescField(desc.id, "sampleType");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn viewDimension(
-        desc: TextureBindingLayoutDesc,
-        value: gfx.TextureViewDimension,
-    ) TextureBindingLayoutDesc {
-        setDescField(desc.id, "viewDimension");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn multisampled(desc: TextureBindingLayoutDesc, value: bool) TextureBindingLayoutDesc {
-        setDescField(desc.id, "multisampled");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: TextureBindingLayoutDesc) BindGroupLayoutEntryDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const StorageTextureBindingLayoutDesc = struct {
-    parent: BindGroupLayoutEntryDesc,
-    id: js.DescId,
-
-    pub fn access(
-        desc: StorageTextureBindingLayoutDesc,
-        value: gfx.StorageTextureAccess,
-    ) StorageTextureBindingLayoutDesc {
-        setDescField(desc.id, "access");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn format(
-        desc: StorageTextureBindingLayoutDesc,
-        value: gfx.TextureFormat,
-    ) StorageTextureBindingLayoutDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn viewDimension(
-        desc: StorageTextureBindingLayoutDesc,
-        value: gfx.TextureViewDimension,
-    ) StorageTextureBindingLayoutDesc {
-        setDescField(desc.id, "viewDimension");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: StorageTextureBindingLayoutDesc) BindGroupLayoutEntryDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BindGroupDesc = struct {
-    id: js.DescId,
-
-    pub fn init() BindGroupDesc {
-        return BindGroupDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: BindGroupDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn layout(desc: BindGroupDesc, value: BindGroupLayout) BindGroupDesc {
-        setDescField(desc.id, "layout");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn entries(desc: BindGroupDesc) BindGroupEntryDescArray {
-        setDescField(desc.id, "entries");
-        beginDescArray(desc.id);
-        return BindGroupEntryDescArray{ .parent = desc, .id = desc.id };
-    }
-};
-
-pub const BindGroupEntryDescArray = struct {
-    parent: BindGroupDesc,
-    id: js.DescId,
-
-    pub fn entry(desc: BindGroupEntryDescArray) BindGroupEntryDesc {
-        beginDescChild(desc.id);
-        return BindGroupEntryDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: BindGroupEntryDescArray) BindGroupDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BindGroupEntryDesc = struct {
-    parent: BindGroupEntryDescArray,
-    id: js.DescId,
-
-    pub fn binding(desc: BindGroupEntryDesc, value: u32) BindGroupEntryDesc {
-        setDescField(desc.id, "binding");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn resource(desc: BindGroupEntryDesc) BindingResourceDesc {
-        return BindingResourceDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: BindGroupEntryDesc) BindGroupEntryDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BindingResourceDesc = struct {
-    parent: BindGroupEntryDesc,
-    id: js.DescId,
-
-    pub fn buffer(desc: BindingResourceDesc) BufferBindingResourceDesc {
-        setDescField(desc.id, "resourceType");
-        setDescU32(desc.id, @enumToInt(js.BindType.buffer));
-        setDescField(desc.id, "resource");
-        beginDescChild(desc.id);
-        return BufferBindingResourceDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn sampler(desc: BindingResourceDesc, value: Sampler) BindingResourceDesc {
-        setDescField(desc.id, "resourceType");
-        setDescU32(desc.id, @enumToInt(js.BindType.sampler));
-        setDescField(desc.id, "resource");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn textureView(desc: BindingResourceDesc, value: TextureView) BindingResourceDesc {
-        setDescField(desc.id, "resourceType");
-        setDescU32(desc.id, @enumToInt(js.BindType.texture_view));
-        setDescField(desc.id, "resource");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn end(desc: BindingResourceDesc) BindGroupEntryDesc {
-        return desc.parent;
-    }
-};
-
-pub const BufferBindingResourceDesc = struct {
-    parent: BindingResourceDesc,
-    id: js.DescId,
-
-    pub fn buffer(desc: BufferBindingResourceDesc, value: Buffer) BufferBindingResourceDesc {
-        setDescField(desc.id, "buffer");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn offset(desc: BufferBindingResourceDesc, value: u32) BufferBindingResourceDesc {
-        setDescField(desc.id, "offset");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn size(desc: BufferBindingResourceDesc, value: u32) BufferBindingResourceDesc {
-        setDescField(desc.id, "size");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: BufferBindingResourceDesc) BindingResourceDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const PipelineLayoutDesc = struct {
-    id: js.DescId,
-
-    pub fn init() PipelineLayoutDesc {
-        return PipelineLayoutDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: PipelineLayoutDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn bindGroupLayouts(
-        desc: PipelineLayoutDesc,
-        values: []const BindGroupLayout,
-    ) PipelineLayoutDesc {
-        setDescField(desc.id, "bindGroupLayouts");
-        beginDescArray(desc.id);
-        for (values) |value| {
-            setDescU32(desc.id, value.id);
+        pub fn forceFallbackAdapter(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "forceFallbackAdapter", value);
         }
-        endDescArray(desc.id);
-        return desc;
-    }
-};
-
-pub const RenderPipelineDesc = struct {
-    id: js.DescId,
-
-    pub fn init() RenderPipelineDesc {
-        return RenderPipelineDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: RenderPipelineDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn layout(desc: RenderPipelineDesc, value: PipelineLayout) RenderPipelineDesc {
-        setDescField(desc.id, "layout");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn vertex(desc: RenderPipelineDesc) VertexStateDesc {
-        setDescField(desc.id, "vertex");
-        beginDescChild(desc.id);
-        return VertexStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn primitive(desc: RenderPipelineDesc) PrimitiveStateDesc {
-        setDescField(desc.id, "primitive");
-        beginDescChild(desc.id);
-        return PrimitiveStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn depthStencil(desc: RenderPipelineDesc) DepthStencilStateDesc {
-        setDescField(desc.id, "depthStencil");
-        beginDescChild(desc.id);
-        return DepthStencilStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn multisample(desc: RenderPipelineDesc) MultisampleStateDesc {
-        setDescField(desc.id, "multisample");
-        beginDescChild(desc.id);
-        return MultisampleStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn fragment(desc: RenderPipelineDesc) FragmentStateDesc {
-        setDescField(desc.id, "fragment");
-        beginDescChild(desc.id);
-        return FragmentStateDesc{ .parent = desc, .id = desc.id };
-    }
-};
-
-pub const VertexStateDesc = struct {
-    parent: RenderPipelineDesc,
-    id: js.DescId,
-
-    pub fn module(desc: VertexStateDesc, value: Shader) VertexStateDesc {
-        setDescField(desc.id, "module");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn entryPoint(desc: VertexStateDesc, value: []const u8) VertexStateDesc {
-        setDescField(desc.id, "entryPoint");
-        setDescString(desc.id, value);
-        return desc;
-    }
-
-    pub fn buffers(desc: VertexStateDesc) VertexBufferLayoutDescArray {
-        setDescField(desc.id, "buffers");
-        beginDescArray(desc.id);
-        return VertexBufferLayoutDescArray{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: VertexStateDesc) RenderPipelineDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const VertexBufferLayoutDescArray = struct {
-    parent: VertexStateDesc,
-    id: js.DescId,
-
-    pub fn buffer(desc: VertexBufferLayoutDescArray) VertexBufferLayoutDesc {
-        beginDescChild(desc.id);
-        return VertexBufferLayoutDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: VertexBufferLayoutDescArray) VertexStateDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const VertexBufferLayoutDesc = struct {
-    parent: VertexBufferLayoutDescArray,
-    id: js.DescId,
-
-    pub fn arrayStride(desc: VertexBufferLayoutDesc, value: u32) VertexBufferLayoutDesc {
-        setDescField(desc.id, "arrayStride");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn stepMode(
-        desc: VertexBufferLayoutDesc,
-        value: gfx.VertexStepMode,
-    ) VertexBufferLayoutDesc {
-        setDescField(desc.id, "stepMode");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn attributes(desc: VertexBufferLayoutDesc) VertexAttributeDescArray {
-        setDescField(desc.id, "attributes");
-        beginDescArray(desc.id);
-        return VertexAttributeDescArray{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: VertexBufferLayoutDesc) VertexBufferLayoutDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const VertexAttributeDescArray = struct {
-    parent: VertexBufferLayoutDesc,
-    id: js.DescId,
-
-    pub fn attribute(desc: VertexAttributeDescArray) VertexAttributeDesc {
-        beginDescChild(desc.id);
-        return VertexAttributeDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: VertexAttributeDescArray) VertexBufferLayoutDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const VertexAttributeDesc = struct {
-    parent: VertexAttributeDescArray,
-    id: js.DescId,
-
-    pub fn format(desc: VertexAttributeDesc, value: gfx.VertexFormat) VertexAttributeDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn offset(desc: VertexAttributeDesc, value: u32) VertexAttributeDesc {
-        setDescField(desc.id, "offset");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn shaderLocation(desc: VertexAttributeDesc, value: u32) VertexAttributeDesc {
-        setDescField(desc.id, "shaderLocation");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: VertexAttributeDesc) VertexAttributeDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const PrimitiveStateDesc = struct {
-    parent: RenderPipelineDesc,
-    id: js.DescId,
-
-    pub fn topology(desc: PrimitiveStateDesc, value: gfx.PrimitiveTopology) PrimitiveStateDesc {
-        setDescField(desc.id, "topology");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn stripIndexFormat(
-        desc: PrimitiveStateDesc,
-        value: gfx.IndexFormat,
-    ) PrimitiveStateDesc {
-        setDescField(desc.id, "stripIndexFormat");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn frontFace(desc: PrimitiveStateDesc, value: gfx.FrontFace) PrimitiveStateDesc {
-        setDescField(desc.id, "frontFace");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn cullMode(desc: PrimitiveStateDesc, value: gfx.CullMode) PrimitiveStateDesc {
-        setDescField(desc.id, "cullMode");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: PrimitiveStateDesc) RenderPipelineDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const DepthStencilStateDesc = struct {
-    parent: RenderPipelineDesc,
-    id: js.DescId,
-
-    pub fn format(desc: DepthStencilStateDesc, value: gfx.TextureFormat) DepthStencilStateDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthWriteEnabled(desc: DepthStencilStateDesc, value: bool) DepthStencilStateDesc {
-        setDescField(desc.id, "depthWriteEnabled");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthCompare(
-        desc: DepthStencilStateDesc,
-        value: gfx.CompareFunction,
-    ) DepthStencilStateDesc {
-        setDescField(desc.id, "depthCompare");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilFront(desc: DepthStencilStateDesc) StencilFaceStateDesc {
-        setDescField(desc.id, "stencilFront");
-        beginDescChild(desc.id);
-        return StencilFaceStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn stencilBack(desc: DepthStencilStateDesc) StencilFaceStateDesc {
-        setDescField(desc.id, "stencilBack");
-        beginDescChild(desc.id);
-        return StencilFaceStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn stencilReadMask(desc: DepthStencilStateDesc, value: u32) DepthStencilStateDesc {
-        setDescField(desc.id, "stencilReadMask");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilWriteMask(desc: DepthStencilStateDesc, value: u32) DepthStencilStateDesc {
-        setDescField(desc.id, "stencilWriteMask");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthBias(desc: DepthStencilStateDesc, value: i32) DepthStencilStateDesc {
-        setDescField(desc.id, "depthBias");
-        setDescI32(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthBiasSlopeScale(desc: DepthStencilStateDesc, value: f32) DepthStencilStateDesc {
-        setDescField(desc.id, "depthBiasSlopeScale");
-        setDescF32(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthBiasClamp(desc: DepthStencilStateDesc, value: f32) DepthStencilStateDesc {
-        setDescField(desc.id, "depthBiasClamp");
-        setDescF32(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: DepthStencilStateDesc) RenderPipelineDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const StencilFaceStateDesc = struct {
-    parent: DepthStencilStateDesc,
-    id: js.DescId,
-
-    pub fn compare(desc: StencilFaceStateDesc, value: gfx.CompareFunction) StencilFaceStateDesc {
-        setDescField(desc.id, "compare");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn failOp(desc: StencilFaceStateDesc, value: gfx.StencilOperation) StencilFaceStateDesc {
-        setDescField(desc.id, "failOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthFailOp(
-        desc: StencilFaceStateDesc,
-        value: gfx.StencilOperation,
-    ) StencilFaceStateDesc {
-        setDescField(desc.id, "depthFailOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn passOp(desc: StencilFaceStateDesc, value: gfx.StencilOperation) StencilFaceStateDesc {
-        setDescField(desc.id, "passOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: StencilFaceStateDesc) DepthStencilStateDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const MultisampleStateDesc = struct {
-    parent: RenderPipelineDesc,
-    id: js.DescId,
-
-    pub fn count(desc: MultisampleStateDesc, value: u32) MultisampleStateDesc {
-        setDescField(desc.id, "count");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn mask(desc: MultisampleStateDesc, value: u32) MultisampleStateDesc {
-        setDescField(desc.id, "mask");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn alphaToCoverageEnabled(desc: MultisampleStateDesc, value: bool) MultisampleStateDesc {
-        setDescField(desc.id, "alphaToCoverageEnabled");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: MultisampleStateDesc) RenderPipelineDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const FragmentStateDesc = struct {
-    parent: RenderPipelineDesc,
-    id: js.DescId,
-
-    pub fn module(desc: FragmentStateDesc, value: Shader) FragmentStateDesc {
-        setDescField(desc.id, "module");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn entryPoint(desc: FragmentStateDesc, value: []const u8) FragmentStateDesc {
-        setDescField(desc.id, "entryPoint");
-        setDescString(desc.id, value);
-        return desc;
-    }
-
-    pub fn targets(desc: FragmentStateDesc) ColorTargetStateDescArray {
-        setDescField(desc.id, "targets");
-        beginDescArray(desc.id);
-        return ColorTargetStateDescArray{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: FragmentStateDesc) RenderPipelineDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const ColorTargetStateDescArray = struct {
-    parent: FragmentStateDesc,
-    id: js.DescId,
-
-    pub fn target(desc: ColorTargetStateDescArray) ColorTargetStateDesc {
-        beginDescChild(desc.id);
-        return ColorTargetStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: ColorTargetStateDescArray) FragmentStateDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const ColorTargetStateDesc = struct {
-    parent: ColorTargetStateDescArray,
-    id: js.DescId,
-
-    pub fn format(desc: ColorTargetStateDesc, value: gfx.TextureFormat) ColorTargetStateDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn blend(desc: ColorTargetStateDesc) BlendStateDesc {
-        setDescField(desc.id, "blend");
-        beginDescChild(desc.id);
-        return BlendStateDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn writeMask(
-        desc: ColorTargetStateDesc,
-        value: gfx.ColorWriteMask,
-    ) ColorTargetStateDesc {
-        setDescField(desc.id, "writeMask");
-        setDescFlags(desc.id, value);
-    }
-
-    pub fn end(desc: ColorTargetStateDesc) ColorTargetStateDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BlendStateDesc = struct {
-    parent: ColorTargetStateDesc,
-    id: js.DescId,
-
-    pub fn color(desc: BlendStateDesc) BlendComponentDesc {
-        setDescField(desc.id, "color");
-        beginDescChild(desc.id);
-        return BlendComponentDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn alpha(desc: BlendStateDesc) BlendComponentDesc {
-        setDescField(desc.id, "alpha");
-        beginDescChild(desc.id);
-        return BlendComponentDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: BlendStateDesc) ColorTargetStateDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BlendComponentDesc = struct {
-    parent: BlendStateDesc,
-    id: js.DescId,
-
-    pub fn operation(desc: BlendComponentDesc, value: gfx.BlendOperation) BlendComponentDesc {
-        setDescField(desc.id, "operation");
-        setDescEnum(desc.id, value);
-    }
-
-    pub fn srcFactor(desc: BlendComponentDesc, value: gfx.BlendFactor) BlendComponentDesc {
-        setDescField(desc.id, "srcFactor");
-        setDescEnum(desc.id, value);
-    }
-
-    pub fn dstFactor(desc: BlendComponentDesc, value: gfx.BlendFactor) BlendComponentDesc {
-        setDescField(desc.id, "dstFactor");
-        setDescEnum(desc.id, value);
-    }
-};
-
-pub const RenderPassDesc = struct {
-    id: js.DescId,
-
-    pub fn init() RenderPassDesc {
-        return RenderPassDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: RenderPassDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn colorAttachments(desc: RenderPassDesc) ColorAttachmentDescArray {
-        setDescField(desc.id, "colorAttachments");
-        beginDescArray(desc.id);
-        return ColorAttachmentDescArray{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn depthStencilAttachment(desc: RenderPassDesc) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "depthStencilAttachment");
-        beginDescChild(desc.id);
-        return DepthStencilAttachmentDesc{ .parent = desc, .id = desc.id };
-    }
-};
-
-pub const ColorAttachmentDescArray = struct {
-    parent: RenderPassDesc,
-    id: js.DescId,
-
-    pub fn colorAttachment(desc: ColorAttachmentDescArray) ColorAttachmentDesc {
-        beginDescChild(desc.id);
-        return ColorAttachmentDesc{ .parent = desc, .id = desc.id };
-    }
-
-    pub fn end(desc: ColorAttachmentDescArray) RenderPassDesc {
-        endDescArray(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const ColorAttachmentDesc = struct {
-    parent: ColorAttachmentDescArray,
-    id: js.DescId,
-
-    pub fn view(desc: ColorAttachmentDesc, value: TextureView) ColorAttachmentDesc {
-        setDescField(desc.id, "view");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn resolveTarget(desc: ColorAttachmentDesc, value: TextureView) ColorAttachmentDesc {
-        setDescField(desc.id, "resolveTarget");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn loadOp(desc: ColorAttachmentDesc, value: gfx.LoadOp) ColorAttachmentDesc {
-        setDescField(desc.id, "loadOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn clearValue(desc: ColorAttachmentDesc, value: gfx.Color) ColorAttachmentDesc {
-        setDescField(desc.id, "clearValue");
-        beginDescArray(desc.id);
-        setDescF32(desc.id, value.r);
-        setDescF32(desc.id, value.g);
-        setDescF32(desc.id, value.b);
-        setDescF32(desc.id, value.a);
-        endDescArray(desc.id);
-        return desc;
-    }
-
-    pub fn storeOp(desc: ColorAttachmentDesc, value: gfx.StoreOp) ColorAttachmentDesc {
-        setDescField(desc.id, "storeOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: ColorAttachmentDesc) ColorAttachmentDescArray {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const DepthStencilAttachmentDesc = struct {
-    parent: RenderPassDesc,
-    id: js.DescId,
-
-    pub fn view(
-        desc: DepthStencilAttachmentDesc,
-        value: TextureView,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "view");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn depthLoadOp(
-        desc: DepthStencilAttachmentDesc,
-        value: gfx.LoadOp,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "depthLoadOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthClearValue(
-        desc: DepthStencilAttachmentDesc,
-        value: f32,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "depthClearValue");
-        setDescF32(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthStoreOp(
-        desc: DepthStencilAttachmentDesc,
-        value: gfx.StoreOp,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "depthStoreOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn depthReadOnly(
-        desc: DepthStencilAttachmentDesc,
-        value: bool,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "depthReadOnly");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilLoadOp(
-        desc: DepthStencilAttachmentDesc,
-        value: gfx.LoadOp,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "stencilLoadOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilClearValue(
-        desc: DepthStencilAttachmentDesc,
-        value: u32,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "stencilClearValue");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilStoreOp(
-        desc: DepthStencilAttachmentDesc,
-        value: gfx.StoreOp,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "stencilStoreOp");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn stencilReadOnly(
-        desc: DepthStencilAttachmentDesc,
-        value: bool,
-    ) DepthStencilAttachmentDesc {
-        setDescField(desc.id, "stencilReadOnly");
-        setDescBool(desc.id, value);
-        return desc;
-    }
-
-    pub fn end(desc: DepthStencilAttachmentDesc) RenderPassDesc {
-        endDescChild(desc.id);
-        return desc.parent;
-    }
-};
-
-pub const BufferDesc = struct {
-    id: js.DescId,
-
-    pub fn init() BufferDesc {
-        return BufferDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: BufferDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn size(desc: BufferDesc, value: u32) BufferDesc {
-        setDescField(desc.id, "size");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn usage(desc: BufferDesc, value: gfx.BufferUsage) BufferDesc {
-        setDescField(desc.id, "usage");
-        setDescFlags(desc.id, value);
-        return desc;
-    }
-};
-
-pub const TextureDesc = struct {
-    id: js.DescId,
-
-    pub fn init() TextureDesc {
-        return TextureDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: TextureDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn size(desc: TextureDesc, value: gfx.Extent3d) TextureDesc {
-        setDescField(desc.id, "size");
-        beginDescArray(desc.id);
-        setDescU32(desc.id, value.width);
-        setDescU32(desc.id, value.height);
-        setDescU32(desc.id, value.depth_or_array_layers);
-        endDescArray(desc.id);
-        return desc;
-    }
-
-    pub fn usage(desc: TextureDesc, value: gfx.TextureUsage) TextureDesc {
-        setDescField(desc.id, "usage");
-        setDescFlags(desc.id, value);
-        return desc;
-    }
-
-    pub fn dimension(desc: TextureDesc, value: gfx.TextureDimension) TextureDesc {
-        setDescField(desc.id, "dimension");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn format(desc: TextureDesc, value: gfx.TextureFormat) TextureDesc {
-        setDescField(desc.id, "format");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn mipLevelCount(desc: TextureDesc, value: u32) TextureDesc {
-        setDescField(desc.id, "mipLevelCount");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn sampleCount(desc: TextureDesc, value: u32) TextureDesc {
-        setDescField(desc.id, "sampleCount");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-};
-
-pub const SamplerDesc = struct {
-    id: js.DescId,
-
-    pub fn init() SamplerDesc {
-        return SamplerDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: SamplerDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn addressModeU(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
-        setDescField(desc.id, "addressModeU");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn addressModeV(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
-        setDescField(desc.id, "addressModeV");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn addressModeW(desc: SamplerDesc, value: gfx.AddressMode) SamplerDesc {
-        setDescField(desc.id, "addressModeW");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn magFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
-        setDescField(desc.id, "magFilter");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn minFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
-        setDescField(desc.id, "minFilter");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn mipmapFilter(desc: SamplerDesc, value: gfx.FilterMode) SamplerDesc {
-        setDescField(desc.id, "mipmapFilter");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn lodMinClamp(desc: SamplerDesc, value: f32) SamplerDesc {
-        setDescField(desc.id, "lodMinClamp");
-        setDescF32(desc.id, value);
-        return desc;
-    }
-
-    pub fn lodMaxClamp(desc: SamplerDesc, value: f32) SamplerDesc {
-        setDescField(desc.id, "lodMaxClamp");
-        setDescF32(desc.id, value);
-        return desc;
-    }
-
-    pub fn compare(desc: SamplerDesc, value: gfx.CompareFunction) SamplerDesc {
-        setDescField(desc.id, "compare");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-
-    pub fn maxAnisotropy(desc: SamplerDesc, value: u32) SamplerDesc {
-        setDescField(desc.id, "maxAnisotropy");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-};
-
-pub const ImageCopyTextureDesc = struct {
-    id: js.DescId,
-
-    pub fn init() ImageCopyTextureDesc {
-        return ImageCopyTextureDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: ImageCopyTextureDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn texture(desc: ImageCopyTextureDesc, value: Texture) ImageCopyTextureDesc {
-        setDescField(desc.id, "texture");
-        setDescU32(desc.id, value.id);
-        return desc;
-    }
-
-    pub fn mipLevel(desc: ImageCopyTextureDesc, value: u32) ImageCopyTextureDesc {
-        setDescField(desc.id, "mipLevel");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn origin(desc: ImageCopyTextureDesc, value: gfx.Origin3d) ImageCopyTextureDesc {
-        setDescField(desc.id, "origin");
-        beginDescArray(desc.id);
-        setDescU32(desc.id, value.x);
-        setDescU32(desc.id, value.y);
-        setDescU32(desc.id, value.z);
-        endDescArray(desc.id);
-        return desc;
-    }
-
-    pub fn aspect(desc: ImageCopyTextureDesc, value: gfx.TextureAspect) ImageCopyTextureDesc {
-        setDescField(desc.id, "aspect");
-        setDescEnum(desc.id, value);
-        return desc;
-    }
-};
-
-pub const ImageDataLayoutDesc = struct {
-    id: js.DescId,
-
-    pub fn init() ImageDataLayoutDesc {
-        return ImageDataLayoutDesc{ .id = js.createDesc() };
-    }
-
-    pub fn deinit(desc: ImageDataLayoutDesc) void {
-        js.destroyDesc(desc.id);
-    }
-
-    pub fn offset(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
-        setDescField(desc.id, "offset");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn bytesPerRow(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
-        setDescField(desc.id, "bytesPerRow");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-
-    pub fn rowsPerImage(desc: ImageDataLayoutDesc, value: u32) ImageDataLayoutDesc {
-        setDescField(desc.id, "rowsPerImage");
-        setDescU32(desc.id, value);
-        return desc;
-    }
-};
+    };
+}
+pub const AdapterDesc = Desc(AdapterDescApi, null, false);
+
+fn DeviceDescApi(comptime Self: type) type {
+    return struct {
+        pub fn requiredFeatures(self: Self, value: []const gfx.FeatureName) Self {
+            return setDescFieldValue(self, "requiredFeatures", value);
+        }
+        pub fn requiredLimits(self: Self) LimitsDesc {
+            return setDescFieldChild(self, "requiredLimits", LimitsDesc);
+        }
+    };
+}
+pub const DeviceDesc = Desc(DeviceDescApi, null, false);
+
+fn LimitsDescApi(comptime Self: type) type {
+    return struct {
+        pub fn maxTextureDimension1D(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxTextureDimension1D", value);
+        }
+        pub fn maxTextureDimension2D(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxTextureDimension2D", value);
+        }
+        pub fn maxTextureDimension3D(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxTextureDimension3D", value);
+        }
+        pub fn maxTextureArrayLayers(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxTextureArrayLayers", value);
+        }
+        pub fn maxBindGroups(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxBindGroups", value);
+        }
+        pub fn maxDynamicUniformBuffersPerPipelineLayout(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxDynamicUniformBuffersPerPipelineLayout", value);
+        }
+        pub fn maxDynamicStorageBuffersPerPipelineLayout(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxDynamicStorageBuffersPerPipelineLayout", value);
+        }
+        pub fn maxSampledTexturesPerShaderStage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxSampledTexturesPerShaderStage", value);
+        }
+        pub fn maxSamplersPerShaderStage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxSamplersPerShaderStage", value);
+        }
+        pub fn maxStorageBuffersPerShaderStage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxStorageBuffersPerShaderStage", value);
+        }
+        pub fn maxStorageTexturesPerShaderStage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxStorageTexturesPerShaderStage", value);
+        }
+        pub fn maxUniformBuffersPerShaderStage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxUniformBuffersPerShaderStage", value);
+        }
+        pub fn maxUniformBufferBindingSize(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxUniformBufferBindingSize", value);
+        }
+        pub fn maxStorageBufferBindingSize(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxStorageBufferBindingSize", value);
+        }
+        pub fn minUniformBufferOffsetAlignment(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "minUniformBufferOffsetAlignment", value);
+        }
+        pub fn minStorageBufferOffsetAlignment(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "minStorageBufferOffsetAlignment", value);
+        }
+        pub fn maxVertexBuffers(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxVertexBuffers", value);
+        }
+        pub fn maxVertexAttributes(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxVertexAttributes", value);
+        }
+        pub fn maxVertexBufferArrayStride(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxVertexBufferArrayStride", value);
+        }
+        pub fn maxInterStageShaderComponents(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxInterStageShaderComponents", value);
+        }
+        pub fn maxComputeWorkgroupStorageSize(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeWorkgroupStorageSize", value);
+        }
+        pub fn maxComputeInvocationsPerWorkgroup(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeInvocationsPerWorkgroup", value);
+        }
+        pub fn maxComputeWorkgroupSizeX(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeWorkgroupSizeX", value);
+        }
+        pub fn maxComputeWorkgroupSizeY(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeWorkgroupSizeY", value);
+        }
+        pub fn maxComputeWorkgroupSizeZ(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeWorkgroupSizeZ", value);
+        }
+        pub fn maxComputeWorkgroupsPerDimension(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxComputeWorkgroupsPerDimension", value);
+        }
+    };
+}
+pub const LimitsDesc = Desc(LimitsDescApi, DeviceDesc, false);
+
+fn SwapchainDescApi(comptime Self: type) type {
+    return struct {
+        pub fn size(self: Self, value: gfx.Extent3d) Self {
+            return setDescFieldValue(self, "size", value);
+        }
+        pub fn format(self: Self, value: gfx.TextureFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn usage(self: Self, value: gfx.TextureUsage) Self {
+            return setDescFieldValue(self, "usage", value);
+        }
+        pub fn presentMode(self: Self, value: gfx.PresentMode) Self {
+            return setDescFieldValue(self, "presentMode", value);
+        }
+    };
+}
+pub const SwapchainDesc = Desc(SwapchainDescApi, null, false);
+
+fn BindGroupLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn entries(self: Self) BindGroupLayoutEntryDescArray {
+            return setDescFieldChild(self, "entries", BindGroupLayoutEntryDescArray);
+        }
+    };
+}
+pub const BindGroupLayoutDesc = Desc(BindGroupLayoutDescApi, null, false);
+
+fn BindGroupLayoutEntryDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn entry(self: Self) BindGroupLayoutEntryDesc {
+            return setDescChild(self, BindGroupLayoutEntryDesc);
+        }
+    };
+}
+pub const BindGroupLayoutEntryDescArray = Desc(
+    BindGroupLayoutEntryDescArrayApi,
+    BindGroupLayoutDesc,
+    true,
+);
+
+fn BindGroupLayoutEntryDescApi(comptime Self: type) type {
+    return struct {
+        pub fn binding(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "binding", value);
+        }
+        pub fn visibility(self: Self, value: gfx.ShaderStage) Self {
+            return setDescFieldValue(self, "visibility", value);
+        }
+        pub fn buffer(self: Self) BufferBindingLayoutDesc {
+            return setDescFieldChild(self, "buffer", BufferBindingLayoutDesc);
+        }
+        pub fn sampler(self: Self) SamplerBindingLayoutDesc {
+            return setDescFieldChild(self, "sampler", SamplerBindingLayoutDesc);
+        }
+        pub fn texture(self: Self) TextureBindingLayoutDesc {
+            return setDescFieldChild(self, "texture", TextureBindingLayoutDesc);
+        }
+        pub fn storageTexture(self: Self) StorageTextureBindingLayoutDesc {
+            return setDescFieldChild(self, "storageTexture", StorageTextureBindingLayoutDesc);
+        }
+    };
+}
+pub const BindGroupLayoutEntryDesc = Desc(
+    BindGroupLayoutEntryDescApi,
+    BindGroupLayoutEntryDescArray,
+    false,
+);
+
+fn BufferBindingLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn @"type"(self: Self, value: gfx.BufferBindingType) Self {
+            return setDescFieldValue(self, "type", value);
+        }
+        pub fn hasDynamicOffset(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "hasDynamicOffset", value);
+        }
+        pub fn minBindingSize(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "minBindingSize", value);
+        }
+    };
+}
+pub const BufferBindingLayoutDesc = Desc(
+    BufferBindingLayoutDescApi,
+    BindGroupLayoutEntryDesc,
+    false,
+);
+
+fn SamplerBindingLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn @"type"(self: Self, value: gfx.SamplerBindingType) Self {
+            return setDescFieldValue(self, "type", value);
+        }
+    };
+}
+pub const SamplerBindingLayoutDesc = Desc(
+    SamplerBindingLayoutDescApi,
+    BindGroupLayoutEntryDesc,
+    false,
+);
+
+fn TextureBindingLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn sampleType(self: Self, value: gfx.TextureSampleType) Self {
+            return setDescFieldValue(self, "sampleType", value);
+        }
+        pub fn viewDimension(self: Self, value: gfx.TextureViewDimension) Self {
+            return setDescFieldValue(self, "viewDimension", value);
+        }
+        pub fn multisampled(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "multisampled", value);
+        }
+    };
+}
+pub const TextureBindingLayoutDesc = Desc(
+    TextureBindingLayoutDescApi,
+    BindGroupLayoutEntryDesc,
+    false,
+);
+
+fn StorageTextureBindingLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn access(self: Self, value: gfx.StorageTextureAccess) Self {
+            return setDescFieldValue(self, "access", value);
+        }
+        pub fn format(self: Self, value: gfx.TextureFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn viewDimension(self: Self, value: gfx.TextureViewDimension) Self {
+            return setDescFieldValue(self, "viewDimension", value);
+        }
+    };
+}
+pub const StorageTextureBindingLayoutDesc = Desc(
+    StorageTextureBindingLayoutDescApi,
+    BindGroupLayoutEntryDesc,
+    false,
+);
+
+fn BindGroupDescApi(comptime Self: type) type {
+    return struct {
+        pub fn layout(self: Self, value: BindGroupLayout) Self {
+            return setDescFieldValue(self, "layout", value);
+        }
+        pub fn entries(self: Self) BindGroupEntryDescArray {
+            return setDescFieldChild(self, "entries", BindGroupEntryDescArray);
+        }
+    };
+}
+pub const BindGroupDesc = Desc(BindGroupDescApi, null, false);
+
+fn BindGroupEntryDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn entry(self: Self) BindGroupEntryDesc {
+            return setDescChild(self, BindGroupEntryDesc);
+        }
+    };
+}
+pub const BindGroupEntryDescArray = Desc(BindGroupEntryDescArrayApi, BindGroupDesc, true);
+
+fn BindGroupEntryDescApi(comptime Self: type) type {
+    return struct {
+        pub fn binding(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "binding", value);
+        }
+        pub fn buffer(self: Self, value: Buffer) BufferBindingResourceDesc {
+            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.buffer));
+            const buf = setDescFieldChild(self, "resource", BufferBindingResourceDesc);
+            return setDescFieldValue(buf, "buffer", value);
+        }
+        pub fn sampler(self: Self, value: Sampler) Self {
+            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.sampler));
+            return setDescFieldValue(self, "resource", value);
+        }
+        pub fn textureView(self: Self, value: TextureView) Self {
+            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.texture_view));
+            return setDescFieldValue(self, "resource", value);
+        }
+    };
+}
+pub const BindGroupEntryDesc = Desc(BindGroupEntryDescApi, BindGroupEntryDescArray, false);
+
+fn BufferBindingResourceDescApi(comptime Self: type) type {
+    return struct {
+        pub fn offset(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "offset", value);
+        }
+        pub fn size(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "size", value);
+        }
+    };
+}
+pub const BufferBindingResourceDesc = Desc(
+    BufferBindingResourceDescApi,
+    BindGroupEntryDesc,
+    false,
+);
+
+fn PipelineLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn bindGroupLayouts(self: Self, value: []const BindGroupLayout) Self {
+            return setDescFieldValue(self, "bindGroupLayouts", value);
+        }
+    };
+}
+pub const PipelineLayoutDesc = Desc(PipelineLayoutDescApi, null, false);
+
+fn RenderPipelineDescApi(comptime Self: type) type {
+    return struct {
+        pub fn layout(self: Self, value: PipelineLayout) Self {
+            return setDescFieldValue(self, "layout", value);
+        }
+        pub fn vertex(self: Self) VertexStateDesc {
+            return setDescFieldChild(self, "vertex", VertexStateDesc);
+        }
+        pub fn primitive(self: Self) PrimitiveStateDesc {
+            return setDescFieldChild(self, "primitive", PrimitiveStateDesc);
+        }
+        pub fn depthStencil(self: Self) DepthStencilStateDesc {
+            return setDescFieldChild(self, "depthStencil", DepthStencilStateDesc);
+        }
+        pub fn multisample(self: Self) MultisampleStateDesc {
+            return setDescFieldChild(self, "multisample", MultisampleStateDesc);
+        }
+        pub fn fragment(self: Self) FragmentStateDesc {
+            return setDescFieldChild(self, "fragment", FragmentStateDesc);
+        }
+    };
+}
+pub const RenderPipelineDesc = Desc(RenderPipelineDescApi, null, false);
+
+fn VertexStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn module(self: Self, value: Shader) Self {
+            return setDescFieldValue(self, "module", value);
+        }
+        pub fn entryPoint(self: Self, value: []const u8) Self {
+            return setDescFieldValue(self, "entryPoint", value);
+        }
+        pub fn buffers(self: Self) VertexBufferLayoutDescArray {
+            return setDescFieldChild(self, "buffers", VertexBufferLayoutDescArray);
+        }
+    };
+}
+pub const VertexStateDesc = Desc(VertexStateDescApi, RenderPipelineDesc, false);
+
+fn VertexBufferLayoutDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn buffer(self: Self) VertexBufferLayoutDesc {
+            return setDescChild(self, VertexBufferLayoutDesc);
+        }
+    };
+}
+pub const VertexBufferLayoutDescArray = Desc(
+    VertexBufferLayoutDescArrayApi,
+    VertexStateDesc,
+    true,
+);
+
+fn VertexBufferLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn arrayStride(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "arrayStride", value);
+        }
+        pub fn stepMode(self: Self, value: gfx.VertexStepMode) Self {
+            return setDescFieldValue(self, "stepMode", value);
+        }
+        pub fn attributes(self: Self) VertexAttributeDescArray {
+            return setDescFieldChild(self, "attributes", VertexAttributeDescArray);
+        }
+    };
+}
+pub const VertexBufferLayoutDesc = Desc(
+    VertexBufferLayoutDescApi,
+    VertexBufferLayoutDescArray,
+    false,
+);
+
+fn VertexAttributeDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn attribute(self: Self) VertexAttributeDesc {
+            return setDescChild(self, VertexAttributeDesc);
+        }
+    };
+}
+pub const VertexAttributeDescArray = Desc(
+    VertexAttributeDescArrayApi,
+    VertexBufferLayoutDesc,
+    true,
+);
+
+fn VertexAttributeDescApi(comptime Self: type) type {
+    return struct {
+        pub fn format(self: Self, value: gfx.VertexFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn offset(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "offset", value);
+        }
+        pub fn shaderLocation(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "shaderLocation", value);
+        }
+    };
+}
+pub const VertexAttributeDesc = Desc(VertexAttributeDescApi, VertexAttributeDescArray, false);
+
+fn PrimitiveStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn topology(self: Self, value: gfx.PrimitiveTopology) Self {
+            return setDescFieldValue(self, "topology", value);
+        }
+        pub fn stripIndexFormat(self: Self, value: gfx.IndexFormat) Self {
+            return setDescFieldValue(self, "stripIndexFormat", value);
+        }
+        pub fn frontFace(self: Self, value: gfx.FrontFace) Self {
+            return setDescFieldValue(self, "frontFace", value);
+        }
+        pub fn cullMode(self: Self, value: gfx.CullMode) Self {
+            return setDescFieldValue(self, "cullMode", value);
+        }
+    };
+}
+pub const PrimitiveStateDesc = Desc(PrimitiveStateDescApi, RenderPipelineDesc, false);
+
+fn DepthStencilStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn format(self: Self, value: gfx.TextureFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn depthWriteEnabled(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "depthWriteEnabled", value);
+        }
+        pub fn depthCompare(self: Self, value: gfx.CompareFunction) Self {
+            return setDescFieldValue(self, "depthCompare", value);
+        }
+        pub fn stencilFront(self: Self) StencilFaceStateDesc {
+            return setDescFieldChild(self, "stencilFront", StencilFaceStateDesc);
+        }
+        pub fn stencilBack(self: Self) StencilFaceStateDesc {
+            return setDescFieldChild(self, "stencilBack", StencilFaceStateDesc);
+        }
+        pub fn stencilReadMask(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "stencilReadMask", value);
+        }
+        pub fn stencilWriteMask(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "stencilWriteMask", value);
+        }
+        pub fn depthBias(self: Self, value: i32) Self {
+            return setDescFieldValue(self, "depthBias", value);
+        }
+        pub fn depthBiasSlopeScale(self: Self, value: f32) Self {
+            return setDescFieldValue(self, "depthBiasSlopeScale", value);
+        }
+        pub fn depthBiasClamp(self: Self, value: f32) Self {
+            return setDescFieldValue(self, "depthBiasClamp", value);
+        }
+    };
+}
+pub const DepthStencilStateDesc = Desc(DepthStencilStateDescApi, RenderPipelineDesc, false);
+
+fn StencilFaceStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn compare(self: Self, value: gfx.CompareFunction) Self {
+            return setDescFieldValue(self, "compare", value);
+        }
+        pub fn failOp(self: Self, value: gfx.StencilOperation) Self {
+            return setDescFieldValue(self, "failOp", value);
+        }
+        pub fn depthFailOp(self: Self, value: gfx.StencilOperation) Self {
+            return setDescFieldValue(self, "depthFailOp", value);
+        }
+        pub fn passOp(self: Self, value: gfx.StencilOperation) Self {
+            return setDescFieldValue(self, "passOp", value);
+        }
+    };
+}
+pub const StencilFaceStateDesc = Desc(StencilFaceStateDescApi, DepthStencilStateDesc, false);
+
+fn MultisampleStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn count(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "count", value);
+        }
+        pub fn mask(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "mask", value);
+        }
+        pub fn alphaToCoverageEnabled(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "alphaToCoverageEnabled", value);
+        }
+    };
+}
+pub const MultisampleStateDesc = Desc(MultisampleStateDescApi, RenderPipelineDesc, false);
+
+fn FragmentStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn module(self: Self, value: Shader) Self {
+            return setDescFieldValue(self, "module", value);
+        }
+        pub fn entryPoint(self: Self, value: []const u8) Self {
+            return setDescFieldValue(self, "entryPoint", value);
+        }
+        pub fn targets(self: Self) ColorTargetStateDescArray {
+            return setDescFieldChild(self, "targets", ColorTargetStateDescArray);
+        }
+    };
+}
+pub const FragmentStateDesc = Desc(FragmentStateDescApi, RenderPipelineDesc, false);
+
+fn ColorTargetStateDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn target(self: Self) ColorTargetStateDesc {
+            return setDescChild(self, ColorTargetStateDesc);
+        }
+    };
+}
+pub const ColorTargetStateDescArray = Desc(
+    ColorTargetStateDescArrayApi,
+    FragmentStateDesc,
+    true,
+);
+
+fn ColorTargetStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn format(self: Self, value: gfx.TextureFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn blend(self: Self) BlendStateDesc {
+            return setDescFieldChild(self, "blend", BlendStateDesc);
+        }
+        pub fn writeMask(self: Self, value: gfx.ColorWriteMask) Self {
+            return setDescFieldValue(self, "writeMask", value);
+        }
+    };
+}
+pub const ColorTargetStateDesc = Desc(ColorTargetStateDescApi, ColorTargetStateDescArray, false);
+
+fn BlendStateDescApi(comptime Self: type) type {
+    return struct {
+        pub fn color(self: Self) BlendComponentDesc {
+            return setDescFieldChild(self, "color", BlendComponentDesc);
+        }
+        pub fn alpha(self: Self) BlendComponentDesc {
+            return setDescFieldChild(self, "alpha", BlendComponentDesc);
+        }
+    };
+}
+pub const BlendStateDesc = Desc(BlendStateDescApi, ColorTargetStateDesc, false);
+
+fn BlendComponentDescApi(comptime Self: type) type {
+    return struct {
+        pub fn operation(self: Self, value: gfx.BlendOperation) Self {
+            return setDescFieldValue(self, "operation", value);
+        }
+        pub fn srcFactor(self: Self, value: gfx.BlendFactor) Self {
+            return setDescFieldValue(self, "srcFactor", value);
+        }
+        pub fn dstFactor(self: Self, value: gfx.BlendFactor) Self {
+            return setDescFieldValue(self, "dstFactor", value);
+        }
+    };
+}
+pub const BlendComponentDesc = Desc(BlendComponentDescApi, BlendStateDesc, false);
+
+fn RenderPassDescApi(comptime Self: type) type {
+    return struct {
+        pub fn colorAttachments(self: Self) ColorAttachmentDescArray {
+            return setDescFieldChild(self, "colorAttachments", ColorAttachmentDescArray);
+        }
+        pub fn depthStencilAttachment(self: Self) DepthStencilAttachmentDesc {
+            return setDescFieldChild(self, "depthStencilAttachment", DepthStencilAttachmentDesc);
+        }
+    };
+}
+pub const RenderPassDesc = Desc(RenderPassDescApi, null, false);
+
+fn ColorAttachmentDescArrayApi(comptime Self: type) type {
+    return struct {
+        pub fn colorAttachment(self: Self) ColorAttachmentDesc {
+            return setDescChild(self, ColorAttachmentDesc);
+        }
+    };
+}
+pub const ColorAttachmentDescArray = Desc(ColorAttachmentDescArrayApi, RenderPassDesc, true);
+
+fn ColorAttachmentDescApi(comptime Self: type) type {
+    return struct {
+        pub fn view(self: Self, value: TextureView) Self {
+            return setDescFieldValue(self, "view", value);
+        }
+        pub fn resolveTarget(self: Self, value: TextureView) Self {
+            return setDescFieldValue(self, "resolveTarget", value);
+        }
+        pub fn loadOp(self: Self, value: gfx.LoadOp) Self {
+            return setDescFieldValue(self, "loadOp", value);
+        }
+        pub fn clearValue(self: Self, value: gfx.Color) Self {
+            return setDescFieldValue(self, "clearValue", value);
+        }
+        pub fn storeOp(self: Self, value: gfx.StoreOp) Self {
+            return setDescFieldValue(self, "storeOp", value);
+        }
+    };
+}
+pub const ColorAttachmentDesc = Desc(ColorAttachmentDescApi, ColorAttachmentDescArray, false);
+
+fn DepthStencilAttachmentDescApi(comptime Self: type) type {
+    return struct {
+        pub fn view(self: Self, value: TextureView) Self {
+            return setDescFieldValue(self, "view", value);
+        }
+        pub fn depthLoadOp(self: Self, value: gfx.LoadOp) Self {
+            return setDescFieldValue(self, "depthLoadOp", value);
+        }
+        pub fn depthClearValue(self: Self, value: f32) Self {
+            return setDescFieldValue(self, "depthClearValue", value);
+        }
+        pub fn depthStoreOp(self: Self, value: gfx.StoreOp) Self {
+            return setDescFieldValue(self, "depthStoreOp", value);
+        }
+        pub fn depthReadOnly(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "depthReadOnly", value);
+        }
+        pub fn stencilLoadOp(self: Self, value: gfx.LoadOp) Self {
+            return setDescFieldValue(self, "stencilLoadOp", value);
+        }
+        pub fn stencilClearValue(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "stencilClearValue", value);
+        }
+        pub fn stencilStoreOp(self: Self, value: gfx.StoreOp) Self {
+            return setDescFieldValue(self, "stencilStoreOp", value);
+        }
+        pub fn stencilReadOnly(self: Self, value: bool) Self {
+            return setDescFieldValue(self, "stencilReadOnly", value);
+        }
+    };
+}
+pub const DepthStencilAttachmentDesc = Desc(
+    DepthStencilAttachmentDescApi,
+    RenderPassDesc,
+    false,
+);
+
+fn BufferDescApi(comptime Self: type) type {
+    return struct {
+        pub fn size(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "size", value);
+        }
+        pub fn usage(self: Self, value: gfx.BufferUsage) Self {
+            return setDescFieldValue(self, "usage", value);
+        }
+    };
+}
+pub const BufferDesc = Desc(BufferDescApi, null, false);
+
+fn TextureDescApi(comptime Self: type) type {
+    return struct {
+        pub fn size(self: Self, value: gfx.Extent3d) Self {
+            return setDescFieldValue(self, "size", value);
+        }
+        pub fn usage(self: Self, value: gfx.TextureUsage) Self {
+            return setDescFieldValue(self, "usage", value);
+        }
+        pub fn dimension(self: Self, value: gfx.TextureDimension) Self {
+            return setDescFieldValue(self, "dimension", value);
+        }
+        pub fn format(self: Self, value: gfx.TextureFormat) Self {
+            return setDescFieldValue(self, "format", value);
+        }
+        pub fn mipLevelCount(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "mipLevelCount", value);
+        }
+        pub fn sampleCount(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "sampleCount", value);
+        }
+    };
+}
+pub const TextureDesc = Desc(TextureDescApi, null, false);
+
+fn SamplerDescApi(comptime Self: type) type {
+    return struct {
+        pub fn addressModeU(self: Self, value: gfx.AddressMode) Self {
+            return setDescFieldValue(self, "addressModeU", value);
+        }
+        pub fn addressModeV(self: Self, value: gfx.AddressMode) Self {
+            return setDescFieldValue(self, "addressModeV", value);
+        }
+        pub fn addressModeW(self: Self, value: gfx.AddressMode) Self {
+            return setDescFieldValue(self, "addressModeW", value);
+        }
+        pub fn magFilter(self: Self, value: gfx.FilterMode) Self {
+            return setDescFieldValue(self, "magFilter", value);
+        }
+        pub fn minFilter(self: Self, value: gfx.FilterMode) Self {
+            return setDescFieldValue(self, "minFilter", value);
+        }
+        pub fn mipmapFilter(self: Self, value: gfx.FilterMode) Self {
+            return setDescFieldValue(self, "mipmapFilter", value);
+        }
+        pub fn lodMinClamp(self: Self, value: f32) Self {
+            return setDescFieldValue(self, "lodMinClamp", value);
+        }
+        pub fn lodMaxClamp(self: Self, value: f32) Self {
+            return setDescFieldValue(self, "lodMaxClamp", value);
+        }
+        pub fn compare(self: Self, value: gfx.CompareFunction) Self {
+            return setDescFieldValue(self, "compare", value);
+        }
+        pub fn maxAnisotropy(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "maxAnisotropy", value);
+        }
+    };
+}
+pub const SamplerDesc = Desc(SamplerDescApi, null, false);
+
+fn ImageCopyTextureDescApi(comptime Self: type) type {
+    return struct {
+        pub fn texture(self: Self, value: Texture) Self {
+            return setDescFieldValue(self, "texture", value);
+        }
+        pub fn mipLevel(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "mipLevel", value);
+        }
+        pub fn origin(self: Self, value: gfx.Origin3d) Self {
+            return setDescFieldValue(self, "origin", value);
+        }
+        pub fn aspect(self: Self, value: gfx.TextureAspect) Self {
+            return setDescFieldValue(self, "aspect", value);
+        }
+    };
+}
+pub const ImageCopyTextureDesc = Desc(ImageCopyTextureDescApi, null, false);
+
+fn ImageDataLayoutDescApi(comptime Self: type) type {
+    return struct {
+        pub fn offset(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "offset", value);
+        }
+        pub fn bytesPerRow(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "bytesPerRow", value);
+        }
+        pub fn rowsPerImage(self: Self, value: u32) Self {
+            return setDescFieldValue(self, "rowsPerImage", value);
+        }
+    };
+}
+pub const ImageDataLayoutDesc = Desc(ImageDataLayoutDescApi, null, false);
 
 pub const Instance = struct {
     pub fn init() !Instance {
@@ -1767,23 +1117,15 @@ pub const Instance = struct {
     }
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(
-        _: *Instance,
-        window: *app.Window,
-        _: gfx.SurfaceDesc,
-    ) !Surface {
+    pub fn createSurface(_: *Instance, window: *app.Window, _: gfx.SurfaceDesc) !Surface {
         return Surface{ .id = window.id };
     }
 
     var request_adapter_frame: anyframe = undefined;
     var request_adapter_id: anyerror!js.AdapterId = undefined;
 
-    pub fn requestAdapter(
-        _: *Instance,
-        surface: *Surface,
-        desc: gfx.AdapterDesc,
-    ) !Adapter {
-        _ = surface;
+    pub fn requestAdapter(_: *Instance, surface: *Surface, desc: gfx.AdapterDesc) !Adapter {
+        _ = surface; // bug in the zig compiler
         return try await async requestAdapterAsync(desc);
     }
 
@@ -1814,10 +1156,7 @@ pub const Adapter = struct {
     var request_device_frame: anyframe = undefined;
     var request_device_id: anyerror!js.DeviceId = undefined;
 
-    pub fn requestDevice(
-        adapter: *Adapter,
-        desc: gfx.DeviceDesc,
-    ) !Device {
+    pub fn requestDevice(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
         return try await async requestDeviceAsync(adapter, desc);
     }
 
@@ -1895,24 +1234,13 @@ pub const Device = struct {
         desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
         return BindGroupLayout{
-            .id = js.createBindGroupLayout(
-                main.wasm_id,
-                device.id,
-                desc.id,
-            ),
+            .id = js.createBindGroupLayout(main.wasm_id, device.id, desc.id),
         };
     }
 
-    pub fn createBindGroup(
-        device: *Device,
-        desc: gfx.BindGroupDesc,
-    ) !BindGroup {
+    pub fn createBindGroup(device: *Device, desc: gfx.BindGroupDesc) !BindGroup {
         return BindGroup{
-            .id = js.createBindGroup(
-                main.wasm_id,
-                device.id,
-                desc.id,
-            ),
+            .id = js.createBindGroup(main.wasm_id, device.id, desc.id),
         };
     }
 
@@ -1920,16 +1248,9 @@ pub const Device = struct {
         return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, desc.id) };
     }
 
-    pub fn createRenderPipeline(
-        device: *Device,
-        desc: gfx.RenderPipelineDesc,
-    ) !RenderPipeline {
+    pub fn createRenderPipeline(device: *Device, desc: gfx.RenderPipelineDesc) !RenderPipeline {
         return RenderPipeline{
-            .id = js.createRenderPipeline(
-                main.wasm_id,
-                device.id,
-                desc.id,
-            ),
+            .id = js.createRenderPipeline(main.wasm_id, device.id, desc.id),
         };
     }
 
@@ -1941,12 +1262,7 @@ pub const Device = struct {
         return Queue{ .id = device.id };
     }
 
-    pub fn createBuffer(
-        device: *Device,
-        desc: gfx.BufferDesc,
-        data: ?[]const u8,
-    ) !Buffer {
-        // std.mem.alignForward(desc.size, 4),
+    pub fn createBuffer(device: *Device, desc: gfx.BufferDesc, data: ?[]const u8) !Buffer {
         const init_data = data orelse &[_]u8{};
         return Buffer{
             .id = js.createBuffer(
@@ -1959,25 +1275,12 @@ pub const Device = struct {
         };
     }
 
-    pub fn createTexture(
-        device: *Device,
-        desc: gfx.TextureDesc,
-    ) !Texture {
-        return Texture{
-            .id = js.createTexture(
-                main.wasm_id,
-                device.id,
-                desc.id,
-            ),
-        };
+    pub fn createTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
+        return Texture{ .id = js.createTexture(main.wasm_id, device.id, desc.id) };
     }
 
     pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
-        return Sampler{ .id = js.createSampler(
-            main.wasm_id,
-            device.id,
-            desc.id,
-        ) };
+        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, desc.id) };
     }
 };
 
@@ -2183,18 +1486,11 @@ pub const CommandEncoder = struct {
         desc: gfx.RenderPassDesc,
     ) !RenderPass {
         return RenderPass{
-            .id = js.beginRenderPass(
-                main.wasm_id,
-                command_encoder.id,
-                desc.id,
-            ),
+            .id = js.beginRenderPass(main.wasm_id, command_encoder.id, desc.id),
         };
     }
 
-    pub fn finish(
-        command_encoder: *CommandEncoder,
-        _: gfx.CommandBufferDesc,
-    ) CommandBuffer {
+    pub fn finish(command_encoder: *CommandEncoder, _: gfx.CommandBufferDesc) CommandBuffer {
         return CommandBuffer{ .id = js.finishCommandEncoder(command_encoder.id) };
     }
 };
@@ -2215,7 +1511,7 @@ pub const Queue = struct {
         buffer: *Buffer,
         buffer_offset: usize,
         data: []const u8,
-        data_offset: usize,
+        data_offset: usize
     ) void {
         js.queueWriteBuffer(
             main.wasm_id,

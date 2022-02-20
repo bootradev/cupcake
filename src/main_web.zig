@@ -6,6 +6,7 @@ const js = struct {
     extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
 };
 
+var log_buf: [2048]u8 = undefined;
 pub fn log(
     comptime message_level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),
@@ -16,7 +17,6 @@ pub fn log(
     const prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     const msg = level_txt ++ prefix ++ format;
 
-    var log_buf: [2048]u8 = undefined;
     const msg_buf = std.fmt.bufPrint(&log_buf, msg, args) catch return;
     js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
 }

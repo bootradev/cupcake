@@ -117,7 +117,7 @@ pub fn init() !void {
     const bind_group_desc = cc.gfx.BindGroupDesc.init()
         .layout(uniform_layout)
         .entries()
-        .entry().binding(0).resource().buffer().buffer(example.uniform_buffer).end().end().end()
+        .entry().binding(0).buffer(example.uniform_buffer).end().end()
         .end();
     defer bind_group_desc.deinit();
     example.uniform_bind_group = try example.device.createBindGroup(bind_group_desc);
