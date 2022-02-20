@@ -14,20 +14,20 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    example.window = try cc.app.Window.init(
+        cc.math.V2u32.make(800, 600),
+        .{ .name = "cupcake triangle example" },
+    );
     example.instance = try cc.gfx.Instance.init();
-
-    const surface_desc = cc.gfx.SurfaceDesc.init();
-    defer surface_desc.deinit();
-    example.surface = try example.instance.createSurface(&example.window, surface_desc);
-
-    const adapter_desc = cc.gfx.AdapterDesc.init();
-    defer adapter_desc.deinit();
-    example.adapter = try example.instance.requestAdapter(&example.surface, adapter_desc);
-
-    const device_desc = cc.gfx.DeviceDesc.init();
-    defer device_desc.deinit();
-    example.device = try example.adapter.requestDevice(device_desc);
+    example.surface = try example.instance.createSurface(
+        &example.window,
+        cc.gfx.SurfaceDesc.default(),
+    );
+    example.adapter = try example.instance.requestAdapter(
+        &example.surface,
+        cc.gfx.AdapterDesc.default(),
+    );
+    example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
     const swapchain_format = cc.gfx.Surface.getPreferredFormat();
     const swapchain_desc = cc.gfx.SwapchainDesc.init()
@@ -44,17 +44,10 @@ pub fn init() !void {
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
-    const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init().bindGroupLayouts(&.{});
-    defer pipeline_layout_desc.deinit();
-    var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
-    defer pipeline_layout.destroy();
-
     const render_pipeline_desc = cc.gfx.RenderPipelineDesc.init()
-        .layout(pipeline_layout)
         .vertex()
         .module(vert_shader)
         .entryPoint("vs_main")
-        .buffers().end()
         .end()
         .fragment()
         .module(frag_shader)

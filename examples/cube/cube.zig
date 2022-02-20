@@ -50,20 +50,20 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.game_clock = try cc.time.Timer.start();
-    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    example.window = try cc.app.Window.init(
+        cc.math.V2u32.make(800, 600),
+        .{ .name = "cupcake cube example" },
+    );
     example.instance = try cc.gfx.Instance.init();
-
-    const surface_desc = cc.gfx.SurfaceDesc.init();
-    defer surface_desc.deinit();
-    example.surface = try example.instance.createSurface(&example.window, surface_desc);
-
-    const adapter_desc = cc.gfx.AdapterDesc.init();
-    defer adapter_desc.deinit();
-    example.adapter = try example.instance.requestAdapter(&example.surface, adapter_desc);
-
-    const device_desc = cc.gfx.DeviceDesc.init();
-    defer device_desc.deinit();
-    example.device = try example.adapter.requestDevice(device_desc);
+    example.surface = try example.instance.createSurface(
+        &example.window,
+        cc.gfx.SurfaceDesc.default(),
+    );
+    example.adapter = try example.instance.requestAdapter(
+        &example.surface,
+        cc.gfx.AdapterDesc.default(),
+    );
+    example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
     const swapchain_format = cc.gfx.Surface.getPreferredFormat();
     const swapchain_desc = cc.gfx.SwapchainDesc.init()

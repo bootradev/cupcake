@@ -34,6 +34,7 @@ const js = struct {
     const BufferId = ObjectId;
 
     const invalid_id: ObjectId = 0;
+    const default_desc_id: DescId = 0;
 
     const BindType = enum(u32) {
         buffer,
@@ -347,6 +348,10 @@ fn Desc(comptime DescApi: DescApiFn, comptime ParentType: ?type, is_array: bool)
 
             pub fn deinit(self: Self) void {
                 return js.destroyDesc(self.id);
+            }
+
+            pub fn default() Self {
+                return Self{ .id = js.default_desc_id };
             }
         };
     }
@@ -1506,13 +1511,7 @@ pub const QuerySet = struct {
 pub const Queue = struct {
     id: js.DeviceId,
 
-    pub fn writeBuffer(
-        queue: *Queue,
-        buffer: *Buffer,
-        buffer_offset: usize,
-        data: []const u8,
-        data_offset: usize
-    ) void {
+    pub fn writeBuffer(queue: *Queue, buffer: *Buffer, buffer_offset: usize, data: []const u8, data_offset: usize) void {
         js.queueWriteBuffer(
             main.wasm_id,
             queue.id,

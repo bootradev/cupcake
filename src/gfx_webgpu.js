@@ -1,4 +1,5 @@
 const _InvalidId = 0;
+const _DefaultDescId = 0;
 const _WholeSize = 0xFFFFFFFF;
 const _BindTypeBuffer = 0;
 const _BindTypeSampler = 1;
@@ -464,6 +465,9 @@ const _webgpu = {
     },
 
     getDesc(_descId) {
+        if (_descId === _DefaultDescId) {
+            return { _obj: {} };
+        }
         const _desc = _webgpu._descs.get(_descId);
         return _desc._stack[_desc._stack.length - 1];
     },
