@@ -43,13 +43,13 @@ const Example = struct {
     depth_texture: cc.gfx.Texture,
     depth_texture_view: cc.gfx.TextureView,
     uniform_bind_group: cc.gfx.BindGroup,
-    game_clock: cc.time.Timer,
+    game_clock: cc.app.Timer,
 };
 
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.game_clock = try cc.time.Timer.start();
+    example.game_clock = try cc.app.Timer.start();
     example.window = try cc.app.Window.init(
         cc.math.V2u32.make(800, 600),
         .{ .name = "cupcake cube example" },
@@ -122,11 +122,11 @@ pub fn init() !void {
     defer bind_group_desc.deinit();
     example.uniform_bind_group = try example.device.createBindGroup(bind_group_desc);
 
-    const vert_shader_res = try cc.res.load(res.cube_vert_shader, .{});
+    const vert_shader_res = try cc.app.load(res.cube_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_res = try cc.res.load(res.cube_frag_shader, .{});
+    const frag_shader_res = try cc.app.load(res.cube_frag_shader, .{});
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
@@ -163,7 +163,7 @@ pub fn init() !void {
 }
 
 pub fn update() !void {
-    const time = cc.time.readSeconds(example.game_clock);
+    const time = cc.app.readSeconds(example.game_clock);
     const model_matrix = cc.math.M44f32.makeAngleAxis(
         1.0,
         cc.math.V3f32.make(cc.math.sinFast(time), cc.math.cosFast(time), 0.0),

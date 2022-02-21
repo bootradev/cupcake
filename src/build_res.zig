@@ -183,12 +183,7 @@ fn buildShader(
     res: build_app.ManifestRes,
     res_bytes: []const u8,
 ) !BuildResult {
-    const shader_bytes = try minify.shader(
-        res_bytes,
-        allocator,
-        manifest.opt_level,
-        manifest.gfx_api,
-    );
+    const shader_bytes = try minify.shader(res_bytes, allocator, manifest.opt_level, manifest.gfx_api,);
     defer allocator.free(shader_bytes);
 
     const shader_resource: ShaderRes = .{ .data = shader_bytes };
@@ -272,8 +267,6 @@ fn buildWeb(
         "main_web.js",
         "app_web.js",
         "gfx_webgpu.js",
-        "time_web.js",
-        "res_web.js",
     };
     const js_name = "cupcake.js";
 

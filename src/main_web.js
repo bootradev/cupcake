@@ -5,11 +5,9 @@ const _main = {
     _run(_wasmPath, _canvasParent) {
         const _imports = {};
         _imports.env = {
+            ..._main,
             ..._app,
             ..._webgpu,
-            ..._time,
-            ..._res,
-            ..._main,
         };
 
         fetch(_wasmPath)

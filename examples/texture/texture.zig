@@ -81,7 +81,7 @@ pub fn init() !void {
         quad_indices_bytes,
     );
 
-    const texture_res = try cc.res.load(
+    const texture_res = try cc.app.load(
         res.cupcake_texture,
         .{
             .file_allocator = example.file_allocator.allocator(),
@@ -129,11 +129,11 @@ pub fn init() !void {
     defer bind_group_desc.deinit();
     example.bind_group = try example.device.createBindGroup(bind_group_desc);
 
-    const vert_shader_res = try cc.res.load(res.texture_vert_shader, .{});
+    const vert_shader_res = try cc.app.load(res.texture_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_res = try cc.res.load(res.texture_frag_shader, .{});
+    const frag_shader_res = try cc.app.load(res.texture_frag_shader, .{});
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 

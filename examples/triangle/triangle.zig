@@ -36,11 +36,11 @@ pub fn init() !void {
     defer swapchain_desc.deinit();
     example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
 
-    const vert_shader_res = try cc.res.load(res.triangle_vert_shader, .{});
+    const vert_shader_res = try cc.app.load(res.triangle_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_res = try cc.res.load(res.triangle_frag_shader, .{});
+    const frag_shader_res = try cc.app.load(res.triangle_frag_shader, .{});
     var frag_shader = try example.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
