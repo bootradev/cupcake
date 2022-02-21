@@ -118,6 +118,24 @@ const _webgpu = {
         return _context._texId;
     },
 
+    getPreferredFormat(_wasmId, _contextId, _adapterId) {
+        const _format = _webgpu._contexts._get(_contextId)._obj.getPreferredFormat(
+            _webgpu._adapters._get(_adapterId)
+        );
+
+        // format must be one of the supported context formats:
+        if (_format === "bgra8unorm") {
+            return 22;
+        } else if (_format === "rgba8unorm") {
+            return 17;
+        } else if (_format === "rgba16float") {
+            return 32;
+        } else {
+            console.log("unexpected preferred format:", _format);
+            return -1;
+        }
+    },
+
     configure(_wasmId, _deviceId, _contextId, _descId) {
         const _desc = _webgpu._getDesc(_descId)._obj;
         _desc.device = _webgpu._devices._get(_deviceId);

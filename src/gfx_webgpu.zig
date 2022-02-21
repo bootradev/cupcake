@@ -75,6 +75,11 @@ const js = struct {
         context_id: ContextId,
         desc_id: DescId,
     ) void;
+    extern fn getPreferredFormat(
+        wasm_id: main.WasmId,
+        context_id: ContextId,
+        adapter_id: AdapterId,
+    ) usize;
 
     extern fn requestAdapter(wasm_id: main.WasmId, desc_id: DescId) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
@@ -1123,7 +1128,10 @@ pub const Instance = struct {
     pub fn deinit(_: *Instance) void {}
 
     pub fn createSurface(_: *Instance, window: *app.Window, _: gfx.SurfaceDesc) !Surface {
-        return Surface{ .id = window.id };
+        return Surface{
+            .canvas_id = window.id,
+            .context_id = js.createContext(window.id),
+        };
     }
 
     var request_adapter_frame: anyframe = undefined;
@@ -1194,7 +1202,7 @@ pub const Device = struct {
         surface: *Surface,
         desc: gfx.SwapchainDesc,
     ) !Swapchain {
-        const swapchain = Swapchain{ .id = js.createContext(surface.id) };
+        const swapchain = Swapchain{ .id = surface.context_id };
         js.configure(main.wasm_id, device.id, swapchain.id, desc.id);
         return swapchain;
     }
@@ -1336,10 +1344,12 @@ pub const Shader = struct {
 };
 
 pub const Surface = struct {
-    id: js.CanvasId,
+    canvas_id: js.CanvasId,
+    context_id: js.ContextId,
 
-    pub fn getPreferredFormat() gfx.TextureFormat {
-        return .bgra8unorm;
+    pub fn getPreferredFormat(surface: Surface, adapter: Adapter) gfx.TextureFormat {
+        const format = js.getPreferredFormat(main.wasm_id, surface.context_id, adapter.id);
+        return @intToEnum(gfx.TextureFormat, format);
     }
 
     pub fn destroy(_: *Surface) void {}

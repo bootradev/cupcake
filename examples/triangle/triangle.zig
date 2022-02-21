@@ -29,7 +29,7 @@ pub fn init() !void {
     );
     example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
-    const swapchain_format = cc.gfx.Surface.getPreferredFormat();
+    const swapchain_format = example.surface.getPreferredFormat(example.adapter);
     const swapchain_desc = cc.gfx.SwapchainDesc.init()
         .size(.{ .width = example.window.size.x, .height = example.window.size.y })
         .format(swapchain_format);
