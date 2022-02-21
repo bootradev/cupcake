@@ -198,7 +198,7 @@ fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     const header_only_libs_step = try HeaderOnlyLibStep.init(builder, &header_only_libs);
 
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
-    build_res_exe.setBuildMode(manifest.opt_level.getBuildMode());
+    build_res_exe.setBuildMode(.ReleaseSafe);
     build_res_exe.setTarget(std.zig.CrossTarget.fromTarget(builtin.target));
     build_res_exe.linkLibC();
     build_res_exe.addIncludeDir("ext/stb");

@@ -1,8 +1,8 @@
-class Objs {
+class _Objs {
     _free = [];
     _objs = [null];
 
-    insert(_obj) {
+    _insert(_obj) {
         if (this._free.length > 0) {
             const _objId = this._free.pop();
             this._objs[_objId] = _obj;
@@ -13,7 +13,7 @@ class Objs {
         }
     }
 
-    remove(_objId) {
+    _remove(_objId) {
         if (_objId === this._objs.length - 1) {
             this._objs.pop();
         } else {
@@ -22,23 +22,23 @@ class Objs {
         }
     }
 
-    get(_objId) {
+    _get(_objId) {
         return this._objs[_objId];
     }
 
-    set(_obj, _objId) {
+    _set(_obj, _objId) {
         this._objs[_objId] = _obj;
     }
 
-    begin() {
+    _begin() {
         return 1;
     }
 
-    end() {
+    _end() {
         return this._objs.length;
     }
 
-    next(_objId) {
+    _next(_objId) {
         _objId++;
         while (_objId < this._objs.length && this._objs[_objId] == null) {
             _objId++;

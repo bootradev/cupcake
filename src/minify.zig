@@ -7,62 +7,6 @@ const Minify = struct {
         wgsl,
     };
 
-    const keywords_js: []const []const u8 = &.{
-        "document",
-        "window",
-        "WebAssembly",
-        "navigator",
-        "performance",
-        "JSON",
-        "console",
-        "class",
-        "this",
-        "function",
-        "const",
-        "let",
-        "var",
-        "undefined",
-        "catch",
-        "if",
-        "else",
-        "switch",
-        "case",
-        "break",
-        "do",
-        "while",
-        "for",
-        "return",
-        "new",
-        "null",
-        "true",
-        "false",
-        "Objs",
-    };
-
-    const keywords_wgsl: []const []const u8 = &.{
-        "block",
-        "binding",
-        "group",
-        "uniform",
-        "builtin",
-        "position",
-        "location",
-        "stage",
-        "vertex",
-        "fragment",
-        "vertex_index",
-        "struct",
-        "fn",
-        "var",
-        "let",
-        "return",
-        "i32",
-        "u32",
-        "f32",
-        "vec4",
-        "mat4x4",
-    };
-
     const ParseChar = enum {
         symbol, // a non-whitespace, non-identifier character. see symbols, below
         ident, // a non-whitespce, non-symbol character (an identifier)
@@ -72,7 +16,7 @@ const Minify = struct {
     const symbols = "{}()[]=<>;:.,|/-+*!&?";
     const str_symbols = "\"'`";
     const max_ident_size = 2;
-    const next_ident_symbols = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const next_ident_symbols = "abcdfghjklmnpqrstvwxzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
     allocator: std.mem.Allocator,
     src: []const u8,
@@ -211,19 +155,12 @@ const Minify = struct {
     fn appendIdent(ctx: *Minify) !void {
         const ident = ctx.src[ctx.start_index..ctx.end_index];
         if (ctx.opt_level == .debug or
-            ctx.isKeyword(ident) or
             std.ascii.isDigit(ident[0]) or
-            ctx.src[ctx.end_index] == '(')
+            ctx.src[ctx.start_index] != '_')
         {
             try ctx.out.appendSlice(ident);
         } else if (ctx.ident_map.getEntry(ident)) |entry| {
             try ctx.out.appendSlice(entry.value_ptr.*);
-        } else if (ctx.start_index > 0 and
-            ctx.src[ctx.start_index - 1] == '.' and
-            ctx.start_index > 1 and
-            ctx.src[ctx.start_index - 2] != '.')
-        {
-            try ctx.out.appendSlice(ident);
         } else {
             const next_ident = try ctx.nextIdent();
             try ctx.ident_map.put(ident, next_ident);
@@ -266,18 +203,6 @@ const Minify = struct {
         ctx.next_ident_index[ident_index] = symbol_index;
         ctx.next_ident[ident_index] = next_ident_symbols[symbol_index];
     }
-
-    fn isKeyword(ctx: *Minify, slice: []const u8) bool {
-        const keywords = switch (ctx.language) {
-            .js => keywords_js,
-            .wgsl => keywords_wgsl,
-        };
-        return for (keywords) |keyword| {
-            if (std.mem.eql(u8, keyword, slice)) {
-                return true;
-            }
-        } else false;
-    }
 };
 
 pub fn js(
@@ -289,58 +214,6 @@ pub fn js(
     defer ctx.deinit();
 
     return try ctx.minify();
-}
-
-test "minify js" {
-    const in =
-        \\class TestClass {
-        \\    aField = {};
-        \\    bField = [];
-        \\    aFunction(aParam) {
-        \\        const aVar = aField.bFunction(aParam);
-        \\        return aVar;
-        \\    }
-        \\    bFunction(bParam) {
-        \\        let bVar = bField[11];
-        \\        switch (bVar) {
-        \\            case 0:
-        \\                bVar = "wah";
-        \\                break;
-        \\        }
-        \\        return JSON.parse(bVar);
-        \\    }
-        \\};
-        \\const TestObject = {
-        \\    cField: undefined,
-        \\    dField: new TestClass(),
-        \\    run(cParam, dParam) {
-        \\        const imports = {
-        \\            ...app,
-        \\            ...res
-        \\        };
-        \\        fetch(path)
-        \\            .then(response => response.arrayBuffer())
-        \\            .catch(err => console.log(err));
-        \\    },
-        \\    cFunction() {
-        \\        document.title = "aField";
-        \\    }
-        \\};
-        \\
-    ;
-
-    comptime var out: []const u8 = "";
-    out = out ++ "class a{b={};c=[];aFunction(d){const e=b.bFunction(d);return e;}";
-    out = out ++ "bFunction(f){let g=c[11];switch(g){case 0:g=\"wah\";break;}";
-    out = out ++ "return JSON.parse(g);}};";
-    out = out ++ "const h={i:undefined,j:new TestClass(),run(k,l){const m={...n,...o};";
-    out = out ++ "fetch(p).then(q=>q.arrayBuffer()).catch(r=>console.log(r));},";
-    out = out ++ "cFunction(){document.title=\"aField\";}};";
-
-    const min = try js(in, std.testing.allocator, .release);
-    defer std.testing.allocator.free(min);
-
-    try std.testing.expectEqualStrings(out, min);
 }
 
 pub fn shader(
@@ -357,39 +230,4 @@ pub fn shader(
     defer ctx.deinit();
 
     return try ctx.minify();
-}
-
-test "minify wgsl" {
-    const in =
-        \\struct Uniforms {
-        \\    mvp : mat4x4<f32>;
-        \\};
-        \\[[binding(0), group(0)]] var<uniform> uniforms : Uniforms;
-        \\struct VertexOutput {
-        \\    [[builtin(position)]] pos : vec4<f32>;
-        \\    [[location(0)]] color: vec4<f32>;
-        \\};
-        \\[[stage(vertex)]]
-        \\fn vs_main(
-        \\    [[location(0)]] pos : vec4<f32>,
-        \\    [[location(1)]] color : vec4<f32>) -> VertexOutput
-        \\{
-        \\    var output : VertexOutput;
-        \\    output.pos = uniforms.mvp * pos;
-        \\    output.color = color;
-        \\    return output;
-        \\}
-        \\
-    ;
-
-    comptime var out: []const u8 = "";
-    out = out ++ "struct a{b:mat4x4<f32>;};[[binding(0),group(0)]]var<uniform>c:a;";
-    out = out ++ "struct d{[[builtin(position)]]e:vec4<f32>;[[location(0)]]f:vec4<f32>;};";
-    out = out ++ "[[stage(vertex)]]fn vs_main([[location(0)]]e:vec4<f32>,";
-    out = out ++ "[[location(1)]]f:vec4<f32>)->d{var g:d;g.e=c.b* e;g.f=f;return g;}";
-
-    const min = try shader(in, std.testing.allocator, .release, .webgpu);
-    defer std.testing.allocator.free(min);
-
-    try std.testing.expectEqualStrings(out, min);
 }

@@ -1,18 +1,18 @@
-struct Uniforms {
-    mvp : mat4x4<f32>;
+struct _Uniforms {
+    _mvp : mat4x4<f32>;
 };
 
-@group(0) @binding(0) var<uniform> uniforms : Uniforms;
+@group(0) @binding(0) var<uniform> _uniforms : _Uniforms;
 
-struct VertexOutput {
-    @builtin(position) pos : vec4<f32>;
-    @location(0) color: vec4<f32>;
+struct _VertexOutput {
+    @builtin(position) _pos : vec4<f32>;
+    @location(0) _color: vec4<f32>;
 };
 
 @stage(vertex)
-fn vs_main(@location(0) pos : vec4<f32>, @location(1) color : vec4<f32>) -> VertexOutput {
-    var output : VertexOutput;
-    output.pos = uniforms.mvp * pos;
-    output.color = color;
-    return output;
+fn vs_main(@location(0) _pos : vec4<f32>, @location(1) _color : vec4<f32>) -> _VertexOutput {
+    var _output : _VertexOutput;
+    _output._pos = _uniforms._mvp * _pos;
+    _output._color = _color;
+    return _output;
 }
