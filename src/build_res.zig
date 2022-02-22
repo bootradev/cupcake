@@ -41,7 +41,7 @@ const BuildResult = struct {
         res: build_app.ManifestRes,
         file_name_suffix: ?[]const u8,
     ) !BuildResult {
-        const data = try serde.serialize(allocator, resource);
+        const data = try serde.serialize(resource, allocator);
         const var_name = try getVarName(allocator, res);
         const file_name = if (file_name_suffix) |suffix| block: {
             break :block try std.mem.concat(allocator, u8, &.{ var_name, "_", suffix });
