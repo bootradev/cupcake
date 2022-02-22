@@ -80,15 +80,14 @@ pub fn main() !void {
 
     std.log.info("building manifest {s}", .{manifest_path});
 
-    @setEvalBranchQuota(10000);
     const manifest_bytes = try readFile(allocator, &std.fs.cwd(), manifest_path);
     defer allocator.free(manifest_bytes);
-    const manifest = try std.json.parse(
+    const manifest = try serde.deserialize(
         build_app.Manifest,
-        &std.json.TokenStream.init(manifest_bytes),
+        manifest_bytes,
         .{ .allocator = allocator },
     );
-    defer std.json.parseFree(build_app.Manifest, manifest, .{ .allocator = allocator });
+    defer serde.deserializeFree(manifest, allocator);
 
     const res_dir_path = try std.fs.path.join(
         allocator,
@@ -183,7 +182,12 @@ fn buildShader(
     res: build_app.ManifestRes,
     res_bytes: []const u8,
 ) !BuildResult {
-    const shader_bytes = try minify.shader(res_bytes, allocator, manifest.opt_level, manifest.gfx_api,);
+    const shader_bytes = try minify.shader(
+        res_bytes,
+        allocator,
+        manifest.opt_level,
+        manifest.gfx_api,
+    );
     defer allocator.free(shader_bytes);
 
     const shader_resource: ShaderRes = .{ .data = shader_bytes };

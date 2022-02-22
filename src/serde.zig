@@ -245,7 +245,7 @@ pub fn deserializeBytes(
                             .Bool, .Int, .Float, .Enum => {
                                 value.* = std.mem.bytesAsSlice(
                                     P.child,
-                                    bytes[0 .. len * @sizeOf(P.child)],
+                                    in_bytes[0 .. len * @sizeOf(P.child)],
                                 );
                                 in_bytes = in_bytes[len * @sizeOf(P.child) ..];
                             },

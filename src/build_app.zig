@@ -1,27 +1,22 @@
 const builtin = @import("builtin");
+const serde = @import("serde.zig");
 const std = @import("std");
 
-pub const Platform = enum {
+pub const Platform = enum(u8) {
     web,
-
-    pub usingnamespace JsonEnumString(@This());
 };
 
-pub const LogLevel = enum {
+pub const LogLevel = enum(u8) {
     debug,
     warn,
     err,
     disabled,
-
-    pub usingnamespace JsonEnumString(@This());
 };
 
-pub const OptLevel = enum {
+pub const OptLevel = enum(u8) {
     debug,
     profile,
     release,
-
-    pub usingnamespace JsonEnumString(@This());
 
     pub fn getLogLevel(opt_level: OptLevel) LogLevel {
         return switch (opt_level) {
@@ -40,10 +35,8 @@ pub const OptLevel = enum {
     }
 };
 
-pub const GfxApi = enum {
+pub const GfxApi = enum(u8) {
     webgpu,
-
-    pub usingnamespace JsonEnumString(GfxApi);
 };
 
 pub const ManifestRes = struct {
@@ -51,18 +44,14 @@ pub const ManifestRes = struct {
     file_type: FileType,
     path: []const u8,
 
-    pub const ResType = enum {
+    pub const ResType = enum(u8) {
         shader,
         texture,
-
-        pub usingnamespace JsonEnumString(@This());
     };
 
-    pub const FileType = enum {
+    pub const FileType = enum(u8) {
         embedded,
         file,
-
-        pub usingnamespace JsonEnumString(@This());
     };
 };
 
@@ -285,18 +274,15 @@ const WriteManifestStep = struct {
     fn make(step: *std.build.Step) !void {
         const write_manifest = @fieldParentPtr(WriteManifestStep, "step", step);
 
-        var manifest_contents = std.ArrayList(u8).init(write_manifest.builder.allocator);
-        defer manifest_contents.deinit();
-
-        try std.json.stringify(write_manifest.manifest, .{}, manifest_contents.writer());
+        const manifest_bytes = try serde.serialize(
+            write_manifest.manifest,
+            write_manifest.builder.allocator,
+        );
 
         if (std.fs.path.dirname(write_manifest.manifest.out_path)) |dir| {
             try std.fs.cwd().makePath(dir);
         }
-        try std.fs.cwd().writeFile(
-            write_manifest.manifest.out_path,
-            manifest_contents.items,
-        );
+        try std.fs.cwd().writeFile(write_manifest.manifest.out_path, manifest_bytes);
     }
 };
 
@@ -349,15 +335,3 @@ const HeaderOnlyLibStep = struct {
         return .{ .source = .{ .generated = &header.generated_file }, .args = &.{} };
     }
 };
-
-fn JsonEnumString(comptime Enum: type) type {
-    return struct {
-        pub fn jsonStringify(
-            e: Enum,
-            options: std.json.StringifyOptions,
-            out_stream: anytype,
-        ) !void {
-            return std.json.stringify(@tagName(e), options, out_stream);
-        }
-    };
-}
