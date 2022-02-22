@@ -362,13 +362,11 @@ fn Desc(comptime DescApi: DescApiFn, comptime ParentType: ?type, is_array: bool)
     }
 }
 
-fn SurfaceDescApi(comptime _: type) type {
-    return struct {};
-}
-pub const SurfaceDesc = Desc(SurfaceDescApi, null, false);
-
 fn AdapterDescApi(comptime Self: type) type {
     return struct {
+        pub fn compatibleSurface(self: Self, value: gfx.Surface) Self {
+            return setDescFieldValue(self, "compatibleSurface", value);
+        }
         pub fn powerPreference(self: Self, value: gfx.PowerPreference) Self {
             return setDescFieldValue(self, "powerPreference", value);
         }
@@ -1127,7 +1125,7 @@ pub const Instance = struct {
     }
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(_: *Instance, window: *app.Window, _: gfx.SurfaceDesc) !Surface {
+    pub fn createSurface(_: *Instance, window: app.Window) !Surface {
         return Surface{
             .canvas_id = window.id,
             .context_id = js.createContext(window.id),
@@ -1137,8 +1135,7 @@ pub const Instance = struct {
     var request_adapter_frame: anyframe = undefined;
     var request_adapter_id: anyerror!js.AdapterId = undefined;
 
-    pub fn requestAdapter(_: *Instance, surface: *Surface, desc: gfx.AdapterDesc) !Adapter {
-        _ = surface; // bug in the zig compiler
+    pub fn requestAdapter(_: *Instance, desc: gfx.AdapterDesc) !Adapter {
         return try await async requestAdapterAsync(desc);
     }
 
@@ -1199,7 +1196,7 @@ pub const Device = struct {
 
     pub fn createSwapchain(
         device: *Device,
-        surface: *Surface,
+        surface: Surface,
         desc: gfx.SwapchainDesc,
     ) !Swapchain {
         const swapchain = Swapchain{ .id = surface.context_id };
@@ -1217,7 +1214,7 @@ pub const Device = struct {
             ),
         };
         if (cfg.opt_level != .release) {
-            try device.checkShaderCompile(&shader);
+            try device.checkShaderCompile(shader);
         }
         return shader;
     }
@@ -1225,11 +1222,11 @@ pub const Device = struct {
     var shader_compile_frame: anyframe = undefined;
     var shader_compile_result: anyerror!void = undefined;
 
-    fn checkShaderCompile(_: *Device, shader: *const Shader) !void {
+    fn checkShaderCompile(_: *Device, shader: Shader) !void {
         try await async checkShaderCompileAsync(shader);
     }
 
-    fn checkShaderCompileAsync(shader: *const Shader) !void {
+    fn checkShaderCompileAsync(shader: Shader) !void {
         js.checkShaderCompile(main.wasm_id, shader.id);
         suspend {
             shader_compile_frame = @frame();
@@ -1406,14 +1403,14 @@ pub const RenderPipeline = struct {
 pub const RenderPass = struct {
     id: js.RenderPassId,
 
-    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *RenderPipeline) void {
+    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: RenderPipeline) void {
         js.setPipeline(render_pass.id, render_pipeline.id);
     }
 
     pub fn setBindGroup(
         render_pass: *RenderPass,
         group_index: u32,
-        group: *BindGroup,
+        group: BindGroup,
         dynamic_offsets: ?[]const u32,
     ) void {
         const offsets = if (dynamic_offsets) |offsets|
@@ -1434,7 +1431,7 @@ pub const RenderPass = struct {
     pub fn setVertexBuffer(
         render_pass: *RenderPass,
         slot: u32,
-        buffer: *Buffer,
+        buffer: Buffer,
         offset: u32,
         size: usize,
     ) void {
@@ -1443,7 +1440,7 @@ pub const RenderPass = struct {
 
     pub fn setIndexBuffer(
         render_pass: *RenderPass,
-        buffer: *Buffer,
+        buffer: Buffer,
         index_format: gfx.IndexFormat,
         offset: usize,
         size: usize,
@@ -1521,7 +1518,13 @@ pub const QuerySet = struct {
 pub const Queue = struct {
     id: js.DeviceId,
 
-    pub fn writeBuffer(queue: *Queue, buffer: *Buffer, buffer_offset: usize, data: []const u8, data_offset: usize) void {
+    pub fn writeBuffer(
+        queue: *Queue,
+        buffer: Buffer,
+        buffer_offset: usize,
+        data: []const u8,
+        data_offset: usize,
+    ) void {
         js.queueWriteBuffer(
             main.wasm_id,
             queue.id,

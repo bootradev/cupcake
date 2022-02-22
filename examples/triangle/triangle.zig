@@ -14,19 +14,10 @@ const Example = struct {
 var example: Example = undefined;
 
 pub fn init() !void {
-    example.window = try cc.app.Window.init(
-        cc.math.V2u32.make(800, 600),
-        .{ .name = "cupcake triangle example" },
-    );
+    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(
-        &example.window,
-        cc.gfx.SurfaceDesc.default(),
-    );
-    example.adapter = try example.instance.requestAdapter(
-        &example.surface,
-        cc.gfx.AdapterDesc.default(),
-    );
+    example.surface = try example.instance.createSurface(example.window);
+    example.adapter = try example.instance.requestAdapter(cc.gfx.AdapterDesc.default());
     example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
     const swapchain_format = example.surface.getPreferredFormat(example.adapter);
@@ -34,7 +25,7 @@ pub fn init() !void {
         .size(.{ .width = example.window.size.x, .height = example.window.size.y })
         .format(swapchain_format);
     defer swapchain_desc.deinit();
-    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
+    example.swapchain = try example.device.createSwapchain(example.surface, swapchain_desc);
 
     const vert_shader_res = try cc.app.load(res.triangle_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -74,7 +65,7 @@ pub fn update() !void {
         .end();
     defer render_pass_desc.deinit();
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    render_pass.setPipeline(&example.render_pipeline);
+    render_pass.setPipeline(example.render_pipeline);
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();
 

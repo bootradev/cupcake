@@ -39,19 +39,10 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
-    example.window = try cc.app.Window.init(
-        cc.math.V2u32.make(800, 600),
-        .{ .name = "cupcake texture example" },
-    );
+    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(
-        &example.window,
-        cc.gfx.SurfaceDesc.default(),
-    );
-    example.adapter = try example.instance.requestAdapter(
-        &example.surface,
-        cc.gfx.AdapterDesc.default(),
-    );
+    example.surface = try example.instance.createSurface(example.window);
+    example.adapter = try example.instance.requestAdapter(cc.gfx.AdapterDesc.default());
     example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
     const swapchain_format = example.surface.getPreferredFormat(example.adapter);
@@ -59,7 +50,7 @@ pub fn init() !void {
         .size(.{ .width = example.window.size.x, .height = example.window.size.y })
         .format(swapchain_format);
     defer swapchain_desc.deinit();
-    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
+    example.swapchain = try example.device.createSwapchain(example.surface, swapchain_desc);
 
     const quad_vertices_bytes = std.mem.sliceAsBytes(quad_data.vertices);
     const vertex_buffer_desc = cc.gfx.BufferDesc.init()
@@ -81,7 +72,7 @@ pub fn init() !void {
         quad_indices_bytes,
     );
 
-    const texture_res = try cc.app.load(
+    const tex_res = try cc.app.load(
         res.cupcake_texture,
         .{
             .file_allocator = example.file_allocator.allocator(),
@@ -89,12 +80,12 @@ pub fn init() !void {
         },
     );
 
-    const texture_desc = cc.gfx.TextureDesc.init()
-        .size(.{ .width = texture_res.width, .height = texture_res.height })
+    const tex_desc = cc.gfx.TextureDesc.init()
+        .size(.{ .width = tex_res.width, .height = tex_res.height })
         .format(.rgba8unorm)
         .usage(.{ .copy_dst = true, .texture_binding = true, .render_attachment = true });
-    defer texture_desc.deinit();
-    example.texture = try example.device.createTexture(texture_desc);
+    defer tex_desc.deinit();
+    example.texture = try example.device.createTexture(tex_desc);
     example.texture_view = example.texture.createView();
 
     const sampler_desc = cc.gfx.SamplerDesc.init().magFilter(.linear).minFilter(.linear);
@@ -104,12 +95,12 @@ pub fn init() !void {
     const copy_dest_desc = cc.gfx.ImageCopyTextureDesc.init().texture(example.texture);
     defer copy_dest_desc.deinit();
     const copy_layout_desc = cc.gfx.ImageDataLayoutDesc.init()
-        .bytesPerRow(texture_res.width * 4)
-        .rowsPerImage(texture_res.height);
+        .bytesPerRow(tex_res.width * 4)
+        .rowsPerImage(tex_res.height);
     defer copy_layout_desc.deinit();
-    const copy_size = cc.gfx.Extent3d{ .width = texture_res.width, .height = texture_res.height };
+    const copy_size = cc.gfx.Extent3d{ .width = tex_res.width, .height = tex_res.height };
     var queue = example.device.getQueue();
-    queue.writeTexture(copy_dest_desc, texture_res.data, copy_layout_desc, copy_size);
+    queue.writeTexture(copy_dest_desc, tex_res.data, copy_layout_desc, copy_size);
 
     const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
         .entries()
@@ -184,10 +175,10 @@ pub fn update() !void {
         .end();
     defer render_pass_desc.deinit();
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    render_pass.setPipeline(&example.render_pipeline);
-    render_pass.setBindGroup(0, &example.bind_group, null);
-    render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
-    render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, cc.gfx.whole_size);
+    render_pass.setPipeline(example.render_pipeline);
+    render_pass.setBindGroup(0, example.bind_group, null);
+    render_pass.setVertexBuffer(0, example.vertex_buffer, 0, cc.gfx.whole_size);
+    render_pass.setIndexBuffer(example.index_buffer, .uint16, 0, cc.gfx.whole_size);
     render_pass.drawIndexed(quad_data.indices.len, 1, 0, 0, 0);
     render_pass.end();
 

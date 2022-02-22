@@ -50,19 +50,10 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.game_clock = try cc.app.Timer.start();
-    example.window = try cc.app.Window.init(
-        cc.math.V2u32.make(800, 600),
-        .{ .name = "cupcake cube example" },
-    );
+    example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
-    example.surface = try example.instance.createSurface(
-        &example.window,
-        cc.gfx.SurfaceDesc.default(),
-    );
-    example.adapter = try example.instance.requestAdapter(
-        &example.surface,
-        cc.gfx.AdapterDesc.default(),
-    );
+    example.surface = try example.instance.createSurface(example.window);
+    example.adapter = try example.instance.requestAdapter(cc.gfx.AdapterDesc.default());
     example.device = try example.adapter.requestDevice(cc.gfx.DeviceDesc.default());
 
     const swapchain_format = example.surface.getPreferredFormat(example.adapter);
@@ -70,7 +61,7 @@ pub fn init() !void {
         .size(.{ .width = example.window.size.x, .height = example.window.size.y })
         .format(swapchain_format);
     defer swapchain_desc.deinit();
-    example.swapchain = try example.device.createSwapchain(&example.surface, swapchain_desc);
+    example.swapchain = try example.device.createSwapchain(example.surface, swapchain_desc);
 
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
     const vertex_buffer_desc = cc.gfx.BufferDesc.init()
@@ -182,7 +173,7 @@ pub fn update() !void {
     const mvp_matrix = model_matrix.mul(view_matrix.mul(proj_matrix));
 
     var queue = example.device.getQueue();
-    queue.writeBuffer(&example.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
+    queue.writeBuffer(example.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
 
     var swapchain_view = try example.swapchain.getCurrentTextureView();
     defer swapchain_view.destroy();
@@ -209,10 +200,10 @@ pub fn update() !void {
         .end();
     defer render_pass_desc.deinit();
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    render_pass.setPipeline(&example.render_pipeline);
-    render_pass.setBindGroup(0, &example.uniform_bind_group, null);
-    render_pass.setVertexBuffer(0, &example.vertex_buffer, 0, cc.gfx.whole_size);
-    render_pass.setIndexBuffer(&example.index_buffer, .uint16, 0, cc.gfx.whole_size);
+    render_pass.setPipeline(example.render_pipeline);
+    render_pass.setBindGroup(0, example.uniform_bind_group, null);
+    render_pass.setVertexBuffer(0, example.vertex_buffer, 0, cc.gfx.whole_size);
+    render_pass.setIndexBuffer(example.index_buffer, .uint16, 0, cc.gfx.whole_size);
     render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
     render_pass.end();
 
