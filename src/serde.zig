@@ -79,13 +79,12 @@ fn serializeBytes(value: anytype, bytes: []u8) []u8 {
             }
         },
         .Union => |U| {
-            if (U.tag_type) |_| {
-                out_bytes = serializeBytes(std.meta.activeTag(value), out_bytes);
-            } else {
+            const UnionTagType = U.tag_type orelse
                 @compileError("Cannot serialize a union without a tag type!");
-            }
+            const tag = std.meta.activeTag(value);
+            out_bytes = serializeBytes(tag, out_bytes);
             inline for (U.fields) |field| {
-                if (std.mem.eql(u8, field.name, @tagName(value))) {
+                if (@field(UnionTagType, field.name) == tag) {
                     out_bytes = serializeBytes(@field(value, field.name), out_bytes);
                     break;
                 }
@@ -148,13 +147,12 @@ pub fn serializeSize(value: anytype) usize {
             }
         },
         .Union => |U| {
-            if (U.tag_type) |T| {
-                size += @sizeOf(T);
-            } else {
+            const UnionTagType = U.tag_type orelse
                 @compileError("Cannot serialize a union without a tag type!");
-            }
+            const tag = std.meta.activeTag(value);
+            size += @sizeOf(UnionTagType);
             inline for (U.fields) |field| {
-                if (std.mem.eql(u8, field.name, @tagName(value))) {
+                if (@field(UnionTagType, field.name) == tag) {
                     size += serializeSize(@field(value, field.name));
                     break;
                 }
@@ -293,9 +291,8 @@ pub fn deserializeBytes(
                 @compileError("Cannot deserializeBytes a union without a tag type!");
             var tag: UnionTagType = undefined;
             in_bytes = try deserializeBytes(&tag, in_bytes, desc);
-
             inline for (U.fields) |field| {
-                if (std.mem.eql(u8, field.name, @tagName(tag))) {
+                if (@field(UnionTagType, field.name) == tag) {
                     const UnionType = @TypeOf(@field(value.*, field.name));
                     var u: UnionType = undefined;
                     in_bytes = try deserializeBytes(&u, in_bytes, desc);
