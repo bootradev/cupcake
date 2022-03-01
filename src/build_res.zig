@@ -5,6 +5,7 @@ const stb = @cImport({
     @cInclude("stb_image.h");
 });
 const std = @import("std");
+const qoi = @import("qoi.zig");
 
 pub const Res = struct {
     Type: type,
@@ -27,6 +28,24 @@ pub const TextureRes = struct {
     width: u32,
     height: u32,
     data: []const u8,
+
+    pub fn serialize(value: TextureRes, allocator: std.mem.Allocator) ![]const u8 {
+        const qoi_image = qoi.Image{
+            .width = value.width,
+            .height = value.height,
+            .data = value.data,
+        };
+
+        var qoi_encode_len: usize = undefined;
+        const qoi_bytes = try qoi.encode(qoi_image, &qoi_encode_len, allocator);
+        return allocator.resize(qoi_bytes, qoi_encode_len) orelse error.ResizeFailed;
+    }
+
+    pub fn deserialize(bytes: []const u8, desc: serde.DeserializeDesc) !TextureRes {
+        const allocator = desc.allocator orelse return error.AllocatorRequired;
+        const image = try qoi.decode(bytes, allocator);
+        return TextureRes{ .width = image.width, .height = image.height, .data = image.data };
+    }
 };
 
 const BuildResult = struct {

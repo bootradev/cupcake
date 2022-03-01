@@ -8,9 +8,14 @@ const SerdeError = error{
 };
 
 pub fn serialize(value: anytype, allocator: std.mem.Allocator) ![]const u8 {
-    const bytes = allocator.alloc(u8, serializeSize(value)) catch return error.OutOfMemory;
-    _ = serializeBytes(value, bytes);
-    return bytes;
+    const Type = @TypeOf(value);
+    if (@hasDecl(Type, "serialize")) {
+        return try Type.serialize(value, allocator);
+    } else {
+        const bytes = allocator.alloc(u8, serializeSize(value)) catch return error.OutOfMemory;
+        _ = serializeBytes(value, bytes);
+        return bytes;
+    }
 }
 
 fn serializeBytes(value: anytype, bytes: []u8) []u8 {
@@ -170,9 +175,13 @@ pub const DeserializeDesc = struct {
 };
 
 pub fn deserialize(comptime Type: type, bytes: []const u8, desc: DeserializeDesc) !Type {
-    var value: Type = undefined;
-    _ = try deserializeBytes(&value, bytes, desc);
-    return value;
+    if (@hasDecl(Type, "deserialize")) {
+        return try Type.deserialize(bytes, desc);
+    } else {
+        var value: Type = undefined;
+        _ = try deserializeBytes(&value, bytes, desc);
+        return value;
+    }
 }
 
 pub fn deserializeBytes(
