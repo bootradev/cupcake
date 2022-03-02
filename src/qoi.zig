@@ -197,7 +197,6 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     const height = std.mem.readIntBig(u32, data[8..12]);
     const format = data[12];
     const colorspace = data[13];
-    _ = colorspace;
 
     _ = std.meta.intToEnum(Format, format) catch return error.InvalidHeader;
     _ = std.meta.intToEnum(Colorspace, colorspace) catch return error.InvalidHeader;
