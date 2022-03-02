@@ -176,6 +176,14 @@ pub fn encode(image: Image, out_encode_len: *usize, allocator: std.mem.Allocator
     return bytes;
 }
 
+fn writeBytes(bytes: []u8, bytes_index: *usize, data: []const u8) !void {
+    if (bytes_index.* + data.len > bytes.len) {
+        return error.InvalidData;
+    }
+    std.mem.copy(u8, bytes[bytes_index.*..], data);
+    bytes_index.* += data.len;
+}
+
 pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     if (data.len < header_len) {
         return error.InvalidData;
@@ -257,15 +265,24 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
             } else if (op_code == op_run) {
                 // a run is a continuous stream of the same pixel
                 var run = (op & mask_run) + 1;
+                if (bytes_index + format * (run - 1) > bytes.len) {
+                    return error.InvalidData;
+                }
                 while (run > 1) : (run -= 1) {
-                    try writeBytes(bytes, &bytes_index, std.mem.asBytes(&pixel)[0..format]);
+                    std.mem.copy(u8, bytes[bytes_index..], std.mem.asBytes(&pixel)[0..format]);
+                    bytes_index += format;
                 }
                 data_index += 1;
             }
         }
 
         lut[pixel.hash()] = pixel;
-        try writeBytes(bytes, &bytes_index, std.mem.asBytes(&pixel)[0..format]);
+
+        if (bytes_index + format > bytes.len) {
+            return error.InvalidData;
+        }
+        std.mem.copy(u8, bytes[bytes_index..], std.mem.asBytes(&pixel)[0..format]);
+        bytes_index += format;
     }
 
     // decode end marker
@@ -274,12 +291,4 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     }
 
     return Image{ .width = width, .height = height, .data = bytes };
-}
-
-fn writeBytes(bytes: []u8, bytes_index: *usize, data: []const u8) !void {
-    if (bytes_index.* + data.len > bytes.len) {
-        return error.InvalidData;
-    }
-    std.mem.copy(u8, bytes[bytes_index.*..], data);
-    bytes_index.* += data.len;
 }

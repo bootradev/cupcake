@@ -42,7 +42,7 @@ const Example = struct {
     uniform_buffer: cc.gfx.Buffer,
     depth_texture: cc.gfx.Texture,
     depth_texture_view: cc.gfx.TextureView,
-    uniform_bind_group: cc.gfx.BindGroup,
+    bind_group: cc.gfx.BindGroup,
     game_clock: cc.app.Timer,
 };
 
@@ -50,6 +50,7 @@ var example: Example = undefined;
 
 pub fn init() !void {
     example.game_clock = try cc.app.Timer.start();
+
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(example.window);
@@ -83,6 +84,12 @@ pub fn init() !void {
         cube_indices_bytes,
     );
 
+    const uniform_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(64)
+        .usage(.{ .uniform = true, .copy_dst = true });
+    defer uniform_buffer_desc.deinit();
+    example.uniform_buffer = try example.device.createBuffer(uniform_buffer_desc, null);
+
     const depth_texture_desc = cc.gfx.TextureDesc.init()
         .size(.{ .width = example.window.size.x, .height = example.window.size.y })
         .format(.depth24plus)
@@ -91,27 +98,21 @@ pub fn init() !void {
     example.depth_texture = try example.device.createTexture(depth_texture_desc);
     example.depth_texture_view = example.depth_texture.createView();
 
-    const uniform_buffer_desc = cc.gfx.BufferDesc.init()
-        .size(64)
-        .usage(.{ .uniform = true, .copy_dst = true });
-    defer uniform_buffer_desc.deinit();
-    example.uniform_buffer = try example.device.createBuffer(uniform_buffer_desc, null);
-
     const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
         .entries()
         .entry().binding(0).visibility(.{ .vertex = true }).buffer().end().end()
         .end();
     defer bind_group_layout_desc.deinit();
-    var uniform_layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
-    defer uniform_layout.destroy();
+    var bind_group_layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
+    defer bind_group_layout.destroy();
 
     const bind_group_desc = cc.gfx.BindGroupDesc.init()
-        .layout(uniform_layout)
+        .layout(bind_group_layout)
         .entries()
         .entry().binding(0).buffer(example.uniform_buffer).end().end()
         .end();
     defer bind_group_desc.deinit();
-    example.uniform_bind_group = try example.device.createBindGroup(bind_group_desc);
+    example.bind_group = try example.device.createBindGroup(bind_group_desc);
 
     const vert_shader_res = try cc.app.load(res.cube_vert_shader, .{});
     var vert_shader = try example.device.createShader(vert_shader_res);
@@ -122,7 +123,7 @@ pub fn init() !void {
     defer frag_shader.destroy();
 
     const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init()
-        .bindGroupLayouts(&.{uniform_layout});
+        .bindGroupLayouts(&.{bind_group_layout});
     defer pipeline_layout_desc.deinit();
     var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
     defer pipeline_layout.destroy();
@@ -159,7 +160,7 @@ pub fn update() !void {
         1.0,
         cc.math.V3f32.make(cc.math.sinFast(time), cc.math.cosFast(time), 0.0),
     );
-    const view_matrix = comptime cc.math.M44f32.makeView(
+    const view_matrix = cc.math.M44f32.makeView(
         cc.math.V3f32.make(0, 0, -4),
         cc.math.V3f32.forward,
         cc.math.V3f32.up,
@@ -201,7 +202,7 @@ pub fn update() !void {
     defer render_pass_desc.deinit();
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
     render_pass.setPipeline(example.render_pipeline);
-    render_pass.setBindGroup(0, example.uniform_bind_group, null);
+    render_pass.setBindGroup(0, example.bind_group, null);
     render_pass.setVertexBuffer(0, example.vertex_buffer, 0, cc.gfx.whole_size);
     render_pass.setIndexBuffer(example.index_buffer, .uint16, 0, cc.gfx.whole_size);
     render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
@@ -212,7 +213,7 @@ pub fn update() !void {
 }
 
 pub fn deinit() !void {
-    example.uniform_bind_group.destroy();
+    example.bind_group.destroy();
     example.depth_texture_view.destroy();
     example.depth_texture.destroy();
     example.uniform_buffer.destroy();

@@ -96,6 +96,17 @@ pub const M44f32 = packed struct {
         return @ptrCast([*]const u8, m)[0..64];
     }
 
+    pub fn makeScale(x: f32, y: f32, z: f32) M44f32 {
+        return M44f32{
+            .values = [4][4]f32{
+                [4]f32{ x, 0, 0, 0 },
+                [4]f32{ 0, y, 0, 0 },
+                [4]f32{ 0, 0, z, 0 },
+                [4]f32{ 0, 0, 0, 1 },
+            },
+        };
+    }
+
     pub fn makeAngleAxis(angle: f32, axis: V3f32) M44f32 {
         var cos = std.math.cos(angle);
         var sin = std.math.sin(angle);
@@ -163,6 +174,24 @@ pub const M44f32 = packed struct {
         result.values[2][2] = far / (far - near);
         result.values[2][3] = 1;
         result.values[3][2] = -(far * near) / (far - near);
+        return result;
+    }
+
+    pub fn makeOrthographic(
+        left: f32,
+        right: f32,
+        bot: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) M44f32 {
+        var result = M44f32.identity;
+        result.values[0][0] = 2 / (right - left);
+        result.values[1][1] = 2 / (top - bot);
+        result.values[2][2] = 1 / (far - near);
+        result.values[3][0] = -(right + left) / (right - left);
+        result.values[3][1] = -(top + bot) / (top - bot);
+        result.values[3][2] = -near / (far - near);
         return result;
     }
 

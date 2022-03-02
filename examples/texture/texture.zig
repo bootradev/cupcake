@@ -19,7 +19,6 @@ const quad_data = struct {
 };
 
 const Example = struct {
-    file_allocator: cc.mem.BumpAllocator,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -29,16 +28,19 @@ const Example = struct {
     render_pipeline: cc.gfx.RenderPipeline,
     vertex_buffer: cc.gfx.Buffer,
     index_buffer: cc.gfx.Buffer,
+    uniform_buffer: cc.gfx.Buffer,
     texture: cc.gfx.Texture,
     texture_view: cc.gfx.TextureView,
     sampler: cc.gfx.Sampler,
     bind_group: cc.gfx.BindGroup,
+    file_allocator: cc.mem.BumpAllocator,
 };
 
 var example: Example = undefined;
 
 pub fn init() !void {
     example.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
+
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
     example.surface = try example.instance.createSurface(example.window);
@@ -72,6 +74,12 @@ pub fn init() !void {
         quad_indices_bytes,
     );
 
+    const uniform_buffer_desc = cc.gfx.BufferDesc.init()
+        .size(64)
+        .usage(.{ .uniform = true, .copy_dst = true });
+    defer uniform_buffer_desc.deinit();
+    example.uniform_buffer = try example.device.createBuffer(uniform_buffer_desc, null);
+
     const tex_res = try cc.app.load(
         res.cupcake_texture,
         .{
@@ -104,16 +112,18 @@ pub fn init() !void {
 
     const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
         .entries()
+        .entry().binding(0).visibility(.{ .vertex = true }).buffer().end().end()
         .entry().binding(1).visibility(.{ .fragment = true }).sampler().end().end()
         .entry().binding(2).visibility(.{ .fragment = true }).texture().end().end()
         .end();
     defer bind_group_layout_desc.deinit();
-    var layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
-    defer layout.destroy();
+    var bind_group_layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
+    defer bind_group_layout.destroy();
 
     const bind_group_desc = cc.gfx.BindGroupDesc.init()
-        .layout(layout)
+        .layout(bind_group_layout)
         .entries()
+        .entry().binding(0).buffer(example.uniform_buffer).end().end()
         .entry().binding(1).sampler(example.sampler).end()
         .entry().binding(2).textureView(example.texture_view).end()
         .end();
@@ -129,7 +139,7 @@ pub fn init() !void {
     defer frag_shader.destroy();
 
     const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init()
-        .bindGroupLayouts(&.{layout});
+        .bindGroupLayouts(&.{bind_group_layout});
     defer pipeline_layout_desc.deinit();
     var pipeline_layout = try example.device.createPipelineLayout(pipeline_layout_desc);
     defer pipeline_layout.destroy();
@@ -160,6 +170,25 @@ pub fn init() !void {
 }
 
 pub fn update() !void {
+    const model_matrix = cc.math.M44f32.makeScale(512, 512, 1);
+    const view_matrix = cc.math.M44f32.makeView(
+        cc.math.V3f32.make(0, 0, -4),
+        cc.math.V3f32.forward,
+        cc.math.V3f32.up,
+    );
+    const ortho_matrix = cc.math.M44f32.makeOrthographic(
+        -@intToFloat(f32, example.window.size.x) / 2,
+        @intToFloat(f32, example.window.size.x) / 2,
+        -@intToFloat(f32, example.window.size.y) / 2,
+        @intToFloat(f32, example.window.size.y) / 2,
+        1,
+        100,
+    );
+    const mvp_matrix = model_matrix.mul(view_matrix.mul(ortho_matrix));
+
+    var queue = example.device.getQueue();
+    queue.writeBuffer(example.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
+
     var swapchain_view = try example.swapchain.getCurrentTextureView();
     defer swapchain_view.destroy();
 
@@ -182,7 +211,6 @@ pub fn update() !void {
     render_pass.drawIndexed(quad_data.indices.len, 1, 0, 0, 0);
     render_pass.end();
 
-    var queue = example.device.getQueue();
     queue.submit(&.{command_encoder.finish(.{})});
 
     example.swapchain.present();
