@@ -6,7 +6,6 @@ const js = struct {
     extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
 };
 
-threadlocal var log_buf: [2048]u8 = undefined;
 pub fn log(
     comptime message_level: std.log.Level,
     comptime scope: @Type(.EnumLiteral),
@@ -17,6 +16,7 @@ pub fn log(
     const prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
     const msg = level_txt ++ prefix ++ format;
 
+    var log_buf: [2048]u8 = undefined;
     const msg_buf = std.fmt.bufPrint(&log_buf, msg, args) catch return;
     js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
 }
@@ -24,30 +24,39 @@ pub fn log(
 pub const main = struct {
     pub const WasmId = u32;
     pub var wasm_id: WasmId = undefined;
-    var init_complete = false;
+
+    var async_complete = false;
+
+    // store the async calls in these variables in order to prevent the stack from
+    // reclaiming the frame memory once the export fn completes
+    var init_frame: @Frame(appInit) = undefined;
+    var update_frame: @Frame(appUpdate) = undefined;
+    var deinit_frame: @Frame(appDeinit) = undefined;
 
     pub export fn init(id: WasmId) void {
         wasm_id = id;
-        _ = async appInit();
+        init_frame = async appInit();
     }
 
     fn appInit() void {
         app.init() catch |err| handleError(err);
-        init_complete = true;
+        async_complete = true;
     }
 
     pub export fn update() void {
-        _ = async appUpdate();
+        update_frame = async appUpdate();
     }
 
     fn appUpdate() void {
-        if (init_complete) {
+        if (async_complete) {
+            async_complete = false;
             app.update() catch |err| handleError(err);
+            async_complete = true;
         }
     }
 
     pub export fn deinit() void {
-        _ = async appDeinit();
+        deinit_frame = async appDeinit();
     }
 
     fn appDeinit() void {

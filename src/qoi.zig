@@ -1,14 +1,5 @@
 const std = @import("std");
 
-pub const Error = error{
-    OutOfMemory,
-    MaxBytesExceeded,
-    InvalidMagic,
-    InvalidHeader,
-    InvalidData,
-    InvalidEndMarker,
-};
-
 pub const Format = enum(u8) {
     rgb = 3,
     rgba = 4,
@@ -152,7 +143,7 @@ pub fn encode(image: Image, out_encode_len: *usize, allocator: std.mem.Allocator
                             },
                         );
                     } else {
-                        // we encode using rgb (4 bytes)
+                        // otherwise, we encode using rgb (4 bytes)
                         try writeBytes(
                             bytes,
                             &bytes_index,
@@ -185,7 +176,7 @@ pub fn encode(image: Image, out_encode_len: *usize, allocator: std.mem.Allocator
     return bytes;
 }
 
-pub fn decode(data: []const u8, allocator: std.mem.Allocator) Error!Image {
+pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     if (data.len < header_len) {
         return error.InvalidData;
     }
@@ -243,6 +234,9 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) Error!Image {
                 pixel = lut[op & mask_index];
                 data_index += 1;
             } else if (op_code == op_diff) {
+                // use wrapping adds to match the spec
+                // even though the diffs are signed ints, they are still twos complement
+                // numbers and the wrapping arithmetic works out the same.
                 pixel.r +%= ((op & mask_diff_r) >> 4) -% 2;
                 pixel.g +%= ((op & mask_diff_g) >> 2) -% 2;
                 pixel.b +%= ((op & mask_diff_b) >> 0) -% 2;
@@ -251,6 +245,9 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) Error!Image {
                 if (data_index + 2 > data.len) {
                     return error.InvalidData;
                 }
+                // use wrapping adds to match the spec
+                // even though the diffs are signed ints, they are still twos complement
+                // numbers and the wrapping arithmetic works out the same.
                 const diff_g = (op & mask_luma_g) -% 32;
                 const op_rb = data[data_index + 1];
                 pixel.r +%= diff_g +% ((op_rb & mask_luma_r) >> 4) -% 8;
@@ -258,6 +255,7 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) Error!Image {
                 pixel.b +%= diff_g +% ((op_rb & mask_luma_b) >> 0) -% 8;
                 data_index += 2;
             } else if (op_code == op_run) {
+                // a run is a continuous stream of the same pixel
                 var run = (op & mask_run) + 1;
                 while (run > 1) : (run -= 1) {
                     try writeBytes(bytes, &bytes_index, std.mem.asBytes(&pixel)[0..format]);
@@ -279,10 +277,9 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) Error!Image {
 }
 
 fn writeBytes(bytes: []u8, bytes_index: *usize, data: []const u8) !void {
-    // todo: stack problems
-    // if (bytes_index.* + data.len > bytes.len) {
-    //     return error.InvalidData;
-    // }
+    if (bytes_index.* + data.len > bytes.len) {
+        return error.InvalidData;
+    }
     std.mem.copy(u8, bytes[bytes_index.*..], data);
     bytes_index.* += data.len;
 }
