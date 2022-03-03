@@ -184,18 +184,151 @@ pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
 fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     _ = manifest;
 
-    const gen_path = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
-    defer builder.allocator.free(gen_path);
+    const gen_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
+    defer builder.allocator.free(gen_dir);
 
-    try std.fs.cwd().makePath(gen_path);
+    try std.fs.cwd().makePath(gen_dir);
+
+    const tools_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "tools" });
+    defer builder.allocator.free(tools_dir);
 
     const header_only_libs_def = [_]HeaderOnlyLib{
         .{ .define = "STB_IMAGE_IMPLEMENTATION", .path = "stb_image.h" },
     };
     const header_only_libs = try HeaderOnlyLibsStep.init(builder, &header_only_libs_def);
 
+    comptime var freetype_srcs: []const []const u8 = &.{
+        "ext/freetype/src/autofit/autofit.c",
+        "ext/freetype/src/base/ftbase.c",
+        "ext/freetype/src/base/ftbbox.c",
+        "ext/freetype/src/base/ftbdf.c",
+        "ext/freetype/src/base/ftbitmap.c",
+        "ext/freetype/src/base/ftcid.c",
+        "ext/freetype/src/base/ftfstype.c",
+        "ext/freetype/src/base/ftgasp.c",
+        "ext/freetype/src/base/ftglyph.c",
+        "ext/freetype/src/base/ftgxval.c",
+        "ext/freetype/src/base/ftinit.c",
+        "ext/freetype/src/base/ftmm.c",
+        "ext/freetype/src/base/ftotval.c",
+        "ext/freetype/src/base/ftpatent.c",
+        "ext/freetype/src/base/ftpfr.c",
+        "ext/freetype/src/base/ftstroke.c",
+        "ext/freetype/src/base/ftsynth.c",
+        "ext/freetype/src/base/fttype1.c",
+        "ext/freetype/src/base/ftwinfnt.c",
+        "ext/freetype/src/bdf/bdf.c",
+        "ext/freetype/src/bzip2/ftbzip2.c",
+        "ext/freetype/src/cache/ftcache.c",
+        "ext/freetype/src/cff/cff.c",
+        "ext/freetype/src/cid/type1cid.c",
+        "ext/freetype/src/gzip/ftgzip.c",
+        "ext/freetype/src/lzw/ftlzw.c",
+        "ext/freetype/src/pcf/pcf.c",
+        "ext/freetype/src/pfr/pfr.c",
+        "ext/freetype/src/psaux/psaux.c",
+        "ext/freetype/src/pshinter/pshinter.c",
+        "ext/freetype/src/psnames/psnames.c",
+        "ext/freetype/src/raster/raster.c",
+        "ext/freetype/src/sdf/sdf.c",
+        "ext/freetype/src/sfnt/sfnt.c",
+        "ext/freetype/src/smooth/smooth.c",
+        "ext/freetype/src/svg/svg.c",
+        "ext/freetype/src/truetype/truetype.c",
+        "ext/freetype/src/type1/type1.c",
+        "ext/freetype/src/type42/type42.c",
+        "ext/freetype/src/winfonts/winfnt.c",
+    };
+    comptime var freetype_flags: []const []const u8 = &.{"-DFT2_BUILD_LIBRARY"};
+    switch (builtin.target.os.tag) {
+        .windows => {
+            freetype_srcs = freetype_srcs ++ &[_][]const u8{
+                "ext/freetype/builds/windows/ftsystem.c",
+                "ext/freetype/builds/windows/ftdebug.c",
+            };
+        },
+        else => @compileError("Unsupported platform!"),
+    }
+
+    const freetype = builder.addStaticLibrary("freetype", null);
+    freetype.setBuildMode(.ReleaseFast);
+    freetype.linkLibC();
+    freetype.addIncludePath("ext/freetype/include");
+    freetype.addCSourceFiles(freetype_srcs, freetype_flags);
+
+    const msdfgen_srcs: []const []const u8 = &.{
+        "ext/msdf-atlas-gen/msdfgen/core/Contour.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/contour-combiners.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/edge-coloring.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/EdgeHolder.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/edge-segments.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/edge-selectors.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/equation-solver.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/MSDFErrorCorrection.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/msdf-error-correction.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/msdfgen.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/Projection.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/rasterization.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/render-sdf.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/save-bmp.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/save-tiff.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/Scanline.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/sdf-error-estimation.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/Shape.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/shape-description.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/SignedDistance.cpp",
+        "ext/msdf-atlas-gen/msdfgen/core/Vector2.cpp",
+        "ext/msdf-atlas-gen/msdfgen/ext/import-font.cpp",
+        "ext/msdf-atlas-gen/msdfgen/ext/import-svg.cpp",
+        "ext/msdf-atlas-gen/msdfgen/ext/resolve-shape-geometry.cpp",
+        "ext/msdf-atlas-gen/msdfgen/ext/save-png.cpp",
+        "ext/msdf-atlas-gen/msdfgen/lib/lodepng.cpp",
+        "ext/msdf-atlas-gen/msdfgen/lib/tinyxml2.cpp",
+    };
+    const msdfgen_flags: []const []const u8 = &.{"-std=c++11"};
+
+    const msdfgen = builder.addStaticLibrary("msdfgen", null);
+    msdfgen.setBuildMode(.ReleaseFast);
+    msdfgen.linkLibCpp();
+    msdfgen.addIncludePath("ext/freetype/include");
+    msdfgen.addIncludePath("ext/msdf-atlas-gen/msdfgen/include");
+    msdfgen.addCSourceFiles(msdfgen_srcs, msdfgen_flags);
+
+    const msdf_atlas_gen_srcs: []const []const u8 = &.{
+        "ext/msdf-atlas-gen/msdf-atlas-gen/artery-font-export.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/bitmap-blit.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/Charset.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/charset-parser.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/csv-export.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/FontGeometry.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/glyph-generators.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/GlyphGeometry.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/image-encode.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/json-export.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/main.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/RectanglePacker.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/shadron-preview-generator.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/size-selectors.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/TightAtlasPacker.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/utf8.cpp",
+        "ext/msdf-atlas-gen/msdf-atlas-gen/Workload.cpp",
+    };
+    const msdf_atlas_gen_flags: []const []const u8 = &.{"-DMSDF_ATLAS_STANDALONE"};
+
+    const msdf_atlas_gen = builder.addExecutable("msdf-atlas-gen", null);
+    msdf_atlas_gen.setBuildMode(.ReleaseFast);
+    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/msdfgen");
+    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/msdfgen/include");
+    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/artery-font-format");
+    msdf_atlas_gen.linkLibCpp();
+    msdf_atlas_gen.linkLibrary(msdfgen);
+    msdf_atlas_gen.linkLibrary(freetype);
+    msdf_atlas_gen.addCSourceFiles(msdf_atlas_gen_srcs, msdf_atlas_gen_flags);
+    msdf_atlas_gen.setOutputDir(tools_dir);
+
     const build_ext_step = builder.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&header_only_libs.step);
+    build_ext_step.dependOn(&msdf_atlas_gen.step);
 }
 
 fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {

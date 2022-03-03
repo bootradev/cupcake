@@ -1,3 +1,9 @@
 [submodule "ext/stb"]
 	path = ext/stb
 	url = https://github.com/nothings/stb
+[submodule "ext/msdf-atlas-gen"]
+	path = ext/msdf-atlas-gen
+	url = https://github.com/Chlumsky/msdf-atlas-gen
+[submodule "ext/freetype"]
+	path = ext/freetype
+	url = https://gitlab.freedesktop.org/freetype/freetype
