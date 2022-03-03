@@ -74,6 +74,7 @@ pub const Manifest = struct {
     build_root_path: []const u8,
     install_prefix: []const u8,
     dest_dir: []const u8,
+    // todo: add tools dir
     out_path: []const u8,
     pkg_path: []const u8,
 
@@ -115,7 +116,7 @@ pub const Manifest = struct {
             builder.allocator,
             &.{
                 builder.build_root,
-                builder.cache_root,
+                "gen",
                 "res",
                 build_manifest.name,
             },
@@ -175,26 +176,38 @@ const default_gfx_api = .webgpu;
 pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
     var build_manifest = try Manifest.init(builder, desc);
 
+    try buildExt(builder, build_manifest);
     try buildRes(builder, build_manifest);
     try buildApp(builder, build_manifest);
 }
 
-fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
-    const write_manifest_step = try WriteManifestStep.init(builder, manifest);
-    const header_only_libs = [_]HeaderOnlyLib{
+fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
+    _ = manifest;
+
+    const gen_path = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
+    defer builder.allocator.free(gen_path);
+
+    try std.fs.cwd().makePath(gen_path);
+
+    const header_only_libs_def = [_]HeaderOnlyLib{
         .{ .define = "STB_IMAGE_IMPLEMENTATION", .path = "stb_image.h" },
     };
-    const header_only_libs_step = try HeaderOnlyLibStep.init(builder, &header_only_libs);
+    const header_only_libs = try HeaderOnlyLibsStep.init(builder, &header_only_libs_def);
 
+    const build_ext_step = builder.step("ext", "Build external dependencies");
+    build_ext_step.dependOn(&header_only_libs.step);
+}
+
+fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
     build_res_exe.setBuildMode(.ReleaseSafe);
     build_res_exe.setTarget(std.zig.CrossTarget.fromTarget(builtin.target));
     build_res_exe.linkLibC();
-    build_res_exe.addIncludeDir("ext/stb");
-    build_res_exe.addCSourceFileSource(header_only_libs_step.getCSourceFile());
-    build_res_exe.step.dependOn(&header_only_libs_step.step);
+    build_res_exe.addIncludePath("ext/stb");
+    build_res_exe.addCSourceFile(try HeaderOnlyLibsStep.getCSourceFilePath(builder), &.{});
 
     var build_res_run = build_res_exe.run();
+    const write_manifest_step = try WriteManifestStep.init(builder, manifest);
     build_res_run.step.dependOn(&write_manifest_step.step);
     build_res_run.addArg(manifest.out_path);
 
@@ -291,14 +304,14 @@ const HeaderOnlyLib = struct {
     path: []const u8,
 };
 
-const HeaderOnlyLibStep = struct {
+const HeaderOnlyLibsStep = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
     libs: []const HeaderOnlyLib,
     generated_file: std.build.GeneratedFile,
 
-    pub fn init(builder: *std.build.Builder, libs: []const HeaderOnlyLib) !*HeaderOnlyLibStep {
-        const header = try builder.allocator.create(HeaderOnlyLibStep);
+    fn init(builder: *std.build.Builder, libs: []const HeaderOnlyLib) !*HeaderOnlyLibsStep {
+        const header = try builder.allocator.create(HeaderOnlyLibsStep);
         header.* = .{
             .builder = builder,
             .step = std.build.Step.init(.custom, "build c header libs", builder.allocator, make),
@@ -310,7 +323,7 @@ const HeaderOnlyLibStep = struct {
     }
 
     fn make(step: *std.build.Step) !void {
-        const header = @fieldParentPtr(HeaderOnlyLibStep, "step", step);
+        const header = @fieldParentPtr(HeaderOnlyLibsStep, "step", step);
 
         var impl_contents = std.ArrayList(u8).init(header.builder.allocator);
         defer impl_contents.deinit();
@@ -321,17 +334,17 @@ const HeaderOnlyLibStep = struct {
             try writer.print("#include \"{s}\"\n", .{lib.path});
         }
 
-        const out_path = try std.fs.path.join(
-            header.builder.allocator,
-            &.{ header.builder.build_root, header.builder.cache_root, "header_only_libs.c" },
-        );
+        const out_path = try getCSourceFilePath(header.builder);
         defer header.builder.allocator.free(out_path);
 
         try std.fs.cwd().writeFile(out_path, impl_contents.items);
         header.generated_file.path = try header.builder.allocator.dupe(u8, out_path);
     }
 
-    pub fn getCSourceFile(header: HeaderOnlyLibStep) std.build.CSourceFile {
-        return .{ .source = .{ .generated = &header.generated_file }, .args = &.{} };
+    fn getCSourceFilePath(builder: *std.build.Builder) ![]const u8 {
+        return try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.build_root, "gen", "header_only_libs.c" },
+        );
     }
 };
