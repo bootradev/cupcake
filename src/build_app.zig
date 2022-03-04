@@ -73,43 +73,51 @@ pub const Manifest = struct {
     log_level: LogLevel,
     build_root_path: []const u8,
     install_prefix: []const u8,
+    gen_lib_dir: []const u8,
+    gen_tools_dir: []const u8,
     dest_dir: []const u8,
-    // todo: add tools dir
     out_path: []const u8,
     pkg_path: []const u8,
 
     fn init(builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
-        var build_manifest: Manifest = undefined;
-        build_manifest.name = desc.name;
-        build_manifest.root = desc.root;
-        build_manifest.res_dir = desc.res_dir;
-        build_manifest.res = desc.res;
-        build_manifest.platform = builder.option(
+        var manifest: Manifest = undefined;
+        manifest.name = desc.name;
+        manifest.root = desc.root;
+        manifest.res_dir = desc.res_dir;
+        manifest.res = desc.res;
+        manifest.platform = builder.option(
             Platform,
             "platform",
             "target platform",
         ) orelse default_platform;
-        build_manifest.opt_level = builder.option(
+        manifest.opt_level = builder.option(
             OptLevel,
             "opt",
             "optimization level",
         ) orelse default_opt_level;
-        build_manifest.gfx_api = builder.option(
+        manifest.gfx_api = builder.option(
             GfxApi,
             "gfx",
             "graphics backend",
         ) orelse default_gfx_api;
-        build_manifest.log_level = builder.option(
+        manifest.log_level = builder.option(
             LogLevel,
             "log_level",
             "log level",
-        ) orelse build_manifest.opt_level.getLogLevel();
+        ) orelse manifest.opt_level.getLogLevel();
 
-        build_manifest.build_root_path = builder.build_root;
-        build_manifest.install_prefix = builder.install_prefix;
-        build_manifest.dest_dir = try std.fs.path.join(
+        manifest.build_root_path = builder.build_root;
+        manifest.install_prefix = builder.install_prefix;
+
+        const gen_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
+        defer builder.allocator.free(gen_dir);
+
+        manifest.gen_lib_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "lib" });
+        manifest.gen_tools_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "tools" });
+
+        manifest.dest_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ build_manifest.name, @tagName(build_manifest.platform) },
+            &.{ manifest.name, @tagName(manifest.platform) },
         );
 
         const manifest_dir_path = try std.fs.path.join(
@@ -118,7 +126,7 @@ pub const Manifest = struct {
                 builder.build_root,
                 "gen",
                 "res",
-                build_manifest.name,
+                manifest.name,
             },
         );
         defer builder.allocator.free(manifest_dir_path);
@@ -127,11 +135,11 @@ pub const Manifest = struct {
             builder.allocator,
             u8,
             &.{
-                build_manifest.name,
+                manifest.name,
                 "_",
-                @tagName(build_manifest.platform),
+                @tagName(manifest.platform),
                 "_",
-                @tagName(build_manifest.gfx_api),
+                @tagName(manifest.gfx_api),
             },
         );
         defer builder.allocator.free(manifest_name);
@@ -150,14 +158,14 @@ pub const Manifest = struct {
         );
         defer builder.allocator.free(pkg_name);
 
-        build_manifest.out_path = try std.fs.path.join(
+        manifest.out_path = try std.fs.path.join(
             builder.allocator,
             &.{
                 manifest_dir_path,
                 out_name,
             },
         );
-        build_manifest.pkg_path = try std.fs.path.join(
+        manifest.pkg_path = try std.fs.path.join(
             builder.allocator,
             &.{
                 manifest_dir_path,
@@ -165,7 +173,7 @@ pub const Manifest = struct {
             },
         );
 
-        return build_manifest;
+        return manifest;
     }
 };
 
@@ -174,28 +182,28 @@ const default_opt_level = .debug;
 const default_gfx_api = .webgpu;
 
 pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
-    var build_manifest = try Manifest.init(builder, desc);
+    var manifest = try Manifest.init(builder, desc);
 
-    try buildExt(builder, build_manifest);
-    try buildRes(builder, build_manifest);
-    try buildApp(builder, build_manifest);
+    try buildExt(builder, manifest);
+    try buildRes(builder, manifest);
+    try buildApp(builder, manifest);
 }
 
 fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
-    _ = manifest;
+    try std.fs.cwd().makePath(manifest.gen_lib_dir);
+    try std.fs.cwd().makePath(manifest.gen_tools_dir);
 
-    const gen_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
-    defer builder.allocator.free(gen_dir);
-
-    try std.fs.cwd().makePath(gen_dir);
-
-    const tools_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "tools" });
-    defer builder.allocator.free(tools_dir);
-
-    const header_only_libs_def = [_]HeaderOnlyLib{
-        .{ .define = "STB_IMAGE_IMPLEMENTATION", .path = "stb_image.h" },
+    const header_only_libs = [_]HeaderOnlyLib{
+        .{ .path = "ext/stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
     };
-    const header_only_libs = try HeaderOnlyLibsStep.init(builder, &header_only_libs_def);
+    const header_only_step = try HeaderOnlyStep.init(builder, manifest, &header_only_libs);
+    const header_only = builder.addStaticLibrary(HeaderOnlyStep.lib_name, null);
+    header_only.setBuildMode(.ReleaseFast);
+    header_only.linkLibC();
+    header_only.addIncludePath(builder.build_root);
+    header_only.addCSourceFileSource(header_only_step.getCSourceFile());
+    header_only.setOutputDir(manifest.gen_lib_dir);
+    header_only.step.dependOn(&header_only_step.step);
 
     comptime var freetype_srcs: []const []const u8 = &.{
         "ext/freetype/src/autofit/autofit.c",
@@ -324,10 +332,10 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     msdf_atlas_gen.linkLibrary(msdfgen);
     msdf_atlas_gen.linkLibrary(freetype);
     msdf_atlas_gen.addCSourceFiles(msdf_atlas_gen_srcs, msdf_atlas_gen_flags);
-    msdf_atlas_gen.setOutputDir(tools_dir);
+    msdf_atlas_gen.setOutputDir(manifest.gen_tools_dir);
 
     const build_ext_step = builder.step("ext", "Build external dependencies");
-    build_ext_step.dependOn(&header_only_libs.step);
+    build_ext_step.dependOn(&header_only.step);
     build_ext_step.dependOn(&msdf_atlas_gen.step);
 }
 
@@ -337,7 +345,8 @@ fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     build_res_exe.setTarget(std.zig.CrossTarget.fromTarget(builtin.target));
     build_res_exe.linkLibC();
     build_res_exe.addIncludePath("ext/stb");
-    build_res_exe.addCSourceFile(try HeaderOnlyLibsStep.getCSourceFilePath(builder), &.{});
+    build_res_exe.addLibraryPath(manifest.gen_lib_dir);
+    build_res_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
 
     var build_res_run = build_res_exe.run();
     const write_manifest_step = try WriteManifestStep.init(builder, manifest);
@@ -433,30 +442,38 @@ const WriteManifestStep = struct {
 };
 
 const HeaderOnlyLib = struct {
-    define: []const u8,
     path: []const u8,
+    define: []const u8,
 };
 
-const HeaderOnlyLibsStep = struct {
+const HeaderOnlyStep = struct {
+    const lib_name = "header_only";
+
     builder: *std.build.Builder,
+    manifest: Manifest,
     step: std.build.Step,
     libs: []const HeaderOnlyLib,
     generated_file: std.build.GeneratedFile,
 
-    fn init(builder: *std.build.Builder, libs: []const HeaderOnlyLib) !*HeaderOnlyLibsStep {
-        const header = try builder.allocator.create(HeaderOnlyLibsStep);
-        header.* = .{
+    fn init(
+        builder: *std.build.Builder,
+        manifest: Manifest,
+        libs: []const HeaderOnlyLib,
+    ) !*HeaderOnlyStep {
+        const header_only_step = try builder.allocator.create(HeaderOnlyStep);
+        header_only_step.* = .{
             .builder = builder,
-            .step = std.build.Step.init(.custom, "build c header libs", builder.allocator, make),
+            .manifest = manifest,
+            .step = std.build.Step.init(.custom, "header only libs", builder.allocator, make),
             .libs = libs,
             .generated_file = undefined,
         };
-        header.generated_file = .{ .step = &header.step };
-        return header;
+        header_only_step.generated_file = .{ .step = &header_only_step.step };
+        return header_only_step;
     }
 
     fn make(step: *std.build.Step) !void {
-        const header = @fieldParentPtr(HeaderOnlyLibsStep, "step", step);
+        const header = @fieldParentPtr(HeaderOnlyStep, "step", step);
 
         var impl_contents = std.ArrayList(u8).init(header.builder.allocator);
         defer impl_contents.deinit();
@@ -467,17 +484,21 @@ const HeaderOnlyLibsStep = struct {
             try writer.print("#include \"{s}\"\n", .{lib.path});
         }
 
-        const out_path = try getCSourceFilePath(header.builder);
+        const out_name = try std.mem.concat(header.builder.allocator, u8, &.{ lib_name, ".c" });
+        defer header.builder.allocator.free(out_name);
+        const out_path = try std.fs.path.join(header.builder.allocator, &.{
+            header.manifest.gen_lib_dir, out_name,
+        });
         defer header.builder.allocator.free(out_path);
 
         try std.fs.cwd().writeFile(out_path, impl_contents.items);
         header.generated_file.path = try header.builder.allocator.dupe(u8, out_path);
     }
 
-    fn getCSourceFilePath(builder: *std.build.Builder) ![]const u8 {
-        return try std.fs.path.join(
-            builder.allocator,
-            &.{ builder.build_root, "gen", "header_only_libs.c" },
-        );
+    fn getCSourceFile(header: HeaderOnlyStep) std.build.CSourceFile {
+        return std.build.CSourceFile{
+            .source = .{ .generated = &header.generated_file },
+            .args = &.{},
+        };
     }
 };
