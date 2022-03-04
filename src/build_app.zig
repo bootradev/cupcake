@@ -109,7 +109,16 @@ pub const Manifest = struct {
         manifest.build_root_path = builder.build_root;
         manifest.install_prefix = builder.install_prefix;
 
-        const gen_dir = try std.fs.path.join(builder.allocator, &.{ builder.build_root, "gen" });
+        const gen_dir_name = builder.option(
+            []const u8,
+            "gen_dir",
+            "gen dir name",
+        ) orelse "zig-gen";
+
+        const gen_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.build_root, gen_dir_name },
+        );
         defer builder.allocator.free(gen_dir);
 
         manifest.gen_lib_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "lib" });
@@ -124,7 +133,7 @@ pub const Manifest = struct {
             builder.allocator,
             &.{
                 builder.build_root,
-                "gen",
+                gen_dir_name,
                 "res",
                 manifest.name,
             },
