@@ -2,7 +2,7 @@ const build_app = @import("build_app.zig");
 const minify = @import("minify.zig");
 const serde = @import("serde.zig");
 const stb = @cImport({
-    @cInclude("stb_image.h");
+    @cInclude("stb/stb_image.h");
 });
 const std = @import("std");
 const qoi = @import("qoi.zig");

@@ -57,6 +57,7 @@ pub const Manifest = struct {
     log_level: LogLevel,
     build_root_path: []const u8,
     install_prefix: []const u8,
+    ext_dir: []const u8,
     gen_lib_dir: []const u8,
     gen_tools_dir: []const u8,
     dest_dir: []const u8,
@@ -94,11 +95,28 @@ pub const Manifest = struct {
         );
         defer builder.allocator.free(cache_gen_dir);
 
+        const cache_ext_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.cache_root, "ext" },
+        );
+        defer builder.allocator.free(cache_ext_dir);
+
         const gen_dir_rel = builder.option(
             []const u8,
             "gen_dir",
             "dir for generated files, relative to the build root",
         ) orelse cache_gen_dir;
+
+        const ext_dir_rel = builder.option(
+            []const u8,
+            "ext_dir",
+            "dir for external repositories, relative to the build root",
+        ) orelse cache_ext_dir;
+
+        manifest.ext_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.build_root, ext_dir_rel },
+        );
 
         const gen_dir = try std.fs.path.join(
             builder.allocator,
@@ -166,68 +184,88 @@ pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
 }
 
 fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
+    try std.fs.cwd().makePath(manifest.ext_dir);
     try std.fs.cwd().makePath(manifest.gen_lib_dir);
     try std.fs.cwd().makePath(manifest.gen_tools_dir);
 
+    const ext_repos = [_]ExtRepo{
+        .{
+            .url = "https://gitlab.freedesktop.org/freetype/freetype",
+            .commit = "1e2eb65048f75c64b68708efed6ce904c31f3b2f",
+        },
+        .{
+            .url = "https://github.com/Chlumsky/msdf-atlas-gen",
+            .commit = "50d1a1c275e78ee08afafbead2a2d347aa26f122",
+            .clone_recursive = true,
+        },
+        .{
+            .url = "https://github.com/nothings/stb",
+            .commit = "af1a5bc352164740c1cc1354942b1c6b72eacb8a",
+        },
+    };
+    const clone_ext_repos = try CloneExtReposStep.init(builder, manifest, &ext_repos);
+
     const header_only_libs = [_]HeaderOnlyLib{
-        .{ .path = "ext/stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
+        .{ .path = "stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
     };
     const header_only_step = try HeaderOnlyStep.init(builder, manifest, &header_only_libs);
+    header_only_step.step.dependOn(&clone_ext_repos.step);
+
     const header_only = builder.addStaticLibrary(HeaderOnlyStep.lib_name, null);
     header_only.setBuildMode(.ReleaseFast);
     header_only.linkLibC();
-    header_only.addIncludePath(builder.build_root);
+    header_only.addIncludePath(manifest.ext_dir);
     header_only.addCSourceFileSource(header_only_step.getCSourceFile());
     header_only.setOutputDir(manifest.gen_lib_dir);
     header_only.step.dependOn(&header_only_step.step);
 
     comptime var freetype_srcs: []const []const u8 = &.{
-        "ext/freetype/src/autofit/autofit.c",
-        "ext/freetype/src/base/ftbase.c",
-        "ext/freetype/src/base/ftbbox.c",
-        "ext/freetype/src/base/ftbdf.c",
-        "ext/freetype/src/base/ftbitmap.c",
-        "ext/freetype/src/base/ftcid.c",
-        "ext/freetype/src/base/ftfstype.c",
-        "ext/freetype/src/base/ftgasp.c",
-        "ext/freetype/src/base/ftglyph.c",
-        "ext/freetype/src/base/ftgxval.c",
-        "ext/freetype/src/base/ftinit.c",
-        "ext/freetype/src/base/ftmm.c",
-        "ext/freetype/src/base/ftotval.c",
-        "ext/freetype/src/base/ftpatent.c",
-        "ext/freetype/src/base/ftpfr.c",
-        "ext/freetype/src/base/ftstroke.c",
-        "ext/freetype/src/base/ftsynth.c",
-        "ext/freetype/src/base/fttype1.c",
-        "ext/freetype/src/base/ftwinfnt.c",
-        "ext/freetype/src/bdf/bdf.c",
-        "ext/freetype/src/bzip2/ftbzip2.c",
-        "ext/freetype/src/cache/ftcache.c",
-        "ext/freetype/src/cff/cff.c",
-        "ext/freetype/src/cid/type1cid.c",
-        "ext/freetype/src/gzip/ftgzip.c",
-        "ext/freetype/src/lzw/ftlzw.c",
-        "ext/freetype/src/pcf/pcf.c",
-        "ext/freetype/src/pfr/pfr.c",
-        "ext/freetype/src/psaux/psaux.c",
-        "ext/freetype/src/pshinter/pshinter.c",
-        "ext/freetype/src/psnames/psnames.c",
-        "ext/freetype/src/raster/raster.c",
-        "ext/freetype/src/sdf/sdf.c",
-        "ext/freetype/src/sfnt/sfnt.c",
-        "ext/freetype/src/smooth/smooth.c",
-        "ext/freetype/src/svg/svg.c",
-        "ext/freetype/src/truetype/truetype.c",
-        "ext/freetype/src/type1/type1.c",
-        "ext/freetype/src/type42/type42.c",
-        "ext/freetype/src/winfonts/winfnt.c",
+        "freetype/src/autofit/autofit.c",
+        "freetype/src/base/ftbase.c",
+        "freetype/src/base/ftbbox.c",
+        "freetype/src/base/ftbdf.c",
+        "freetype/src/base/ftbitmap.c",
+        "freetype/src/base/ftcid.c",
+        "freetype/src/base/ftfstype.c",
+        "freetype/src/base/ftgasp.c",
+        "freetype/src/base/ftglyph.c",
+        "freetype/src/base/ftgxval.c",
+        "freetype/src/base/ftinit.c",
+        "freetype/src/base/ftmm.c",
+        "freetype/src/base/ftotval.c",
+        "freetype/src/base/ftpatent.c",
+        "freetype/src/base/ftpfr.c",
+        "freetype/src/base/ftstroke.c",
+        "freetype/src/base/ftsynth.c",
+        "freetype/src/base/fttype1.c",
+        "freetype/src/base/ftwinfnt.c",
+        "freetype/src/bdf/bdf.c",
+        "freetype/src/bzip2/ftbzip2.c",
+        "freetype/src/cache/ftcache.c",
+        "freetype/src/cff/cff.c",
+        "freetype/src/cid/type1cid.c",
+        "freetype/src/gzip/ftgzip.c",
+        "freetype/src/lzw/ftlzw.c",
+        "freetype/src/pcf/pcf.c",
+        "freetype/src/pfr/pfr.c",
+        "freetype/src/psaux/psaux.c",
+        "freetype/src/pshinter/pshinter.c",
+        "freetype/src/psnames/psnames.c",
+        "freetype/src/raster/raster.c",
+        "freetype/src/sdf/sdf.c",
+        "freetype/src/sfnt/sfnt.c",
+        "freetype/src/smooth/smooth.c",
+        "freetype/src/svg/svg.c",
+        "freetype/src/truetype/truetype.c",
+        "freetype/src/type1/type1.c",
+        "freetype/src/type42/type42.c",
+        "freetype/src/winfonts/winfnt.c",
     };
     switch (builtin.target.os.tag) {
         .windows => {
             freetype_srcs = freetype_srcs ++ &[_][]const u8{
-                "ext/freetype/builds/windows/ftsystem.c",
-                "ext/freetype/builds/windows/ftdebug.c",
+                "freetype/builds/windows/ftsystem.c",
+                "freetype/builds/windows/ftdebug.c",
             };
         },
         else => @compileError("Unsupported platform!"),
@@ -237,77 +275,85 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     const freetype = builder.addStaticLibrary("freetype", null);
     freetype.setBuildMode(.ReleaseFast);
     freetype.linkLibC();
-    freetype.addIncludePath("ext/freetype/include");
-    freetype.addCSourceFiles(freetype_srcs, freetype_flags);
+    try addIncludePathExt(builder, manifest, freetype, "freetype/include");
+    try addCSourceFilesExt(builder, manifest, freetype, freetype_srcs, freetype_flags);
+    freetype.step.dependOn(&clone_ext_repos.step);
 
     const msdfgen_srcs: []const []const u8 = &.{
-        "ext/msdf-atlas-gen/msdfgen/core/Contour.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/contour-combiners.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/edge-coloring.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/EdgeHolder.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/edge-segments.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/edge-selectors.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/equation-solver.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/MSDFErrorCorrection.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/msdf-error-correction.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/msdfgen.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/Projection.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/rasterization.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/render-sdf.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/save-bmp.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/save-tiff.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/Scanline.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/sdf-error-estimation.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/Shape.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/shape-description.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/SignedDistance.cpp",
-        "ext/msdf-atlas-gen/msdfgen/core/Vector2.cpp",
-        "ext/msdf-atlas-gen/msdfgen/ext/import-font.cpp",
-        "ext/msdf-atlas-gen/msdfgen/ext/import-svg.cpp",
-        "ext/msdf-atlas-gen/msdfgen/ext/resolve-shape-geometry.cpp",
-        "ext/msdf-atlas-gen/msdfgen/ext/save-png.cpp",
-        "ext/msdf-atlas-gen/msdfgen/lib/lodepng.cpp",
-        "ext/msdf-atlas-gen/msdfgen/lib/tinyxml2.cpp",
+        "msdf-atlas-gen/msdfgen/core/Contour.cpp",
+        "msdf-atlas-gen/msdfgen/core/contour-combiners.cpp",
+        "msdf-atlas-gen/msdfgen/core/edge-coloring.cpp",
+        "msdf-atlas-gen/msdfgen/core/EdgeHolder.cpp",
+        "msdf-atlas-gen/msdfgen/core/edge-segments.cpp",
+        "msdf-atlas-gen/msdfgen/core/edge-selectors.cpp",
+        "msdf-atlas-gen/msdfgen/core/equation-solver.cpp",
+        "msdf-atlas-gen/msdfgen/core/MSDFErrorCorrection.cpp",
+        "msdf-atlas-gen/msdfgen/core/msdf-error-correction.cpp",
+        "msdf-atlas-gen/msdfgen/core/msdfgen.cpp",
+        "msdf-atlas-gen/msdfgen/core/Projection.cpp",
+        "msdf-atlas-gen/msdfgen/core/rasterization.cpp",
+        "msdf-atlas-gen/msdfgen/core/render-sdf.cpp",
+        "msdf-atlas-gen/msdfgen/core/save-bmp.cpp",
+        "msdf-atlas-gen/msdfgen/core/save-tiff.cpp",
+        "msdf-atlas-gen/msdfgen/core/Scanline.cpp",
+        "msdf-atlas-gen/msdfgen/core/sdf-error-estimation.cpp",
+        "msdf-atlas-gen/msdfgen/core/Shape.cpp",
+        "msdf-atlas-gen/msdfgen/core/shape-description.cpp",
+        "msdf-atlas-gen/msdfgen/core/SignedDistance.cpp",
+        "msdf-atlas-gen/msdfgen/core/Vector2.cpp",
+        "msdf-atlas-gen/msdfgen/ext/import-font.cpp",
+        "msdf-atlas-gen/msdfgen/ext/import-svg.cpp",
+        "msdf-atlas-gen/msdfgen/ext/resolve-shape-geometry.cpp",
+        "msdf-atlas-gen/msdfgen/ext/save-png.cpp",
+        "msdf-atlas-gen/msdfgen/lib/lodepng.cpp",
+        "msdf-atlas-gen/msdfgen/lib/tinyxml2.cpp",
     };
     const msdfgen_flags: []const []const u8 = &.{"-std=c++11"};
 
     const msdfgen = builder.addStaticLibrary("msdfgen", null);
     msdfgen.setBuildMode(.ReleaseFast);
     msdfgen.linkLibCpp();
-    msdfgen.addIncludePath("ext/freetype/include");
-    msdfgen.addIncludePath("ext/msdf-atlas-gen/msdfgen/include");
-    msdfgen.addCSourceFiles(msdfgen_srcs, msdfgen_flags);
+    try addIncludePathExt(builder, manifest, msdfgen, "freetype/include");
+    try addIncludePathExt(builder, manifest, msdfgen, "msdf-atlas-gen/msdfgen/include");
+    try addCSourceFilesExt(builder, manifest, msdfgen, msdfgen_srcs, msdfgen_flags);
+    msdfgen.step.dependOn(&clone_ext_repos.step);
 
     const msdf_atlas_gen_srcs: []const []const u8 = &.{
-        "ext/msdf-atlas-gen/msdf-atlas-gen/artery-font-export.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/bitmap-blit.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/Charset.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/charset-parser.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/csv-export.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/FontGeometry.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/glyph-generators.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/GlyphGeometry.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/image-encode.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/json-export.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/main.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/RectanglePacker.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/shadron-preview-generator.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/size-selectors.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/TightAtlasPacker.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/utf8.cpp",
-        "ext/msdf-atlas-gen/msdf-atlas-gen/Workload.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/artery-font-export.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/bitmap-blit.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/Charset.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/charset-parser.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/csv-export.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/FontGeometry.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/glyph-generators.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/GlyphGeometry.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/image-encode.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/json-export.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/main.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/RectanglePacker.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/shadron-preview-generator.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/size-selectors.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/TightAtlasPacker.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/utf8.cpp",
+        "msdf-atlas-gen/msdf-atlas-gen/Workload.cpp",
     };
     const msdf_atlas_gen_flags: []const []const u8 = &.{"-DMSDF_ATLAS_STANDALONE"};
 
     const msdf_atlas_gen = builder.addExecutable("msdf-atlas-gen", null);
     msdf_atlas_gen.setBuildMode(.ReleaseFast);
-    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/msdfgen");
-    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/msdfgen/include");
-    msdf_atlas_gen.addIncludePath("ext/msdf-atlas-gen/artery-font-format");
+    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/msdfgen");
+    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/msdfgen/include");
+    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/artery-font-format");
+    try addCSourceFilesExt(
+        builder,
+        manifest,
+        msdf_atlas_gen,
+        msdf_atlas_gen_srcs,
+        msdf_atlas_gen_flags,
+    );
     msdf_atlas_gen.linkLibCpp();
     msdf_atlas_gen.linkLibrary(msdfgen);
     msdf_atlas_gen.linkLibrary(freetype);
-    msdf_atlas_gen.addCSourceFiles(msdf_atlas_gen_srcs, msdf_atlas_gen_flags);
     msdf_atlas_gen.setOutputDir(manifest.gen_tools_dir);
 
     const build_ext_step = builder.step("ext", "Build external dependencies");
@@ -319,7 +365,7 @@ fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
     build_res_exe.setBuildMode(.ReleaseSafe);
     build_res_exe.linkLibC();
-    build_res_exe.addIncludePath("ext/stb");
+    build_res_exe.addIncludePath(manifest.ext_dir);
     build_res_exe.addLibraryPath(manifest.gen_lib_dir);
     build_res_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
 
@@ -415,6 +461,82 @@ const WriteManifestStep = struct {
     }
 };
 
+const ExtRepo = struct {
+    url: []const u8,
+    commit: []const u8,
+    clone_recursive: bool = false,
+};
+
+const CloneExtReposStep = struct {
+    step: std.build.Step,
+
+    fn init(
+        builder: *std.build.Builder,
+        manifest: Manifest,
+        repos: []const ExtRepo,
+    ) !*CloneExtReposStep {
+        const clone_ext_repos = try builder.allocator.create(CloneExtReposStep);
+        clone_ext_repos.* = .{
+            .step = std.build.Step.initNoOp(.custom, "clone ext repos", builder.allocator),
+        };
+
+        for (repos) |repo| {
+            const ext_repo_path = try std.fs.path.join(
+                builder.allocator,
+                &.{ manifest.ext_dir, std.fs.path.basename(repo.url) },
+            );
+            defer builder.allocator.free(ext_repo_path);
+            var repo_exists = true;
+            var dir: ?std.fs.Dir = std.fs.cwd().openDir(ext_repo_path, .{}) catch |e| block: {
+                switch (e) {
+                    error.FileNotFound => {
+                        repo_exists = false;
+                        break :block null;
+                    },
+                    else => return e,
+                }
+            };
+            if (repo_exists) {
+                dir.?.close();
+                continue;
+            }
+
+            var clone_args = std.ArrayList([]const u8).init(builder.allocator);
+            defer clone_args.deinit();
+
+            try clone_args.append("git");
+            try clone_args.append("clone");
+            if (repo.clone_recursive) {
+                try clone_args.append("--recurse-submodules");
+                try clone_args.append("-j8");
+            }
+            try clone_args.append(repo.url);
+
+            const clone = builder.addSystemCommand(clone_args.items);
+            clone.cwd = manifest.ext_dir;
+
+            var checkout_args = std.ArrayList([]const u8).init(builder.allocator);
+            defer checkout_args.deinit();
+
+            try checkout_args.append("git");
+            try checkout_args.append("checkout");
+            if (repo.clone_recursive) {
+                try checkout_args.append("--recurse-submodules");
+            }
+            try checkout_args.append(repo.commit);
+            try checkout_args.append(".");
+
+            const checkout = builder.addSystemCommand(checkout_args.items);
+            checkout.cwd = try builder.allocator.dupe(u8, ext_repo_path);
+            checkout.step.dependOn(&clone.step);
+
+            clone_ext_repos.step.dependOn(&checkout.step);
+        }
+
+        return clone_ext_repos;
+    }
+};
+
 const HeaderOnlyLib = struct {
     path: []const u8,
     define: []const u8,
@@ -476,3 +598,33 @@ const HeaderOnlyStep = struct {
         };
     }
 };
+
+fn addIncludePathExt(
+    builder: *std.build.Builder,
+    manifest: Manifest,
+    lib: *std.build.LibExeObjStep,
+    path: []const u8,
+) !void {
+    const ext_path = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, path });
+    defer builder.allocator.free(ext_path);
+    lib.addIncludePath(ext_path);
+}
+
+fn addCSourceFilesExt(
+    builder: *std.build.Builder,
+    manifest: Manifest,
+    lib: *std.build.LibExeObjStep,
+    files: []const []const u8,
+    flags: []const []const u8,
+) !void {
+    var ext_files = std.ArrayList([]const u8).init(builder.allocator);
+    defer ext_files.deinit();
+    defer for (ext_files.items) |ext_file| {
+        builder.allocator.free(ext_file);
+    };
+    for (files) |file| {
+        const ext_file = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, file });
+        try ext_files.append(ext_file);
+    }
+    lib.addCSourceFiles(ext_files.items, flags);
+}
