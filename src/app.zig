@@ -22,10 +22,10 @@ pub fn readSeconds(timer: Timer) f32 {
     return @floatCast(f32, @intToFloat(f64, timer.read()) / std.time.ns_per_s);
 }
 
-pub fn load(comptime res: build_res.Res, desc: LoadDesc) !res.Type {
-    const bytes_are_embedded = comptime std.meta.activeTag(res.data) == .embedded;
+pub fn load(comptime res: build_res.BuildRes, desc: LoadDesc) !res.Type {
+    const bytes_are_embedded = comptime std.meta.activeTag(res.data) == .embed;
     const file_bytes = switch (res.data) {
-        .embedded => |e| e,
+        .embed => |e| e,
         .file => |f| block: {
             if (desc.file_allocator) |allocator| {
                 break :block try readFile(allocator, f.path, f.size);

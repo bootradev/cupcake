@@ -7,7 +7,7 @@ const stb = @cImport({
 const std = @import("std");
 const qoi = @import("qoi.zig");
 
-pub const Res = struct {
+pub const BuildRes = struct {
     Type: type,
     data: Data,
 
@@ -16,7 +16,7 @@ pub const Res = struct {
             path: []const u8,
             size: usize,
         },
-        embedded: []const u8,
+        embed: []const u8,
     };
 };
 
@@ -48,39 +48,26 @@ pub const TextureRes = struct {
     }
 };
 
-const BuildResult = struct {
+const BuildData = struct {
     data: []const u8,
     var_name: []const u8,
-    file_name: []const u8,
     type_name: []const u8,
 
     pub fn init(
         allocator: std.mem.Allocator,
-        resource: anytype,
-        res: build_app.ManifestRes,
-        file_name_suffix: ?[]const u8,
-    ) !BuildResult {
-        const data = try serde.serialize(resource, allocator);
-        const var_name = try getVarName(allocator, res);
-        const file_name = if (file_name_suffix) |suffix| block: {
-            break :block try std.mem.concat(allocator, u8, &.{ var_name, "_", suffix });
-        } else var_name;
-        const type_name = @typeName(@TypeOf(resource));
-
-        return BuildResult{
-            .data = data,
-            .var_name = var_name,
-            .file_name = file_name,
-            .type_name = type_name,
+        build_res: anytype,
+        manifest_res: build_app.ManifestRes,
+    ) !BuildData {
+        return BuildData{
+            .data = try serde.serialize(build_res, allocator),
+            .var_name = try getVarName(allocator, build_res, manifest_res),
+            .type_name = @typeName(@TypeOf(build_res)),
         };
     }
 
-    pub fn deinit(build_info: BuildResult, allocator: std.mem.Allocator) void {
-        if (build_info.var_name.ptr != build_info.file_name.ptr) {
-            allocator.free(build_info.file_name);
-        }
-        allocator.free(build_info.var_name);
-        allocator.free(build_info.data);
+    pub fn deinit(build_data: BuildData, allocator: std.mem.Allocator) void {
+        allocator.free(build_data.var_name);
+        allocator.free(build_data.data);
     }
 };
 
@@ -142,42 +129,39 @@ pub fn main() !void {
         const res_bytes = try readFile(allocator, &res_dir, res.path);
         defer allocator.free(res_bytes);
 
-        const build_fn = switch (res.res_type) {
-            .shader => buildShader,
-            .texture => buildTexture,
+        const build_fn = switch (try toCC(std.fs.path.extension(res.path))) {
+            try toCC(".wgsl") => buildShader,
+            try toCC(".png") => buildTexture,
+            else => return error.InvalidResPathExtension,
         };
-        const build_result = try build_fn(allocator, manifest, res, res_bytes);
-        defer build_result.deinit(allocator);
+        const build_data = try build_fn(allocator, manifest, res, res_bytes);
+        defer build_data.deinit(allocator);
 
-        var write_dir: std.fs.Dir = undefined;
-        try writer.print("pub const {s} = cc.build_res.Res{{ ", .{build_result.var_name});
-        try writer.print(".Type = cc.build_res.{s}, ", .{build_result.type_name});
-        switch (res.file_type) {
-            .embedded => {
-                try writer.print(
-                    ".data = .{{ .embedded = @embedFile(\"{s}\") }} ",
-                    .{build_result.file_name},
-                );
-                write_dir = manifest_dir;
-            },
-            .file => {
-                try writer.print(
-                    ".data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }}",
-                    .{ build_result.file_name, build_result.data.len },
-                );
-                write_dir = install_dir;
-            },
+        try writer.print("pub const {s} = cc.build_res.BuildRes{{ ", .{build_data.var_name});
+        try writer.print(".Type = cc.build_res.{s}, ", .{build_data.type_name});
+        if (res.embed) {
+            try writer.print(
+                ".data = .{{ .embed = @embedFile(\"{s}\") }} ",
+                .{build_data.var_name},
+            );
+        } else {
+            try writer.print(
+                ".data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }}",
+                .{ build_data.var_name, build_data.data.len },
+            );
         }
         try writer.print("}};\n", .{});
-        try write_dir.writeFile(build_result.file_name, build_result.data);
+
+        const write_dir = if (res.embed) manifest_dir else install_dir;
+        try write_dir.writeFile(build_data.var_name, build_data.data);
 
         const res_path = try res_dir.realpathAlloc(allocator, res.path);
         defer allocator.free(res_path);
-        const write_path = try write_dir.realpathAlloc(allocator, build_result.file_name);
+        const write_path = try write_dir.realpathAlloc(allocator, build_data.var_name);
         defer allocator.free(write_path);
         std.log.info(
-            "{s} ({s}): {s} -> {s}",
-            .{ build_result.var_name, @tagName(res.file_type), res_path, write_path },
+            "{s} -> {s}",
+            .{ res_path, write_path },
         );
     }
 
@@ -195,23 +179,30 @@ pub fn main() !void {
     std.log.info("done", .{});
 }
 
+const BuildFn = fn (
+    std.mem.Allocator,
+    build_app.Manifest,
+    build_app.ManifestRes,
+    []const u8,
+) anyerror!BuildData;
+
 fn buildShader(
     allocator: std.mem.Allocator,
     manifest: build_app.Manifest,
     res: build_app.ManifestRes,
     res_bytes: []const u8,
-) !BuildResult {
+) anyerror!BuildData {
     const shader_bytes = try minify.shader(
         res_bytes,
         allocator,
+        manifest.platform,
         manifest.opt_level,
-        manifest.gfx_api,
     );
     defer allocator.free(shader_bytes);
 
     const shader_resource: ShaderRes = .{ .data = shader_bytes };
 
-    return try BuildResult.init(allocator, shader_resource, res, @tagName(manifest.gfx_api));
+    return try BuildData.init(allocator, shader_resource, res);
 }
 
 fn buildTexture(
@@ -219,7 +210,7 @@ fn buildTexture(
     _: build_app.Manifest,
     res: build_app.ManifestRes,
     res_bytes: []const u8,
-) !BuildResult {
+) anyerror!BuildData {
     var width: c_int = undefined;
     var height: c_int = undefined;
     var channels: c_int = undefined;
@@ -239,7 +230,7 @@ fn buildTexture(
         .data = texture_bytes[0..@intCast(usize, width * height * channels)],
     };
 
-    return try BuildResult.init(allocator, texture_resource, res, null);
+    return try BuildData.init(allocator, texture_resource, res);
 }
 
 fn buildWeb(
@@ -330,24 +321,50 @@ fn buildWeb(
     std.log.info("js bindings -> {s}", .{js_path});
 }
 
-fn getVarName(allocator: std.mem.Allocator, res: build_app.ManifestRes) ![]const u8 {
+fn getVarName(
+    allocator: std.mem.Allocator,
+    build_res: anytype,
+    manifest_res: build_app.ManifestRes,
+) ![]const u8 {
     const res_path_no_ext = block: {
-        const index = std.mem.lastIndexOfScalar(u8, res.path, '.') orelse
-            break :block res.path[0..];
-        if (index == 0) return error.InvalidResName;
-        break :block res.path[0..index];
+        const index = std.mem.lastIndexOfScalar(u8, manifest_res.path, '.') orelse
+            break :block manifest_res.path;
+        if (index == 0) return error.InvalidResPath;
+        break :block manifest_res.path[0..index];
     };
 
-    var res_path_no_ext_underscore = try allocator.dupe(u8, res_path_no_ext);
-    defer allocator.free(res_path_no_ext_underscore);
+    const type_name = @typeName(@TypeOf(build_res));
+    const type_name_no_res = block: {
+        const index = std.mem.lastIndexOf(u8, type_name, "Res") orelse
+            break :block type_name;
+        break :block type_name[0..index];
+    };
 
-    std.mem.replaceScalar(u8, res_path_no_ext_underscore, std.fs.path.sep, '_');
-
-    return try std.mem.concat(
+    const var_name = try std.mem.concat(
         allocator,
         u8,
-        &.{ res_path_no_ext_underscore, "_", @tagName(res.res_type) },
+        &.{ res_path_no_ext, "_", type_name_no_res },
     );
+    for (var_name) |*char| {
+        if (char.* == std.fs.path.sep) {
+            char.* = '_';
+        } else {
+            char.* = std.ascii.toLower(char.*);
+        }
+    }
+    return var_name;
+}
+
+fn toCC(extension: []const u8) !u32 {
+    if (extension.len < 2 or extension.len > 5 or extension[0] != '.') {
+        return error.InvalidExtension;
+    }
+
+    var cc: u32 = 0;
+    for (extension[1..]) |char, i| {
+        cc |= @as(u32, char) << @truncate(u5, i * 8);
+    }
+    return cc;
 }
 
 fn readFile(allocator: std.mem.Allocator, dir: *std.fs.Dir, path: []const u8) ![]u8 {

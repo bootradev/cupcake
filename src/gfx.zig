@@ -1,5 +1,5 @@
-const api = switch (cfg.gfx_api) {
-    .webgpu => @import("gfx_webgpu.zig"),
+const api = switch (cfg.platform) {
+    .web => @import("gfx_web.zig"),
 };
 const cfg = @import("cfg");
 const math = @import("math.zig");

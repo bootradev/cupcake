@@ -4,7 +4,6 @@ const std = @import("std");
 const Example = enum {
     triangle,
     cube,
-    texture,
 };
 
 pub fn build(builder: *std.build.Builder) !void {
@@ -16,8 +15,8 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/triangle/triangle.zig",
             .res_dir = "examples/triangle",
             .res = &.{
-                .{ .res_type = .shader, .file_type = .embedded, .path = "triangle_vert.wgsl" },
-                .{ .res_type = .shader, .file_type = .embedded, .path = "triangle_frag.wgsl" },
+                .{ .path = "triangle_vert.wgsl", .embed = true },
+                .{ .path = "triangle_frag.wgsl", .embed = true },
             },
         },
         .cube => .{
@@ -25,18 +24,9 @@ pub fn build(builder: *std.build.Builder) !void {
             .root = "examples/cube/cube.zig",
             .res_dir = "examples/cube",
             .res = &.{
-                .{ .res_type = .shader, .file_type = .embedded, .path = "cube_vert.wgsl" },
-                .{ .res_type = .shader, .file_type = .embedded, .path = "cube_frag.wgsl" },
-            },
-        },
-        .texture => .{
-            .name = "texture",
-            .root = "examples/texture/texture.zig",
-            .res_dir = "examples/texture",
-            .res = &.{
-                .{ .res_type = .shader, .file_type = .embedded, .path = "texture_vert.wgsl" },
-                .{ .res_type = .shader, .file_type = .embedded, .path = "texture_frag.wgsl" },
-                .{ .res_type = .texture, .file_type = .file, .path = "cupcake.png" },
+                .{ .path = "cube_vert.wgsl", .embed = true },
+                .{ .path = "cube_frag.wgsl", .embed = true },
+                .{ .path = "cupcake.png" },
             },
         },
     };

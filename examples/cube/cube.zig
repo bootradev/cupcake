@@ -4,19 +4,19 @@ const std = @import("std");
 
 const cube_data = struct {
     const position_offset = 0;
-    const color_offset = 4 * 4;
-    const array_stride = 4 * 4 * 2;
+    const uv_offset = 4 * 4;
+    const array_stride = 4 * 6;
 
-    // position (vec4), color (vec4),
+    // position (vec4), uv (vec2),
     const vertices: []const f32 = &.{
-        -1, -1, -1, 1, 1.0,  1.0,  1.0,  1,
-        1,  -1, -1, 1, 0.71, 1.0,  1.0,  1,
-        -1, 1,  -1, 1, 1.0,  0.71, 1.0,  1,
-        1,  1,  -1, 1, 0.71, 0.71, 1.0,  1,
-        -1, -1, 1,  1, 1.0,  1.0,  0.71, 1,
-        1,  -1, 1,  1, 0.71, 1.0,  0.71, 1,
-        -1, 1,  1,  1, 1.0,  0.71, 0.71, 1,
-        1,  1,  1,  1, 0.71, 0.71, 0.71, 1,
+        -1, -1, -1, 1, 0, 1,
+        1,  -1, -1, 1, 1, 1,
+        -1, 1,  -1, 1, 0, 0,
+        1,  1,  -1, 1, 1, 0,
+        -1, -1, 1,  1, 1, 1,
+        1,  -1, 1,  1, 0, 1,
+        -1, 1,  1,  1, 1, 0,
+        1,  1,  1,  1, 0, 0,
     };
 
     const indices: []const u16 = &.{
@@ -30,6 +30,8 @@ const cube_data = struct {
 };
 
 const Example = struct {
+    game_clock: cc.app.Timer,
+    file_allocator: cc.mem.BumpAllocator,
     window: cc.app.Window,
     instance: cc.gfx.Instance,
     adapter: cc.gfx.Adapter,
@@ -42,14 +44,17 @@ const Example = struct {
     uniform_buffer: cc.gfx.Buffer,
     depth_texture: cc.gfx.Texture,
     depth_texture_view: cc.gfx.TextureView,
+    cube_texture: cc.gfx.Texture,
+    cube_texture_view: cc.gfx.TextureView,
+    cube_texture_sampler: cc.gfx.Sampler,
     bind_group: cc.gfx.BindGroup,
-    game_clock: cc.app.Timer,
 };
 
 var example: Example = undefined;
 
 pub fn init() !void {
     example.game_clock = try cc.app.Timer.start();
+    example.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
 
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.instance = try cc.gfx.Instance.init();
@@ -98,9 +103,41 @@ pub fn init() !void {
     example.depth_texture = try example.device.createTexture(depth_texture_desc);
     example.depth_texture_view = example.depth_texture.createView();
 
+    const tex_res = try cc.app.load(
+        res.cupcake_texture,
+        .{
+            .file_allocator = example.file_allocator.allocator(),
+            .res_allocator = example.file_allocator.allocator(),
+        },
+    );
+    const cube_tex_desc = cc.gfx.TextureDesc.init()
+        .size(.{ .width = tex_res.width, .height = tex_res.height })
+        .format(.rgba8unorm)
+        .usage(.{ .copy_dst = true, .texture_binding = true, .render_attachment = true });
+    defer cube_tex_desc.deinit();
+    example.cube_texture = try example.device.createTexture(cube_tex_desc);
+    example.cube_texture_view = example.cube_texture.createView();
+
+    const cube_tex_sampler_desc = cc.gfx.SamplerDesc.init().magFilter(.linear).minFilter(.linear)
+        .addressModeU(.repeat).addressModeW(.repeat);
+    defer cube_tex_sampler_desc.deinit();
+    example.cube_texture_sampler = try example.device.createSampler(cube_tex_sampler_desc);
+
+    const copy_dest_desc = cc.gfx.ImageCopyTextureDesc.init().texture(example.cube_texture);
+    defer copy_dest_desc.deinit();
+    const copy_layout_desc = cc.gfx.ImageDataLayoutDesc.init()
+        .bytesPerRow(tex_res.width * 4)
+        .rowsPerImage(tex_res.height);
+    defer copy_layout_desc.deinit();
+    const copy_size = cc.gfx.Extent3d{ .width = tex_res.width, .height = tex_res.height };
+    var queue = example.device.getQueue();
+    queue.writeTexture(copy_dest_desc, tex_res.data, copy_layout_desc, copy_size);
+
     const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
         .entries()
         .entry().binding(0).visibility(.{ .vertex = true }).buffer().end().end()
+        .entry().binding(1).visibility(.{ .fragment = true }).sampler().end().end()
+        .entry().binding(2).visibility(.{ .fragment = true }).texture().end().end()
         .end();
     defer bind_group_layout_desc.deinit();
     var bind_group_layout = try example.device.createBindGroupLayout(bind_group_layout_desc);
@@ -110,6 +147,8 @@ pub fn init() !void {
         .layout(bind_group_layout)
         .entries()
         .entry().binding(0).buffer(example.uniform_buffer).end().end()
+        .entry().binding(1).sampler(example.cube_texture_sampler).end()
+        .entry().binding(2).textureView(example.cube_texture_view).end()
         .end();
     defer bind_group_desc.deinit();
     example.bind_group = try example.device.createBindGroup(bind_group_desc);
@@ -138,7 +177,7 @@ pub fn init() !void {
         .arrayStride(cube_data.array_stride)
         .attributes()
         .attribute().shaderLocation(0).offset(cube_data.position_offset).format(.float32x4).end()
-        .attribute().shaderLocation(1).offset(cube_data.color_offset).format(.float32x4).end()
+        .attribute().shaderLocation(1).offset(cube_data.uv_offset).format(.float32x2).end()
         .end()
         .end()
         .end()
@@ -195,9 +234,6 @@ pub fn update() !void {
         .depthLoadOp(.clear)
         .depthClearValue(1.0)
         .depthStoreOp(.store)
-        .stencilLoadOp(.clear)
-        .stencilClearValue(0)
-        .stencilStoreOp(.store)
         .end();
     defer render_pass_desc.deinit();
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);

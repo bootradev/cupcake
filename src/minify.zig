@@ -219,11 +219,11 @@ pub fn js(
 pub fn shader(
     src: []const u8,
     allocator: std.mem.Allocator,
+    platform: build_app.Platform,
     opt_level: build_app.OptLevel,
-    gfx_api: build_app.GfxApi,
 ) ![]const u8 {
-    const lang = switch (gfx_api) {
-        .webgpu => .wgsl,
+    const lang = switch (platform) {
+        .web => .wgsl,
     };
 
     var ctx = Minify.init(src, allocator, lang, opt_level);

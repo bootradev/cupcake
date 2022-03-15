@@ -35,24 +35,9 @@ pub const OptLevel = enum(u8) {
     }
 };
 
-pub const GfxApi = enum(u8) {
-    webgpu,
-};
-
 pub const ManifestRes = struct {
-    res_type: ResType,
-    file_type: FileType,
     path: []const u8,
-
-    pub const ResType = enum(u8) {
-        shader,
-        texture,
-    };
-
-    pub const FileType = enum(u8) {
-        embedded,
-        file,
-    };
+    embed: bool = false,
 };
 
 pub const ManifestDesc = struct {
@@ -69,7 +54,6 @@ pub const Manifest = struct {
     res: []const ManifestRes,
     platform: Platform,
     opt_level: OptLevel,
-    gfx_api: GfxApi,
     log_level: LogLevel,
     build_root_path: []const u8,
     install_prefix: []const u8,
@@ -95,29 +79,30 @@ pub const Manifest = struct {
             "opt",
             "optimization level",
         ) orelse default_opt_level;
-        manifest.gfx_api = builder.option(
-            GfxApi,
-            "gfx",
-            "graphics backend",
-        ) orelse default_gfx_api;
         manifest.log_level = builder.option(
             LogLevel,
             "log_level",
-            "log level",
+            "threshold for logging to console",
         ) orelse manifest.opt_level.getLogLevel();
 
         manifest.build_root_path = builder.build_root;
         manifest.install_prefix = builder.install_prefix;
 
-        const gen_dir_name = builder.option(
+        const cache_gen_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.cache_root, "gen" },
+        );
+        defer builder.allocator.free(cache_gen_dir);
+
+        const gen_dir_rel = builder.option(
             []const u8,
             "gen_dir",
-            "gen dir name",
-        ) orelse "zig-gen";
+            "dir for generated files, relative to the build root",
+        ) orelse cache_gen_dir;
 
         const gen_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ builder.build_root, gen_dir_name },
+            &.{ builder.build_root, gen_dir_rel },
         );
         defer builder.allocator.free(gen_dir);
 
@@ -131,25 +116,14 @@ pub const Manifest = struct {
 
         const manifest_dir_path = try std.fs.path.join(
             builder.allocator,
-            &.{
-                builder.build_root,
-                gen_dir_name,
-                "res",
-                manifest.name,
-            },
+            &.{ gen_dir, "res", manifest.name },
         );
         defer builder.allocator.free(manifest_dir_path);
 
         const manifest_name = try std.mem.concat(
             builder.allocator,
             u8,
-            &.{
-                manifest.name,
-                "_",
-                @tagName(manifest.platform),
-                "_",
-                @tagName(manifest.gfx_api),
-            },
+            &.{ manifest.name, "_", @tagName(manifest.platform) },
         );
         defer builder.allocator.free(manifest_name);
 
@@ -169,17 +143,11 @@ pub const Manifest = struct {
 
         manifest.out_path = try std.fs.path.join(
             builder.allocator,
-            &.{
-                manifest_dir_path,
-                out_name,
-            },
+            &.{ manifest_dir_path, out_name },
         );
         manifest.pkg_path = try std.fs.path.join(
             builder.allocator,
-            &.{
-                manifest_dir_path,
-                pkg_name,
-            },
+            &.{ manifest_dir_path, pkg_name },
         );
 
         return manifest;
@@ -188,7 +156,6 @@ pub const Manifest = struct {
 
 const default_platform = .web;
 const default_opt_level = .debug;
-const default_gfx_api = .webgpu;
 
 pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
     var manifest = try Manifest.init(builder, desc);
@@ -256,7 +223,6 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
         "ext/freetype/src/type42/type42.c",
         "ext/freetype/src/winfonts/winfnt.c",
     };
-    comptime var freetype_flags: []const []const u8 = &.{"-DFT2_BUILD_LIBRARY"};
     switch (builtin.target.os.tag) {
         .windows => {
             freetype_srcs = freetype_srcs ++ &[_][]const u8{
@@ -266,6 +232,7 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
         },
         else => @compileError("Unsupported platform!"),
     }
+    const freetype_flags: []const []const u8 = &.{"-DFT2_BUILD_LIBRARY"};
 
     const freetype = builder.addStaticLibrary("freetype", null);
     freetype.setBuildMode(.ReleaseFast);
@@ -351,7 +318,6 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
 fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
     build_res_exe.setBuildMode(.ReleaseSafe);
-    build_res_exe.setTarget(std.zig.CrossTarget.fromTarget(builtin.target));
     build_res_exe.linkLibC();
     build_res_exe.addIncludePath("ext/stb");
     build_res_exe.addLibraryPath(manifest.gen_lib_dir);
@@ -375,7 +341,6 @@ fn buildApp(builder: *std.build.Builder, manifest: Manifest) !void {
 
     const cfg = builder.addOptions();
     cfg.addOption(Platform, "platform", manifest.platform);
-    cfg.addOption(GfxApi, "gfx_api", manifest.gfx_api);
     cfg.addOption(OptLevel, "opt_level", manifest.opt_level);
     cfg.addOption(LogLevel, "log_level", manifest.log_level);
     app_lib_exe.step.dependOn(&cfg.step);
