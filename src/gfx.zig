@@ -1,6 +1,7 @@
 const api = switch (cfg.platform) {
     .web => @import("gfx_web.zig"),
 };
+const app = @import("app.zig");
 const cfg = @import("cfg");
 const math = @import("math.zig");
 const std = @import("std");
@@ -421,3 +422,39 @@ pub const CommandEncoder = api.CommandEncoder;
 pub const CommandBuffer = api.CommandBuffer;
 pub const QuerySet = api.QuerySet;
 pub const Queue = api.Queue;
+
+pub const Context = struct {
+    instance: Instance,
+    surface: Surface,
+    adapter: Adapter,
+    device: Device,
+    swapchain_format: TextureFormat,
+    swapchain: Swapchain,
+
+    pub fn init(
+        window: app.Window,
+        adapter_desc: AdapterDesc,
+        device_desc: DeviceDesc,
+    ) !Context {
+        var context: Context = undefined;
+        context.instance = try Instance.init();
+        context.surface = try context.instance.createSurface(window);
+        context.adapter = try context.instance.requestAdapter(adapter_desc);
+        context.device = try context.adapter.requestDevice(device_desc);
+        context.swapchain_format = context.surface.getPreferredFormat(context.adapter);
+        const swapchain_desc = SwapchainDesc.init()
+            .size(.{ .width = window.size.x, .height = window.size.y })
+            .format(context.swapchain_format);
+        defer swapchain_desc.deinit();
+        context.swapchain = try context.device.createSwapchain(context.surface, swapchain_desc);
+        return context;
+    }
+
+    pub fn deinit(context: *Context) void {
+        context.swapchain.destroy();
+        context.device.destroy();
+        context.adapter.destroy();
+        context.surface.destroy();
+        context.instance.deinit();
+    }
+};
