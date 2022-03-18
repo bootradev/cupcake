@@ -4,8 +4,8 @@ const std = @import("std");
 
 const cube_data = struct {
     const position_offset = 0;
-    const uv_offset = 4 * 4;
-    const array_stride = 4 * 6;
+    const uv_offset = @sizeOf(f32) * 4;
+    const array_stride = @sizeOf(f32) * 6;
 
     // position (vec4), uv (vec2),
     const vertices: []const f32 = &.{
@@ -54,7 +54,7 @@ pub fn init() !void {
 
     example.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
     example.ctx = try cc.gfx.Context.init(
-        example.window,
+        &example.window,
         cc.gfx.AdapterDesc.default(),
         cc.gfx.DeviceDesc.default(),
     );

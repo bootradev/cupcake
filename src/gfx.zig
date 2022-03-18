@@ -424,6 +424,7 @@ pub const QuerySet = api.QuerySet;
 pub const Queue = api.Queue;
 
 pub const Context = struct {
+    window: *const app.Window,
     instance: Instance,
     surface: Surface,
     adapter: Adapter,
@@ -432,13 +433,14 @@ pub const Context = struct {
     swapchain: Swapchain,
 
     pub fn init(
-        window: app.Window,
+        window: *const app.Window,
         adapter_desc: AdapterDesc,
         device_desc: DeviceDesc,
     ) !Context {
         var context: Context = undefined;
+        context.window = window;
         context.instance = try Instance.init();
-        context.surface = try context.instance.createSurface(window);
+        context.surface = try context.instance.createSurface(window.*);
         context.adapter = try context.instance.requestAdapter(adapter_desc);
         context.device = try context.adapter.requestDevice(device_desc);
         context.swapchain_format = context.surface.getPreferredFormat(context.adapter);

@@ -55,9 +55,10 @@ pub const Manifest = struct {
     platform: Platform,
     opt_level: OptLevel,
     log_level: LogLevel,
-    build_root_path: []const u8,
-    install_prefix: []const u8,
+    build_root_dir: []const u8,
+    install_dir: []const u8,
     ext_dir: []const u8,
+    gen_dir: []const u8,
     gen_lib_dir: []const u8,
     gen_tools_dir: []const u8,
     dest_dir: []const u8,
@@ -66,10 +67,19 @@ pub const Manifest = struct {
 
     fn init(builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
         var manifest: Manifest = undefined;
-        manifest.name = desc.name;
-        manifest.root = desc.root;
-        manifest.res_dir = desc.res_dir;
-        manifest.res = desc.res;
+        try manifest.setOptionFields(builder);
+        try manifest.setNonOptionFields(builder, desc);
+        return manifest;
+    }
+
+    fn initDupe(manifest: Manifest, builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
+        var dupe_manifest: Manifest = undefined;
+        try dupe_manifest.dupeOptionFields(manifest, builder);
+        try dupe_manifest.setNonOptionFields(builder, desc);
+        return dupe_manifest;
+    }
+
+    fn setOptionFields(manifest: *Manifest, builder: *std.build.Builder) !void {
         manifest.platform = builder.option(
             Platform,
             "platform",
@@ -85,9 +95,6 @@ pub const Manifest = struct {
             "log_level",
             "threshold for logging to console",
         ) orelse manifest.opt_level.getLogLevel();
-
-        manifest.build_root_path = builder.build_root;
-        manifest.install_prefix = builder.install_prefix;
 
         const cache_gen_dir = try std.fs.path.join(
             builder.allocator,
@@ -118,23 +125,57 @@ pub const Manifest = struct {
             &.{ builder.build_root, ext_dir_rel },
         );
 
-        const gen_dir = try std.fs.path.join(
+        manifest.gen_dir = try std.fs.path.join(
             builder.allocator,
             &.{ builder.build_root, gen_dir_rel },
         );
-        defer builder.allocator.free(gen_dir);
+        manifest.gen_lib_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ manifest.gen_dir, "lib" },
+        );
+        manifest.gen_tools_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ manifest.gen_dir, "tools" },
+        );
+    }
 
-        manifest.gen_lib_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "lib" });
-        manifest.gen_tools_dir = try std.fs.path.join(builder.allocator, &.{ gen_dir, "tools" });
+    fn dupeOptionFields(
+        dupe_manifest: *Manifest,
+        manifest: Manifest,
+        builder: *std.build.Builder,
+    ) !void {
+        dupe_manifest.platform = manifest.platform;
+        dupe_manifest.opt_level = manifest.opt_level;
+        dupe_manifest.log_level = manifest.log_level;
+        dupe_manifest.ext_dir = try builder.allocator.dupe(u8, manifest.ext_dir);
+        dupe_manifest.gen_dir = try builder.allocator.dupe(u8, manifest.gen_dir);
+        dupe_manifest.gen_lib_dir = try builder.allocator.dupe(u8, manifest.gen_lib_dir);
+        dupe_manifest.gen_tools_dir = try builder.allocator.dupe(u8, manifest.gen_tools_dir);
+    }
 
+    fn setNonOptionFields(
+        manifest: *Manifest,
+        builder: *std.build.Builder,
+        desc: ManifestDesc,
+    ) !void {
+        manifest.name = desc.name;
+        manifest.root = desc.root;
+        manifest.res_dir = desc.res_dir;
+        manifest.res = desc.res;
+
+        manifest.build_root_dir = builder.build_root;
         manifest.dest_dir = try std.fs.path.join(
             builder.allocator,
             &.{ manifest.name, @tagName(manifest.platform) },
         );
+        manifest.install_dir = try std.fs.path.join(
+            builder.allocator,
+            &.{ builder.install_prefix, manifest.dest_dir },
+        );
 
         const manifest_dir_path = try std.fs.path.join(
             builder.allocator,
-            &.{ gen_dir, "res", manifest.name },
+            &.{ manifest.gen_dir, "res", manifest.name },
         );
         defer builder.allocator.free(manifest_dir_path);
 
@@ -155,7 +196,7 @@ pub const Manifest = struct {
         const pkg_name = try std.mem.concat(
             builder.allocator,
             u8,
-            &.{ manifest_name, ".zig" },
+            &.{ manifest_name, "_res.zig" },
         );
         defer builder.allocator.free(pkg_name);
 
@@ -167,8 +208,6 @@ pub const Manifest = struct {
             builder.allocator,
             &.{ manifest_dir_path, pkg_name },
         );
-
-        return manifest;
     }
 };
 
@@ -178,9 +217,17 @@ const default_opt_level = .debug;
 pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
     var manifest = try Manifest.init(builder, desc);
 
+    const cc_manifest_desc: ManifestDesc = .{
+        .name = "cc",
+        .root = "",
+        .res_dir = ".",
+        .res = &.{},
+    };
+    const cc_manifest = try manifest.initDupe(builder, cc_manifest_desc);
+
     try buildExt(builder, manifest);
-    try buildRes(builder, manifest);
-    try buildApp(builder, manifest);
+    try buildRes(builder, manifest, cc_manifest);
+    try buildApp(builder, manifest, cc_manifest);
 }
 
 fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
@@ -190,16 +237,16 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
 
     const ext_repos = [_]ExtRepo{
         .{
-            .url = "https://gitlab.freedesktop.org/freetype/freetype",
+            .url = "https://gitlab.freedesktop.org/freetype/freetype.git",
             .commit = "1e2eb65048f75c64b68708efed6ce904c31f3b2f",
         },
         .{
-            .url = "https://github.com/Chlumsky/msdf-atlas-gen",
+            .url = "https://github.com/Chlumsky/msdf-atlas-gen.git",
             .commit = "50d1a1c275e78ee08afafbead2a2d347aa26f122",
             .clone_recursive = true,
         },
         .{
-            .url = "https://github.com/nothings/stb",
+            .url = "https://github.com/nothings/stb.git",
             .commit = "af1a5bc352164740c1cc1354942b1c6b72eacb8a",
         },
     };
@@ -361,7 +408,7 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     build_ext_step.dependOn(&msdf_atlas_gen.step);
 }
 
-fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
+fn buildRes(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {
     const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
     build_res_exe.setBuildMode(.ReleaseSafe);
     build_res_exe.linkLibC();
@@ -369,16 +416,22 @@ fn buildRes(builder: *std.build.Builder, manifest: Manifest) !void {
     build_res_exe.addLibraryPath(manifest.gen_lib_dir);
     build_res_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
 
-    var build_res_run = build_res_exe.run();
-    const write_manifest_step = try WriteManifestStep.init(builder, manifest);
-    build_res_run.step.dependOn(&write_manifest_step.step);
-    build_res_run.addArg(manifest.out_path);
+    const write_cc_manifest = try WriteManifestStep.init(builder, cc_manifest);
+    var build_cc_res = build_res_exe.run();
+    build_cc_res.step.dependOn(&write_cc_manifest.step);
+    build_cc_res.addArgs(&.{ cc_manifest.out_path, "false" });
+
+    const write_app_manifest = try WriteManifestStep.init(builder, manifest);
+    var build_app_res = build_res_exe.run();
+    build_app_res.step.dependOn(&write_app_manifest.step);
+    build_app_res.addArgs(&.{ manifest.out_path, "true" });
 
     const build_res_step = builder.step("res", "Build resources");
-    build_res_step.dependOn(&build_res_run.step);
+    build_res_step.dependOn(&build_cc_res.step);
+    build_res_step.dependOn(&build_app_res.step);
 }
 
-fn buildApp(builder: *std.build.Builder, manifest: Manifest) !void {
+fn buildApp(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {
     const app_lib_exe = switch (manifest.platform) {
         .web => try buildWeb(builder, manifest),
     };
@@ -392,20 +445,23 @@ fn buildApp(builder: *std.build.Builder, manifest: Manifest) !void {
     app_lib_exe.step.dependOn(&cfg.step);
 
     const cfg_pkg = cfg.getPackage("cfg");
+    const cc_res_pkg = std.build.Pkg{
+        .name = "cc_res",
+        .path = .{ .path = cc_manifest.pkg_path },
+    };
     const cupcake_pkg = std.build.Pkg{
         .name = "cupcake",
         .path = .{ .path = "src/cupcake.zig" },
-        .dependencies = &.{cfg_pkg},
+        .dependencies = &.{ cfg_pkg, cc_res_pkg },
     };
     const res_pkg = std.build.Pkg{
         .name = "res",
         .path = .{ .path = manifest.pkg_path },
-        .dependencies = &.{cupcake_pkg},
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
         .path = .{ .path = manifest.root },
-        .dependencies = &.{ cfg_pkg, res_pkg, cupcake_pkg },
+        .dependencies = &.{ cfg_pkg, cupcake_pkg, res_pkg },
     };
 
     app_lib_exe.addPackage(cfg_pkg);
@@ -417,10 +473,10 @@ fn buildApp(builder: *std.build.Builder, manifest: Manifest) !void {
 
 fn buildWeb(
     builder: *std.build.Builder,
-    build_manifest: Manifest,
+    manifest: Manifest,
 ) !*std.build.LibExeObjStep {
     const app_lib_exe = builder.addSharedLibrary(
-        build_manifest.name,
+        manifest.name,
         "src/main.zig",
         .unversioned,
     );
@@ -450,8 +506,8 @@ const WriteManifestStep = struct {
         const write_manifest = @fieldParentPtr(WriteManifestStep, "step", step);
 
         const manifest_bytes = try serde.serialize(
-            write_manifest.manifest,
             write_manifest.builder.allocator,
+            write_manifest.manifest,
         );
 
         if (std.fs.path.dirname(write_manifest.manifest.out_path)) |dir| {
@@ -481,9 +537,13 @@ const CloneExtReposStep = struct {
         };
 
         for (repos) |repo| {
+            const ext_repo_name = std.fs.path.basename(repo.url);
+            if (!std.mem.endsWith(u8, ext_repo_name, ".git")) {
+                return error.InvalidRepoName;
+            }
             const ext_repo_path = try std.fs.path.join(
                 builder.allocator,
-                &.{ manifest.ext_dir, std.fs.path.basename(repo.url) },
+                &.{ manifest.ext_dir, ext_repo_name[0 .. ext_repo_name.len - 4] },
             );
             defer builder.allocator.free(ext_repo_path);
             var repo_exists = true;

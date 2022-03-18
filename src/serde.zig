@@ -7,10 +7,10 @@ const SerdeError = error{
     AllocatorRequired,
 };
 
-pub fn serialize(value: anytype, allocator: std.mem.Allocator) ![]const u8 {
+pub fn serialize(allocator: std.mem.Allocator, value: anytype) ![]const u8 {
     const Type = @TypeOf(value);
     if (@hasDecl(Type, "serialize")) {
-        return try Type.serialize(value, allocator);
+        return try Type.serialize(allocator, value);
     } else {
         const bytes = allocator.alloc(u8, serializeSize(value)) catch return error.OutOfMemory;
         _ = serializeBytes(value, bytes);
@@ -174,20 +174,20 @@ pub const DeserializeDesc = struct {
     bytes_are_embedded: bool = false,
 };
 
-pub fn deserialize(comptime Type: type, bytes: []const u8, desc: DeserializeDesc) !Type {
+pub fn deserialize(desc: DeserializeDesc, comptime Type: type, bytes: []const u8) !Type {
     if (@hasDecl(Type, "deserialize")) {
-        return try Type.deserialize(bytes, desc);
+        return try Type.deserialize(desc, bytes);
     } else {
         var value: Type = undefined;
-        _ = try deserializeBytes(&value, bytes, desc);
+        _ = try deserializeBytes(desc, &value, bytes);
         return value;
     }
 }
 
 pub fn deserializeBytes(
+    desc: DeserializeDesc,
     value: anytype,
     bytes: []const u8,
-    desc: DeserializeDesc,
 ) SerdeError![]const u8 {
     var in_bytes = bytes;
 
@@ -200,9 +200,9 @@ pub fn deserializeBytes(
         },
         .Optional => {
             var exists: bool = undefined;
-            in_bytes = try deserializeBytes(&exists, in_bytes, desc);
+            in_bytes = try deserializeBytes(desc, &exists, in_bytes);
             if (exists) {
-                in_bytes = try deserializeBytes(&value.*.?, in_bytes, desc);
+                in_bytes = try deserializeBytes(desc, &value.*.?, in_bytes);
             } else {
                 value.* = null;
             }
@@ -212,7 +212,7 @@ pub fn deserializeBytes(
                 .One => {
                     if (desc.allocator) |a| {
                         var ptr = a.create(P.child) catch return error.OutOfMemory;
-                        in_bytes = try deserializeBytes(ptr, in_bytes, desc);
+                        in_bytes = try deserializeBytes(desc, ptr, in_bytes);
                         value.* = ptr;
                     } else {
                         return error.AllocatorRequired;
@@ -220,7 +220,7 @@ pub fn deserializeBytes(
                 },
                 .Slice => {
                     var serde_len: serde_usize = undefined;
-                    in_bytes = try deserializeBytes(&serde_len, in_bytes, desc);
+                    in_bytes = try deserializeBytes(desc, &serde_len, in_bytes);
 
                     const len = @intCast(usize, serde_len);
                     if (desc.allocator) |a| {
@@ -239,12 +239,12 @@ pub fn deserializeBytes(
                             },
                             else => {
                                 for (slice) |*s| {
-                                    in_bytes = try deserializeBytes(s, in_bytes, desc);
+                                    in_bytes = try deserializeBytes(desc, s, in_bytes);
                                 }
                             },
                         }
                         if (P.sentinel) |_| {
-                            in_bytes = try deserializeBytes(&slice[P.len], in_bytes, desc);
+                            in_bytes = try deserializeBytes(desc, &slice[P.len], in_bytes);
                         }
                         value.* = slice;
                     } else if (P.is_const and desc.bytes_are_embedded) {
@@ -263,7 +263,7 @@ pub fn deserializeBytes(
                     }
                 },
                 else => |E| {
-                    @compileError("Cannot deserializeBytes pointer size " ++ @tagName(E) ++ "!");
+                    @compileError("Cannot deserialize pointer size " ++ @tagName(E));
                 },
             }
         },
@@ -282,52 +282,52 @@ pub fn deserializeBytes(
                 },
                 else => {
                     for (value.*) |*v| {
-                        in_bytes = try deserializeBytes(v, in_bytes, desc);
+                        in_bytes = try deserializeBytes(desc, v, in_bytes);
                     }
                 },
             }
             if (A.sentinel) |_| {
-                in_bytes = try deserializeBytes(&value.*[A.len], in_bytes, desc);
+                in_bytes = try deserializeBytes(desc, &value.*[A.len], in_bytes);
             }
         },
         .Struct => |S| {
             inline for (S.fields) |field| {
-                in_bytes = try deserializeBytes(&@field(value.*, field.name), in_bytes, desc);
+                in_bytes = try deserializeBytes(desc, &@field(value.*, field.name), in_bytes);
             }
         },
         .Union => |U| {
             const UnionTagType = U.tag_type orelse
-                @compileError("Cannot deserializeBytes a union without a tag type!");
+                @compileError("Cannot deserialize a union without a tag!");
             var tag: UnionTagType = undefined;
-            in_bytes = try deserializeBytes(&tag, in_bytes, desc);
+            in_bytes = try deserializeBytes(desc, &tag, in_bytes);
             inline for (U.fields) |field| {
                 if (@field(UnionTagType, field.name) == tag) {
                     const UnionType = @TypeOf(@field(value.*, field.name));
                     var u: UnionType = undefined;
-                    in_bytes = try deserializeBytes(&u, in_bytes, desc);
+                    in_bytes = try deserializeBytes(desc, &u, in_bytes);
                     value.* = @unionInit(Type, field.name, u);
                     break;
                 }
             }
         },
-        else => |E| @compileError("Cannot deserializeBytes type " ++ @tagName(E) ++ "!"),
+        else => |E| @compileError("Cannot deserializeBytes desc, type " ++ @tagName(E)),
     }
 
     return in_bytes;
 }
 
-pub fn deserializeFree(value: anytype, allocator: std.mem.Allocator) void {
+pub fn deserializeFree(allocator: std.mem.Allocator, value: anytype) void {
     switch (@typeInfo(@TypeOf(value))) {
         .Void, .Bool, .Int, .Float, .Enum => {},
         .Optional => {
             if (value) |v| {
-                deserializeFree(v, allocator);
+                deserializeFree(allocator, v);
             }
         },
         .Pointer => |P| {
             switch (P.size) {
                 .One => {
-                    deserializeFree(value.*, allocator);
+                    deserializeFree(allocator, value.*);
                     allocator.destroy(value);
                 },
                 .Slice => {
@@ -335,7 +335,7 @@ pub fn deserializeFree(value: anytype, allocator: std.mem.Allocator) void {
                         .Bool, .Int, .Float, .Enum => {},
                         else => {
                             for (value) |v| {
-                                deserializeFree(v, allocator);
+                                deserializeFree(allocator, v);
                             }
                         },
                     }
@@ -351,20 +351,20 @@ pub fn deserializeFree(value: anytype, allocator: std.mem.Allocator) void {
                 .Bool, .Int, .Float, .Enum => {},
                 else => {
                     for (value) |v| {
-                        deserializeFree(v, allocator);
+                        deserializeFree(allocator, v);
                     }
                 },
             }
         },
         .Struct => |S| {
             inline for (S.fields) |field| {
-                deserializeFree(@field(value, field.name), allocator);
+                deserializeFree(allocator, @field(value, field.name));
             }
         },
         .Union => |U| {
             inline for (U.fields) |field| {
                 if (std.mem.eql(u8, field.name, @tagName(value))) {
-                    deserializeFree(@field(value, field.name), allocator);
+                    deserializeFree(allocator, @field(value, field.name));
                     break;
                 }
             }
@@ -416,15 +416,15 @@ test "serde" {
         .slice_field = test_slice,
     };
 
-    const bytes = try serialize(value, std.testing.allocator);
+    const bytes = try serialize(std.testing.allocator, value);
     defer std.testing.allocator.free(bytes);
 
     var deserialized_value = try deserialize(
+        .{ .allocator = std.testing.allocator },
         TestStruct,
         bytes,
-        .{ .allocator = std.testing.allocator },
     );
-    defer deserializeFree(deserialized_value, std.testing.allocator);
+    defer deserializeFree(std.testing.allocator, deserialized_value);
 
     try std.testing.expectEqual(value.bool_field, deserialized_value.bool_field);
     try std.testing.expectEqual(value.u32_field, deserialized_value.u32_field);

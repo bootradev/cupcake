@@ -7,19 +7,6 @@ const stb = @cImport({
 const std = @import("std");
 const qoi = @import("qoi.zig");
 
-pub const BuildRes = struct {
-    Type: type,
-    data: Data,
-
-    pub const Data = union(enum) {
-        file: struct {
-            path: []const u8,
-            size: usize,
-        },
-        embed: []const u8,
-    };
-};
-
 pub const ShaderRes = struct {
     data: []const u8,
 };
@@ -29,7 +16,7 @@ pub const TextureRes = struct {
     height: u32,
     data: []const u8,
 
-    pub fn serialize(value: TextureRes, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn serialize(allocator: std.mem.Allocator, value: TextureRes) ![]const u8 {
         const qoi_image = qoi.Image{
             .width = value.width,
             .height = value.height,
@@ -41,7 +28,7 @@ pub const TextureRes = struct {
         return allocator.resize(qoi_bytes, qoi_encode_len) orelse error.ResizeFailed;
     }
 
-    pub fn deserialize(bytes: []const u8, desc: serde.DeserializeDesc) !TextureRes {
+    pub fn deserialize(desc: serde.DeserializeDesc, bytes: []const u8) !TextureRes {
         const allocator = desc.allocator orelse return error.AllocatorRequired;
         const image = try qoi.decode(bytes, allocator);
         return TextureRes{ .width = image.width, .height = image.height, .data = image.data };
@@ -59,7 +46,7 @@ const BuildData = struct {
         manifest_res: build_app.ManifestRes,
     ) !BuildData {
         return BuildData{
-            .data = try serde.serialize(build_res, allocator),
+            .data = try serde.serialize(allocator, build_res),
             .var_name = try getVarName(allocator, build_res, manifest_res),
             .type_name = @typeName(@TypeOf(build_res)),
         };
@@ -83,21 +70,25 @@ pub fn main() !void {
 
     if (args.skip() == false) return error.InvalidArgs;
     const manifest_path = if (args.next()) |arg| arg else return error.InvalidArgs;
-
-    std.log.info("building manifest {s}", .{manifest_path});
+    const install_enabled = if (args.next()) |arg|
+        std.mem.eql(u8, arg, "true")
+    else
+        return error.InvalidArgs;
 
     const manifest_bytes = try readFile(allocator, &std.fs.cwd(), manifest_path);
     defer allocator.free(manifest_bytes);
     const manifest = try serde.deserialize(
+        .{ .allocator = allocator },
         build_app.Manifest,
         manifest_bytes,
-        .{ .allocator = allocator },
     );
-    defer serde.deserializeFree(manifest, allocator);
+    defer serde.deserializeFree(allocator, manifest);
+
+    std.log.info("building res for {s} using manifest: {s}", .{ manifest.name, manifest_path });
 
     const res_dir_path = try std.fs.path.join(
         allocator,
-        &.{ manifest.build_root_path, manifest.res_dir },
+        &.{ manifest.build_root_dir, manifest.res_dir },
     );
     defer allocator.free(res_dir_path);
 
@@ -107,38 +98,33 @@ pub fn main() !void {
     const manifest_dir_path = std.fs.path.dirname(manifest.pkg_path) orelse
         return error.InvalidManifestPkgPath;
 
-    var manifest_dir = try std.fs.cwd().makeOpenPath(manifest_dir_path, .{});
-    defer manifest_dir.close();
+    var manifest_dir: ?std.fs.Dir = try std.fs.cwd().makeOpenPath(manifest_dir_path, .{});
+    defer manifest_dir.?.close();
 
-    const install_dir_path = try std.fs.path.join(
-        allocator,
-        &.{ manifest.install_prefix, manifest.dest_dir },
-    );
-    defer allocator.free(install_dir_path);
-
-    var install_dir = try std.fs.cwd().makeOpenPath(install_dir_path, .{});
-    defer install_dir.close();
+    var install_dir = if (install_enabled)
+        try std.fs.cwd().makeOpenPath(manifest.install_dir, .{})
+    else
+        null;
+    defer if (install_dir) |*dir| dir.close();
 
     var pkg_contents = std.ArrayList(u8).init(allocator);
     defer pkg_contents.deinit();
     const writer = pkg_contents.writer();
 
-    try writer.print("const cc = @import(\"cupcake\");\n", .{});
-
     for (manifest.res) |res| {
         const res_bytes = try readFile(allocator, &res_dir, res.path);
         defer allocator.free(res_bytes);
 
-        const build_fn = switch (try toCC(std.fs.path.extension(res.path))) {
-            try toCC(".wgsl") => buildShader,
-            try toCC(".png") => buildTexture,
+        const build_res_fn = switch (try extensionCode(std.fs.path.extension(res.path))) {
+            try extensionCode(".wgsl") => buildShader,
+            try extensionCode(".png") => buildTexture,
             else => return error.InvalidResPathExtension,
         };
-        const build_data = try build_fn(allocator, manifest, res, res_bytes);
+        const build_data = try build_res_fn(allocator, manifest, res, res_bytes);
         defer build_data.deinit(allocator);
 
-        try writer.print("pub const {s} = cc.build_res.BuildRes{{ ", .{build_data.var_name});
-        try writer.print(".Type = cc.build_res.{s}, ", .{build_data.type_name});
+        try writer.print("pub const {s} = .{{ ", .{build_data.var_name});
+        try writer.print(".type_name = \"{s}\", ", .{build_data.type_name});
         if (res.embed) {
             try writer.print(
                 ".data = .{{ .embed = @embedFile(\"{s}\") }} ",
@@ -153,11 +139,11 @@ pub fn main() !void {
         try writer.print("}};\n", .{});
 
         const write_dir = if (res.embed) manifest_dir else install_dir;
-        try write_dir.writeFile(build_data.var_name, build_data.data);
+        try write_dir.?.writeFile(build_data.var_name, build_data.data);
 
         const res_path = try res_dir.realpathAlloc(allocator, res.path);
         defer allocator.free(res_path);
-        const write_path = try write_dir.realpathAlloc(allocator, build_data.var_name);
+        const write_path = try write_dir.?.realpathAlloc(allocator, build_data.var_name);
         defer allocator.free(write_path);
         std.log.info(
             "{s} -> {s}",
@@ -165,26 +151,24 @@ pub fn main() !void {
         );
     }
 
-    std.log.info("writing package {s}", .{manifest.pkg_path});
-
     try std.fs.cwd().writeFile(
         manifest.pkg_path,
         pkg_contents.items,
     );
+    std.log.info("res package -> {s}", .{manifest.pkg_path});
+    std.log.info("done building manifest\n", .{});
 
-    switch (manifest.platform) {
-        .web => try buildWeb(allocator, manifest, &install_dir),
+    if (install_enabled) {
+        const build_platform_fn = switch (manifest.platform) {
+            .web => buildWeb,
+        };
+        std.log.info("building platform files for {s}:", .{@tagName(manifest.platform)});
+        try build_platform_fn(allocator, manifest);
+        std.log.info("done building platform files\n", .{});
     }
 
-    std.log.info("done", .{});
+    std.log.info("build complete!\n", .{});
 }
-
-const BuildFn = fn (
-    std.mem.Allocator,
-    build_app.Manifest,
-    build_app.ManifestRes,
-    []const u8,
-) anyerror!BuildData;
 
 fn buildShader(
     allocator: std.mem.Allocator,
@@ -236,9 +220,9 @@ fn buildTexture(
 fn buildWeb(
     allocator: std.mem.Allocator,
     manifest: build_app.Manifest,
-    install_dir: *std.fs.Dir,
 ) !void {
-    std.log.info("building web files", .{});
+    var install_dir = try std.fs.cwd().makeOpenPath(manifest.install_dir, .{});
+    defer install_dir.close();
 
     const html_name = try std.mem.concat(allocator, u8, &.{ manifest.name, ".html" });
     defer allocator.free(html_name);
@@ -286,7 +270,7 @@ fn buildWeb(
 
     const js_src_dir_path = try std.fs.path.join(
         allocator,
-        &.{ manifest.build_root_path, "src" },
+        &.{ manifest.build_root_dir, "src" },
     );
     defer allocator.free(js_src_dir_path);
 
@@ -355,16 +339,16 @@ fn getVarName(
     return var_name;
 }
 
-fn toCC(extension: []const u8) !u32 {
+fn extensionCode(extension: []const u8) !u32 {
     if (extension.len < 2 or extension.len > 5 or extension[0] != '.') {
         return error.InvalidExtension;
     }
 
-    var cc: u32 = 0;
+    var code: u32 = 0;
     for (extension[1..]) |char, i| {
-        cc |= @as(u32, char) << @truncate(u5, i * 8);
+        code |= @as(u32, char) << @truncate(u5, i * 8);
     }
-    return cc;
+    return code;
 }
 
 fn readFile(allocator: std.mem.Allocator, dir: *std.fs.Dir, path: []const u8) ![]u8 {

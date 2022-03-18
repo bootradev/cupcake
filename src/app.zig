@@ -9,11 +9,6 @@ const std = @import("std");
 pub const Timer = api.Timer;
 pub const Window = api.Window;
 
-pub const LoadDesc = struct {
-    file_allocator: ?std.mem.Allocator = null,
-    res_allocator: ?std.mem.Allocator = null,
-};
-
 pub const WindowDesc = struct {
     name: []const u8 = "",
 };
@@ -22,7 +17,25 @@ pub fn readSeconds(timer: Timer) f32 {
     return @floatCast(f32, @intToFloat(f64, timer.read()) / std.time.ns_per_s);
 }
 
-pub fn load(comptime res: build_res.BuildRes, desc: LoadDesc) !res.Type {
+pub const Res = struct {
+    type_name: []const u8,
+    data: Data,
+
+    pub const Data = union(enum) {
+        file: struct {
+            path: []const u8,
+            size: usize,
+        },
+        embed: []const u8,
+    };
+};
+
+pub const LoadDesc = struct {
+    file_allocator: ?std.mem.Allocator = null,
+    res_allocator: ?std.mem.Allocator = null,
+};
+
+pub fn load(comptime res: Res, desc: LoadDesc) !@field(build_res, res.type_name) {
     const bytes_are_embedded = comptime std.meta.activeTag(res.data) == .embed;
     const file_bytes = switch (res.data) {
         .embed => |e| e,
@@ -39,9 +52,9 @@ pub fn load(comptime res: build_res.BuildRes, desc: LoadDesc) !res.Type {
     };
 
     return try serde.deserialize(
-        res.Type,
-        file_bytes,
         .{ .allocator = desc.res_allocator, .bytes_are_embedded = bytes_are_embedded },
+        @field(build_res, res.type_name),
+        file_bytes,
     );
 }
 
