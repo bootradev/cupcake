@@ -6,6 +6,7 @@ const _main = {
         const _imports = {};
         _imports.env = {
             ..._main,
+            ..._res,
             ..._app,
             ..._webgpu,
         };

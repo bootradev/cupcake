@@ -263,6 +263,7 @@ fn buildWeb(
     const js_srcs: []const []const u8 = &.{
         "utils.js",
         "main_web.js",
+        "res_web.js",
         "app_web.js",
         "gfx_webgpu.js",
     };

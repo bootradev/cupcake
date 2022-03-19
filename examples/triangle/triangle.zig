@@ -17,11 +17,11 @@ pub fn init() !void {
         cc.gfx.DeviceDesc.default(),
     );
 
-    const vert_shader_res = try cc.app.load(res.triangle_vert_shader, .{});
+    const vert_shader_res = try cc.res.load(res.triangle_vert_shader, .{});
     var vert_shader = try ex.gfx_ctx.device.createShader(vert_shader_res);
     defer vert_shader.destroy();
 
-    const frag_shader_res = try cc.app.load(res.triangle_frag_shader, .{});
+    const frag_shader_res = try cc.res.load(res.triangle_frag_shader, .{});
     var frag_shader = try ex.gfx_ctx.device.createShader(frag_shader_res);
     defer frag_shader.destroy();
 
