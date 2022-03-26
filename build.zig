@@ -26,7 +26,6 @@ pub fn build(builder: *std.build.Builder) !void {
             .res = &.{
                 .{ .path = "cube_vert.wgsl", .embed = true },
                 .{ .path = "cube_frag.wgsl", .embed = true },
-                .{ .path = "cupcake.png" },
             },
         },
     };

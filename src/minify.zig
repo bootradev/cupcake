@@ -84,6 +84,10 @@ const Minify = struct {
             }
         }
 
+        if (ctx.cur_char == .symbol) {
+            try ctx.appendSymbol();
+        }
+
         return ctx.out.toOwnedSlice();
     }
 

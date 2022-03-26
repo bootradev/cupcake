@@ -331,7 +331,7 @@ fn getVarName(
         &.{ res_path_no_ext, "_", type_name_no_res },
     );
     for (var_name) |*char| {
-        if (char.* == std.fs.path.sep) {
+        if (std.fs.path.isSep(char.*)) {
             char.* = '_';
         } else {
             char.* = std.ascii.toLower(char.*);
