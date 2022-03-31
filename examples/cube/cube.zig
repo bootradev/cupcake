@@ -148,25 +148,25 @@ pub fn init() !void {
 
 pub fn update() !void {
     const time = cc.app.readSeconds(ex.game_clock);
-    const model_matrix = cc.math.M44f32.makeAngleAxis(
+    const model_matrix = cc.math.matFromAxisAngle(
+        cc.math.f32x4(cc.math.sin(time), cc.math.cos(time), 0.0, 0.0),
         1.0,
-        cc.math.V3f32.make(cc.math.sinFast(time), cc.math.cosFast(time), 0.0),
     );
-    const view_matrix = cc.math.M44f32.makeView(
-        cc.math.V3f32.make(0, 0, -4),
-        cc.math.V3f32.forward,
-        cc.math.V3f32.up,
+    const view_matrix = cc.math.lookToLh(
+        cc.math.f32x4(0, 0, -4, 0),
+        cc.math.f32x4(0, 0, 1, 0),
+        cc.math.f32x4(0, 1, 0, 0),
     );
-    const proj_matrix = cc.math.M44f32.makePerspective(
+    const proj_matrix = cc.math.perspectiveFovLh(
         2.0 * std.math.pi / 5.0,
         @intToFloat(f32, ex.window.width) / @intToFloat(f32, ex.window.height),
         1,
         100,
     );
-    const mvp_matrix = model_matrix.mul(view_matrix.mul(proj_matrix));
+    const mvp_matrix = cc.math.mul(model_matrix, cc.math.mul(view_matrix, proj_matrix));
 
     var queue = ex.gfx_ctx.device.getQueue();
-    queue.writeBuffer(ex.uniform_buffer, 0, mvp_matrix.asBytes(), 0);
+    queue.writeBuffer(ex.uniform_buffer, 0, std.mem.asBytes(&mvp_matrix), 0);
 
     var swapchain_view = try ex.gfx_ctx.swapchain.getCurrentTextureView();
     defer swapchain_view.destroy();

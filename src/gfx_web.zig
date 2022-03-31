@@ -3,7 +3,6 @@ const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
-const math = @import("math.zig");
 const std = @import("std");
 
 const js = struct {

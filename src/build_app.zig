@@ -249,6 +249,10 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
             .url = "https://github.com/nothings/stb.git",
             .commit = "af1a5bc352164740c1cc1354942b1c6b72eacb8a",
         },
+        .{
+            .url = "https://github.com/michal-z/zig-gamedev.git",
+            .commit = "4ae28cf3e4b822f0dc4fab70557b165d73ec3c97",
+        },
     };
     const clone_ext_repos = try CloneExtReposStep.init(builder, manifest, &ext_repos);
 
@@ -449,10 +453,16 @@ fn buildApp(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manife
         .name = "cc_res",
         .path = .{ .path = cc_manifest.pkg_path },
     };
+    const zmath_pkg = try getPackageExt(
+        builder,
+        manifest,
+        "zmath",
+        "zig-gamedev/libs/zmath/src/zmath.zig",
+    );
     const cupcake_pkg = std.build.Pkg{
         .name = "cupcake",
         .path = .{ .path = "src/cupcake.zig" },
-        .dependencies = &.{ cfg_pkg, cc_res_pkg },
+        .dependencies = &.{ cfg_pkg, cc_res_pkg, zmath_pkg },
     };
     const res_pkg = std.build.Pkg{
         .name = "res",
@@ -687,4 +697,14 @@ fn addCSourceFilesExt(
         try ext_files.append(ext_file);
     }
     lib.addCSourceFiles(ext_files.items, flags);
+}
+
+fn getPackageExt(
+    builder: *std.build.Builder,
+    manifest: Manifest,
+    name: []const u8,
+    path: []const u8,
+) !std.build.Pkg {
+    const pkg_path = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, path });
+    return std.build.Pkg{ .name = name, .path = .{ .path = pkg_path } };
 }

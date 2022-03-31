@@ -3,7 +3,6 @@ const api = switch (cfg.platform) {
 };
 const app = @import("app.zig");
 const cfg = @import("cfg");
-const math = @import("math.zig");
 const std = @import("std");
 
 pub const whole_size = std.math.maxInt(usize);
