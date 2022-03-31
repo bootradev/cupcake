@@ -10,7 +10,7 @@ const Example = struct {
 var ex: Example = undefined;
 
 pub fn init() !void {
-    ex.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
     ex.gfx_ctx = try cc.gfx.Context.init(
         &ex.window,
         cc.gfx.AdapterDesc.default(),

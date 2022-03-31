@@ -378,7 +378,6 @@ pub const Origin3d = struct {
     z: u32 = 0,
 };
 
-pub const SurfaceDesc = api.SurfaceDesc;
 pub const AdapterDesc = api.AdapterDesc;
 pub const LimitsDesc = api.LimitsDesc;
 pub const DeviceDesc = api.DeviceDesc;
@@ -404,6 +403,7 @@ pub const ImageCopyTextureDesc = api.ImageCopyTextureDesc;
 pub const ImageDataLayoutDesc = api.ImageDataLayoutDesc;
 
 pub const Instance = api.Instance;
+pub const Surface = api.Surface;
 pub const Adapter = api.Adapter;
 pub const Device = api.Device;
 pub const Buffer = api.Buffer;
@@ -411,7 +411,6 @@ pub const Texture = api.Texture;
 pub const TextureView = api.TextureView;
 pub const Sampler = api.Sampler;
 pub const Shader = api.Shader;
-pub const Surface = api.Surface;
 pub const Swapchain = api.Swapchain;
 pub const BindGroupLayout = api.BindGroupLayout;
 pub const BindGroup = api.BindGroup;
@@ -445,7 +444,7 @@ pub const Context = struct {
         context.device = try context.adapter.requestDevice(device_desc);
         context.swapchain_format = context.surface.getPreferredFormat(context.adapter);
         const swapchain_desc = SwapchainDesc.init()
-            .size(.{ .width = window.size.x, .height = window.size.y })
+            .size(.{ .width = window.width, .height = window.height })
             .format(context.swapchain_format);
         defer swapchain_desc.deinit();
         context.swapchain = try context.device.createSwapchain(context.surface, swapchain_desc);

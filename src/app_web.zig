@@ -1,6 +1,5 @@
 const app = @import("app.zig");
 const main = @import("main.zig");
-const math = @import("math.zig");
 const std = @import("std");
 
 const js = struct {
@@ -13,7 +12,6 @@ const js = struct {
     extern fn now() DomHighResTimeStamp;
 };
 
-// matches the public api of std.time.Timer
 pub const Timer = struct {
     start_time: js.DomHighResTimeStamp,
 
@@ -42,16 +40,18 @@ pub const Timer = struct {
 };
 
 pub const Window = struct {
-    size: math.V2u32,
     id: js.CanvasId,
+    width: u32,
+    height: u32,
 
-    pub fn init(size: math.V2u32, comptime desc: app.WindowDesc) !Window {
-        if (desc.name.len > 0) {
-            js.setWindowTitle(main.wasm_id, desc.name.ptr, desc.name.len);
+    pub fn init(desc: app.WindowDesc) !Window {
+        if (desc.title.len > 0) {
+            js.setWindowTitle(main.wasm_id, desc.title.ptr, desc.title.len);
         }
         return Window{
-            .id = js.createCanvas(main.wasm_id, size.x, size.y),
-            .size = size,
+            .id = js.createCanvas(main.wasm_id, desc.width, desc.height),
+            .width = desc.width,
+            .height = desc.height,
         };
     }
 

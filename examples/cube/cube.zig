@@ -49,7 +49,7 @@ pub fn init() !void {
     ex.game_clock = try cc.app.Timer.start();
     ex.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
 
-    ex.window = try cc.app.Window.init(cc.math.V2u32.make(800, 600), .{});
+    ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
     ex.gfx_ctx = try cc.gfx.Context.init(
         &ex.window,
         cc.gfx.AdapterDesc.default(),
@@ -83,7 +83,7 @@ pub fn init() !void {
     ex.uniform_buffer = try ex.gfx_ctx.device.createBuffer(uniform_buffer_desc, null);
 
     const depth_texture_desc = cc.gfx.TextureDesc.init()
-        .size(.{ .width = ex.window.size.x, .height = ex.window.size.y })
+        .size(.{ .width = ex.window.width, .height = ex.window.height })
         .format(.depth24plus)
         .usage(.{ .render_attachment = true });
     defer depth_texture_desc.deinit();
@@ -159,7 +159,7 @@ pub fn update() !void {
     );
     const proj_matrix = cc.math.M44f32.makePerspective(
         2.0 * std.math.pi / 5.0,
-        @intToFloat(f32, ex.window.size.x) / @intToFloat(f32, ex.window.size.y),
+        @intToFloat(f32, ex.window.width) / @intToFloat(f32, ex.window.height),
         1,
         100,
     );

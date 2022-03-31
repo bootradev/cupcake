@@ -8,7 +8,9 @@ pub const Timer = api.Timer;
 pub const Window = api.Window;
 
 pub const WindowDesc = struct {
-    name: []const u8 = "",
+    title: []const u8 = "",
+    width: u32,
+    height: u32,
 };
 
 pub fn readSeconds(timer: Timer) f32 {
