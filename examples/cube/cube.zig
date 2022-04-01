@@ -163,10 +163,10 @@ pub fn update() !void {
         1,
         100,
     );
-    const mvp_matrix = cc.math.mul(model_matrix, cc.math.mul(view_matrix, proj_matrix));
+    const mvp_matrix = cc.math.mul(cc.math.mul(model_matrix, view_matrix), proj_matrix);
 
     var queue = ex.gfx_ctx.device.getQueue();
-    queue.writeBuffer(ex.uniform_buffer, 0, std.mem.asBytes(&mvp_matrix), 0);
+    queue.writeBuffer(ex.uniform_buffer, 0, std.mem.asBytes(&cc.math.transpose(mvp_matrix)), 0);
 
     var swapchain_view = try ex.gfx_ctx.swapchain.getCurrentTextureView();
     defer swapchain_view.destroy();

@@ -12,7 +12,7 @@ struct _VertexOutput {
 @stage(vertex)
 fn vs_main(@location(0) _pos : vec4<f32>, @location(1) _color: vec4<f32>) -> _VertexOutput {
     var _output : _VertexOutput;
-    _output._pos = _uniforms._mvp * _pos;
+    _output._pos = _pos * _uniforms._mvp;
     _output._color = _color;
     return _output;
 }
