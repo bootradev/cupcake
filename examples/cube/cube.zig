@@ -2,7 +2,7 @@ const cc = @import("cupcake");
 const res = @import("res");
 const std = @import("std");
 
-const cube_data = struct {
+const cube = struct {
     const position_offset = 0;
     const color_offset = @sizeOf(f32) * 4;
     const array_stride = @sizeOf(f32) * 8;
@@ -31,119 +31,100 @@ const cube_data = struct {
 
 const Example = struct {
     game_clock: cc.app.Timer,
-    file_allocator: cc.mem.BumpAllocator,
     window: cc.app.Window,
-    gfx_ctx: cc.gfx.Context,
-    render_pipeline: cc.gfx.RenderPipeline,
+    gctx: cc.gfx.Context,
     vertex_buffer: cc.gfx.Buffer,
     index_buffer: cc.gfx.Buffer,
     uniform_buffer: cc.gfx.Buffer,
-    depth_texture: cc.gfx.Texture,
-    depth_texture_view: cc.gfx.TextureView,
     bind_group: cc.gfx.BindGroup,
+    render_pipeline: cc.gfx.RenderPipeline,
 };
 
 var ex: Example = undefined;
 
 pub fn init() !void {
     ex.game_clock = try cc.app.Timer.start();
-    ex.file_allocator = try cc.mem.BumpAllocator.init(64 * 1024 * 1024);
-
     ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
-    ex.gfx_ctx = try cc.gfx.Context.init(
-        &ex.window,
-        cc.gfx.AdapterDesc.default(),
-        cc.gfx.DeviceDesc.default(),
-    );
+    ex.gctx = try cc.gfx.Context.init(&ex.window, .{});
 
-    const cube_vertices_bytes = std.mem.sliceAsBytes(cube_data.vertices);
-    const vertex_buffer_desc = cc.gfx.BufferDesc.init()
-        .size(cube_vertices_bytes.len)
-        .usage(.{ .vertex = true });
-    defer vertex_buffer_desc.deinit();
-    ex.vertex_buffer = try ex.gfx_ctx.device.createBuffer(
-        vertex_buffer_desc,
-        cube_vertices_bytes,
-    );
+    const cube_vertices_bytes = std.mem.sliceAsBytes(cube.vertices);
+    ex.vertex_buffer = try ex.gctx.createBuffer(.{
+        .size = cube_vertices_bytes.len,
+        .usage = .{ .vertex = true },
+        .data = cube_vertices_bytes,
+    });
 
-    const cube_indices_bytes = std.mem.sliceAsBytes(cube_data.indices);
-    const index_buffer_desc = cc.gfx.BufferDesc.init()
-        .size(cube_indices_bytes.len)
-        .usage(.{ .index = true });
-    defer index_buffer_desc.deinit();
-    ex.index_buffer = try ex.gfx_ctx.device.createBuffer(
-        index_buffer_desc,
-        cube_indices_bytes,
-    );
+    const cube_indices_bytes = std.mem.sliceAsBytes(cube.indices);
+    ex.index_buffer = try ex.gctx.createBuffer(.{
+        .size = cube_indices_bytes.len,
+        .usage = .{ .index = true },
+        .data = cube_indices_bytes,
+    });
 
-    const uniform_buffer_desc = cc.gfx.BufferDesc.init()
-        .size(64)
-        .usage(.{ .uniform = true, .copy_dst = true });
-    defer uniform_buffer_desc.deinit();
-    ex.uniform_buffer = try ex.gfx_ctx.device.createBuffer(uniform_buffer_desc, null);
+    ex.uniform_buffer = try ex.gctx.createBuffer(.{
+        .size = 64,
+        .usage = .{ .uniform = true, .copy_dst = true },
+    });
 
-    const depth_texture_desc = cc.gfx.TextureDesc.init()
-        .size(.{ .width = ex.window.width, .height = ex.window.height })
-        .format(.depth24plus)
-        .usage(.{ .render_attachment = true });
-    defer depth_texture_desc.deinit();
-    ex.depth_texture = try ex.gfx_ctx.device.createTexture(depth_texture_desc);
-    ex.depth_texture_view = ex.depth_texture.createView();
-
-    const bind_group_layout_desc = cc.gfx.BindGroupLayoutDesc.init()
-        .entries()
-        .entry().binding(0).visibility(.{ .vertex = true }).buffer().end().end()
-        .end();
-    defer bind_group_layout_desc.deinit();
-    var bind_group_layout = try ex.gfx_ctx.device.createBindGroupLayout(bind_group_layout_desc);
+    var bind_group_layout = try ex.gctx.createBindGroupLayout(.{
+        .entries = &.{.{
+            .binding = 0,
+            .visibility = .{ .vertex = true },
+            .layout = .{ .buffer = .{} },
+        }},
+    });
     defer bind_group_layout.destroy();
 
-    const bind_group_desc = cc.gfx.BindGroupDesc.init()
-        .layout(bind_group_layout)
-        .entries()
-        .entry().binding(0).buffer(ex.uniform_buffer).end().end()
-        .end();
-    defer bind_group_desc.deinit();
-    ex.bind_group = try ex.gfx_ctx.device.createBindGroup(bind_group_desc);
+    ex.bind_group = try ex.gctx.createBindGroup(.{
+        .layout = &bind_group_layout,
+        .entries = &.{.{
+            .binding = 0,
+            .resource = .{ .buffer_binding = .{ .buffer = &ex.uniform_buffer } },
+        }},
+    });
 
-    const vert_shader_res = try cc.res.load(res.cube_vert_shader, .{});
-    var vert_shader = try ex.gfx_ctx.device.createShader(vert_shader_res);
-    defer vert_shader.destroy();
-
-    const frag_shader_res = try cc.res.load(res.cube_frag_shader, .{});
-    var frag_shader = try ex.gfx_ctx.device.createShader(frag_shader_res);
-    defer frag_shader.destroy();
-
-    const pipeline_layout_desc = cc.gfx.PipelineLayoutDesc.init()
-        .bindGroupLayouts(&.{bind_group_layout});
-    defer pipeline_layout_desc.deinit();
-    var pipeline_layout = try ex.gfx_ctx.device.createPipelineLayout(pipeline_layout_desc);
+    var pipeline_layout = try ex.gctx.createPipelineLayout(
+        .{ .bind_group_layouts = &.{bind_group_layout} },
+    );
     defer pipeline_layout.destroy();
 
-    const render_pipeline_desc = cc.gfx.RenderPipelineDesc.init()
-        .layout(pipeline_layout)
-        .vertex()
-        .module(vert_shader)
-        .entryPoint("vs_main")
-        .buffers()
-        .buffer()
-        .arrayStride(cube_data.array_stride)
-        .attributes()
-        .attribute().shaderLocation(0).offset(cube_data.position_offset).format(.float32x4).end()
-        .attribute().shaderLocation(1).offset(cube_data.color_offset).format(.float32x4).end()
-        .end()
-        .end()
-        .end()
-        .end()
-        .primitive().cullMode(.back).end()
-        .depthStencil().depthWriteEnabled(true).depthCompare(.less).format(.depth24plus).end()
-        .fragment()
-        .module(frag_shader)
-        .entryPoint("fs_main")
-        .targets().target().format(ex.gfx_ctx.swapchain_format).end().end()
-        .end();
-    defer render_pipeline_desc.deinit();
-    ex.render_pipeline = try ex.gfx_ctx.device.createRenderPipeline(render_pipeline_desc);
+    var vert_shader = try ex.gctx.loadShader(res.cube_vert_shader, .{});
+    defer vert_shader.destroy();
+
+    var frag_shader = try ex.gctx.loadShader(res.cube_frag_shader, .{});
+    defer frag_shader.destroy();
+
+    var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};
+    render_pipeline_desc.setPipelineLayout(&pipeline_layout);
+    render_pipeline_desc.setVertexState(.{
+        .module = &vert_shader,
+        .entry_point = "vs_main",
+        // note: zig issue #7607 prevents using an anonymous array here
+        .buffers = &[_]cc.gfx.VertexBufferLayout{.{
+            .array_stride = cube.array_stride,
+            // note: zig issue #7607 prevents using an anonymous array here
+            .attributes = &[_]cc.gfx.VertexAttribute{
+                .{ .shader_location = 0, .offset = cube.position_offset, .format = .float32x4 },
+                .{ .shader_location = 1, .offset = cube.color_offset, .format = .float32x4 },
+            },
+        }},
+    });
+    render_pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });
+    render_pipeline_desc.setDepthStencilState(.{
+        .format = ex.gctx.depth_texture_format,
+        .depth = .{
+            .write_enabled = true,
+            .compare = .less,
+        },
+    });
+    render_pipeline_desc.setFragmentState(.{
+        .module = &frag_shader,
+        .entry_point = "fs_main",
+        // note: zig issue #7607 prevents using an anonymous array here
+        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = ex.gctx.swapchain_format }},
+    });
+
+    ex.render_pipeline = try ex.gctx.createRenderPipeline(render_pipeline_desc);
 }
 
 pub fn update() !void {
@@ -165,50 +146,48 @@ pub fn update() !void {
     );
     const mvp_matrix = cc.math.mul(cc.math.mul(model_matrix, view_matrix), proj_matrix);
 
-    var queue = ex.gfx_ctx.device.getQueue();
-    queue.writeBuffer(ex.uniform_buffer, 0, std.mem.asBytes(&cc.math.transpose(mvp_matrix)), 0);
+    try ex.gctx.beginFrame();
 
-    var swapchain_view = try ex.gfx_ctx.swapchain.getCurrentTextureView();
-    defer swapchain_view.destroy();
+    const mvp_matrix_bytes = std.mem.asBytes(&cc.math.transpose(mvp_matrix));
+    try ex.gctx.writeBuffer(&ex.uniform_buffer, 0, mvp_matrix_bytes, 0);
 
-    var command_encoder = ex.gfx_ctx.device.createCommandEncoder();
+    var command_encoder = try ex.gctx.createCommandEncoder();
 
-    const render_pass_desc = cc.gfx.RenderPassDesc.init()
-        .colorAttachments()
-        .colorAttachment()
-        .view(swapchain_view)
-        .loadOp(.clear)
-        .clearValue(cc.gfx.default_clear_color)
-        .storeOp(.store)
-        .end()
-        .end()
-        .depthStencilAttachment()
-        .view(ex.depth_texture_view)
-        .depthLoadOp(.clear)
-        .depthClearValue(1.0)
-        .depthStoreOp(.store)
-        .end();
-    defer render_pass_desc.deinit();
+    var render_pass_desc = cc.gfx.RenderPassDesc{};
+    // note: zig issue #7607 prevents using an anonymous array here
+    render_pass_desc.setColorAttachments(&[_]cc.gfx.ColorAttachment{.{
+        .view = &ex.gctx.swapchain_view,
+        .load_op = .clear,
+        .clear_value = ex.gctx.clear_color,
+        .store_op = .store,
+    }});
+    render_pass_desc.setDepthStencilAttachment(.{
+        .view = &ex.gctx.depth_texture_view,
+        .depth = .{
+            .clear_value = 1.0,
+            .load_op = .clear,
+            .store_op = .store,
+        },
+    });
+
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    render_pass.setPipeline(ex.render_pipeline);
-    render_pass.setBindGroup(0, ex.bind_group, null);
-    render_pass.setVertexBuffer(0, ex.vertex_buffer, 0, cc.gfx.whole_size);
-    render_pass.setIndexBuffer(ex.index_buffer, .uint16, 0, cc.gfx.whole_size);
-    render_pass.drawIndexed(cube_data.indices.len, 1, 0, 0, 0);
-    render_pass.end();
+    try render_pass.setPipeline(&ex.render_pipeline);
+    try render_pass.setBindGroup(0, &ex.bind_group, null);
+    try render_pass.setVertexBuffer(0, &ex.vertex_buffer, 0, cc.gfx.whole_size);
+    try render_pass.setIndexBuffer(&ex.index_buffer, .uint16, 0, cc.gfx.whole_size);
+    try render_pass.drawIndexed(cube.indices.len, 1, 0, 0, 0);
+    try render_pass.end();
 
-    queue.submit(&.{command_encoder.finish(.{})});
-    ex.gfx_ctx.swapchain.present();
+    try ex.gctx.submit(&.{try command_encoder.finish()});
+    try ex.gctx.endFrame();
 }
 
 pub fn deinit() !void {
+    ex.render_pipeline.destroy();
     ex.bind_group.destroy();
-    ex.depth_texture_view.destroy();
-    ex.depth_texture.destroy();
     ex.uniform_buffer.destroy();
     ex.index_buffer.destroy();
     ex.vertex_buffer.destroy();
-    ex.render_pipeline.destroy();
-    ex.gfx_ctx.deinit();
+    ex.gctx.deinit();
     ex.window.deinit();
 }

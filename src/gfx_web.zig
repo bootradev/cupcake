@@ -43,7 +43,6 @@ const js = struct {
 
     extern fn createDesc() DescId;
     extern fn destroyDesc(desc_id: DescId) void;
-    extern fn destoryDesc(desc_id: DescId) void;
     extern fn setDescField(
         wasm_id: main.WasmId,
         desc_id: DescId,
@@ -239,45 +238,48 @@ fn getEnumName(value: anytype) []const u8 {
     return enum_names[@enumToInt(value)];
 }
 
-fn setDescFieldValue(desc: anytype, field: []const u8, value: anytype) @TypeOf(desc) {
-    js.setDescField(main.wasm_id, desc.id, field.ptr, field.len);
-    setDescValue(desc, value);
-    return desc;
+fn setDescFieldValue(desc_id: js.DescId, field: []const u8, value: anytype) void {
+    setDescField(desc_id, field);
+    setDescValue(desc_id, value);
 }
 
-fn setDescValue(desc: anytype, value: anytype) void {
+fn setDescField(desc_id: js.DescId, field: []const u8) void {
+    js.setDescField(main.wasm_id, desc_id, field.ptr, field.len);
+}
+
+fn setDescValue(desc_id: js.DescId, value: anytype) void {
     switch (@typeInfo(@TypeOf(value))) {
-        .Bool => js.setDescBool(desc.id, value),
+        .Bool => js.setDescBool(desc_id, value),
         .Int => |I| {
             if (I.bits != 32) {
                 @compileError("Desc ints must be 32 bits!");
             }
             switch (I.signedness) {
-                .signed => js.setDescI32(desc.id, value),
-                .unsigned => js.setDescU32(desc.id, value),
+                .signed => js.setDescI32(desc_id, value),
+                .unsigned => js.setDescU32(desc_id, value),
             }
         },
         .Float => |F| {
             if (F.bits != 32) {
                 @compileError("Desc floats must be 32 bits!");
             }
-            js.setDescF32(desc.id, value);
+            js.setDescF32(desc_id, value);
         },
         .Enum => {
             const enum_name = getEnumName(value);
-            js.setDescString(main.wasm_id, desc.id, enum_name.ptr, enum_name.len);
+            js.setDescString(main.wasm_id, desc_id, enum_name.ptr, enum_name.len);
         },
         .Pointer => |P| {
             switch (P.size) {
                 .Slice => {
                     if (P.child == u8) {
-                        js.setDescString(main.wasm_id, desc.id, value.ptr, value.len);
+                        js.setDescString(main.wasm_id, desc_id, value.ptr, value.len);
                     } else {
-                        js.beginDescArray(desc.id);
+                        js.beginDescArray(desc_id);
                         for (value) |v| {
-                            setDescValue(desc, v);
+                            setDescValue(desc_id, v);
                         }
-                        js.endDescArray(desc.id);
+                        js.endDescArray(desc_id);
                     }
                 },
                 else => @compileError("Invalid desc pointer size!"),
@@ -288,847 +290,28 @@ fn setDescValue(desc: anytype, value: anytype) void {
                 const BitType = @Type(.{
                     .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
                 });
-                js.setDescU32(desc.id, @intCast(u32, @bitCast(BitType, value)));
-            } else if (S.fields.len == 1 and comptime std.mem.eql(u8, S.fields[0].name, "id")) {
-                js.setDescU32(desc.id, value.id);
+                js.setDescU32(desc_id, @intCast(u32, @bitCast(BitType, value)));
             } else {
-                js.beginDescArray(desc.id);
+                js.beginDescArray(desc_id);
                 inline for (S.fields) |field| {
-                    setDescValue(desc, @field(value, field.name));
+                    setDescValue(desc_id, @field(value, field.name));
                 }
-                js.endDescArray(desc.id);
+                js.endDescArray(desc_id);
             }
         },
         else => @compileError("Invalid desc type!"),
     }
 }
 
-fn setDescFieldChild(desc: anytype, field: []const u8, comptime Child: type) Child {
-    js.setDescField(main.wasm_id, desc.id, field.ptr, field.len);
-    return setDescChild(desc, Child);
-}
-
-fn setDescChild(desc: anytype, comptime Child: type) Child {
-    if (Child.is_array) {
-        js.beginDescArray(desc.id);
-    } else {
-        js.beginDescChild(desc.id);
-    }
-    return Child{ .id = desc.id, .parent = desc };
-}
-
-const DescApiFn = fn (type) type;
-
-fn Desc(comptime DescApi: DescApiFn, comptime ParentType: ?type, is_array: bool) type {
-    if (ParentType) |Parent| {
-        return struct {
-            const Self = @This();
-            const is_array = is_array;
-            pub usingnamespace DescApi(Self);
-
-            parent: Parent,
-            id: js.DescId,
-
-            pub fn end(desc: Self) Parent {
-                if (is_array) {
-                    js.endDescArray(desc.id);
-                } else {
-                    js.endDescChild(desc.id);
-                }
-                return desc.parent;
-            }
-        };
-    } else {
-        return struct {
-            const Self = @This();
-            const is_array = is_array;
-            pub usingnamespace DescApi(Self);
-
-            id: js.DescId,
-
-            pub fn init() Self {
-                return Self{ .id = js.createDesc() };
-            }
-
-            pub fn deinit(self: Self) void {
-                return js.destroyDesc(self.id);
-            }
-
-            pub fn default() Self {
-                return Self{ .id = js.default_desc_id };
-            }
-        };
-    }
-}
-
-fn AdapterDescApi(comptime Self: type) type {
-    return struct {
-        pub fn compatibleSurface(self: Self, value: gfx.Surface) Self {
-            return setDescFieldValue(self, "compatibleSurface", value);
-        }
-        pub fn powerPreference(self: Self, value: gfx.PowerPreference) Self {
-            return setDescFieldValue(self, "powerPreference", value);
-        }
-        pub fn forceFallbackAdapter(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "forceFallbackAdapter", value);
-        }
-    };
-}
-pub const AdapterDesc = Desc(AdapterDescApi, null, false);
-
-fn DeviceDescApi(comptime Self: type) type {
-    return struct {
-        pub fn requiredFeatures(self: Self, value: []const gfx.FeatureName) Self {
-            return setDescFieldValue(self, "requiredFeatures", value);
-        }
-        pub fn requiredLimits(self: Self) LimitsDesc {
-            return setDescFieldChild(self, "requiredLimits", LimitsDesc);
-        }
-    };
-}
-pub const DeviceDesc = Desc(DeviceDescApi, null, false);
-
-fn LimitsDescApi(comptime Self: type) type {
-    return struct {
-        pub fn maxTextureDimension1D(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxTextureDimension1D", value);
-        }
-        pub fn maxTextureDimension2D(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxTextureDimension2D", value);
-        }
-        pub fn maxTextureDimension3D(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxTextureDimension3D", value);
-        }
-        pub fn maxTextureArrayLayers(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxTextureArrayLayers", value);
-        }
-        pub fn maxBindGroups(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxBindGroups", value);
-        }
-        pub fn maxDynamicUniformBuffersPerPipelineLayout(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxDynamicUniformBuffersPerPipelineLayout", value);
-        }
-        pub fn maxDynamicStorageBuffersPerPipelineLayout(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxDynamicStorageBuffersPerPipelineLayout", value);
-        }
-        pub fn maxSampledTexturesPerShaderStage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxSampledTexturesPerShaderStage", value);
-        }
-        pub fn maxSamplersPerShaderStage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxSamplersPerShaderStage", value);
-        }
-        pub fn maxStorageBuffersPerShaderStage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxStorageBuffersPerShaderStage", value);
-        }
-        pub fn maxStorageTexturesPerShaderStage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxStorageTexturesPerShaderStage", value);
-        }
-        pub fn maxUniformBuffersPerShaderStage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxUniformBuffersPerShaderStage", value);
-        }
-        pub fn maxUniformBufferBindingSize(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxUniformBufferBindingSize", value);
-        }
-        pub fn maxStorageBufferBindingSize(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxStorageBufferBindingSize", value);
-        }
-        pub fn minUniformBufferOffsetAlignment(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "minUniformBufferOffsetAlignment", value);
-        }
-        pub fn minStorageBufferOffsetAlignment(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "minStorageBufferOffsetAlignment", value);
-        }
-        pub fn maxVertexBuffers(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxVertexBuffers", value);
-        }
-        pub fn maxVertexAttributes(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxVertexAttributes", value);
-        }
-        pub fn maxVertexBufferArrayStride(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxVertexBufferArrayStride", value);
-        }
-        pub fn maxInterStageShaderComponents(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxInterStageShaderComponents", value);
-        }
-        pub fn maxComputeWorkgroupStorageSize(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeWorkgroupStorageSize", value);
-        }
-        pub fn maxComputeInvocationsPerWorkgroup(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeInvocationsPerWorkgroup", value);
-        }
-        pub fn maxComputeWorkgroupSizeX(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeWorkgroupSizeX", value);
-        }
-        pub fn maxComputeWorkgroupSizeY(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeWorkgroupSizeY", value);
-        }
-        pub fn maxComputeWorkgroupSizeZ(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeWorkgroupSizeZ", value);
-        }
-        pub fn maxComputeWorkgroupsPerDimension(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxComputeWorkgroupsPerDimension", value);
-        }
-    };
-}
-pub const LimitsDesc = Desc(LimitsDescApi, DeviceDesc, false);
-
-fn SwapchainDescApi(comptime Self: type) type {
-    return struct {
-        pub fn size(self: Self, value: gfx.Extent3d) Self {
-            return setDescFieldValue(self, "size", value);
-        }
-        pub fn format(self: Self, value: gfx.TextureFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn usage(self: Self, value: gfx.TextureUsage) Self {
-            return setDescFieldValue(self, "usage", value);
-        }
-        pub fn presentMode(self: Self, value: gfx.PresentMode) Self {
-            return setDescFieldValue(self, "presentMode", value);
-        }
-    };
-}
-pub const SwapchainDesc = Desc(SwapchainDescApi, null, false);
-
-fn BindGroupLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn entries(self: Self) BindGroupLayoutEntryDescArray {
-            return setDescFieldChild(self, "entries", BindGroupLayoutEntryDescArray);
-        }
-    };
-}
-pub const BindGroupLayoutDesc = Desc(BindGroupLayoutDescApi, null, false);
-
-fn BindGroupLayoutEntryDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn entry(self: Self) BindGroupLayoutEntryDesc {
-            return setDescChild(self, BindGroupLayoutEntryDesc);
-        }
-    };
-}
-pub const BindGroupLayoutEntryDescArray = Desc(
-    BindGroupLayoutEntryDescArrayApi,
-    BindGroupLayoutDesc,
-    true,
-);
-
-fn BindGroupLayoutEntryDescApi(comptime Self: type) type {
-    return struct {
-        pub fn binding(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "binding", value);
-        }
-        pub fn visibility(self: Self, value: gfx.ShaderStage) Self {
-            return setDescFieldValue(self, "visibility", value);
-        }
-        pub fn buffer(self: Self) BufferBindingLayoutDesc {
-            return setDescFieldChild(self, "buffer", BufferBindingLayoutDesc);
-        }
-        pub fn sampler(self: Self) SamplerBindingLayoutDesc {
-            return setDescFieldChild(self, "sampler", SamplerBindingLayoutDesc);
-        }
-        pub fn texture(self: Self) TextureBindingLayoutDesc {
-            return setDescFieldChild(self, "texture", TextureBindingLayoutDesc);
-        }
-        pub fn storageTexture(self: Self) StorageTextureBindingLayoutDesc {
-            return setDescFieldChild(self, "storageTexture", StorageTextureBindingLayoutDesc);
-        }
-    };
-}
-pub const BindGroupLayoutEntryDesc = Desc(
-    BindGroupLayoutEntryDescApi,
-    BindGroupLayoutEntryDescArray,
-    false,
-);
-
-fn BufferBindingLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn @"type"(self: Self, value: gfx.BufferBindingType) Self {
-            return setDescFieldValue(self, "type", value);
-        }
-        pub fn hasDynamicOffset(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "hasDynamicOffset", value);
-        }
-        pub fn minBindingSize(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "minBindingSize", value);
-        }
-    };
-}
-pub const BufferBindingLayoutDesc = Desc(
-    BufferBindingLayoutDescApi,
-    BindGroupLayoutEntryDesc,
-    false,
-);
-
-fn SamplerBindingLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn @"type"(self: Self, value: gfx.SamplerBindingType) Self {
-            return setDescFieldValue(self, "type", value);
-        }
-    };
-}
-pub const SamplerBindingLayoutDesc = Desc(
-    SamplerBindingLayoutDescApi,
-    BindGroupLayoutEntryDesc,
-    false,
-);
-
-fn TextureBindingLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn sampleType(self: Self, value: gfx.TextureSampleType) Self {
-            return setDescFieldValue(self, "sampleType", value);
-        }
-        pub fn viewDimension(self: Self, value: gfx.TextureViewDimension) Self {
-            return setDescFieldValue(self, "viewDimension", value);
-        }
-        pub fn multisampled(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "multisampled", value);
-        }
-    };
-}
-pub const TextureBindingLayoutDesc = Desc(
-    TextureBindingLayoutDescApi,
-    BindGroupLayoutEntryDesc,
-    false,
-);
-
-fn StorageTextureBindingLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn access(self: Self, value: gfx.StorageTextureAccess) Self {
-            return setDescFieldValue(self, "access", value);
-        }
-        pub fn format(self: Self, value: gfx.TextureFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn viewDimension(self: Self, value: gfx.TextureViewDimension) Self {
-            return setDescFieldValue(self, "viewDimension", value);
-        }
-    };
-}
-pub const StorageTextureBindingLayoutDesc = Desc(
-    StorageTextureBindingLayoutDescApi,
-    BindGroupLayoutEntryDesc,
-    false,
-);
-
-fn BindGroupDescApi(comptime Self: type) type {
-    return struct {
-        pub fn layout(self: Self, value: BindGroupLayout) Self {
-            return setDescFieldValue(self, "layout", value);
-        }
-        pub fn entries(self: Self) BindGroupEntryDescArray {
-            return setDescFieldChild(self, "entries", BindGroupEntryDescArray);
-        }
-    };
-}
-pub const BindGroupDesc = Desc(BindGroupDescApi, null, false);
-
-fn BindGroupEntryDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn entry(self: Self) BindGroupEntryDesc {
-            return setDescChild(self, BindGroupEntryDesc);
-        }
-    };
-}
-pub const BindGroupEntryDescArray = Desc(BindGroupEntryDescArrayApi, BindGroupDesc, true);
-
-fn BindGroupEntryDescApi(comptime Self: type) type {
-    return struct {
-        pub fn binding(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "binding", value);
-        }
-        pub fn buffer(self: Self, value: Buffer) BufferBindingResourceDesc {
-            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.buffer));
-            const buf = setDescFieldChild(self, "resource", BufferBindingResourceDesc);
-            return setDescFieldValue(buf, "buffer", value);
-        }
-        pub fn sampler(self: Self, value: Sampler) Self {
-            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.sampler));
-            return setDescFieldValue(self, "resource", value);
-        }
-        pub fn textureView(self: Self, value: TextureView) Self {
-            _ = setDescFieldValue(self, "resourceType", @enumToInt(js.BindType.texture_view));
-            return setDescFieldValue(self, "resource", value);
-        }
-    };
-}
-pub const BindGroupEntryDesc = Desc(BindGroupEntryDescApi, BindGroupEntryDescArray, false);
-
-fn BufferBindingResourceDescApi(comptime Self: type) type {
-    return struct {
-        pub fn offset(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "offset", value);
-        }
-        pub fn size(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "size", value);
-        }
-    };
-}
-pub const BufferBindingResourceDesc = Desc(
-    BufferBindingResourceDescApi,
-    BindGroupEntryDesc,
-    false,
-);
-
-fn PipelineLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn bindGroupLayouts(self: Self, value: []const BindGroupLayout) Self {
-            return setDescFieldValue(self, "bindGroupLayouts", value);
-        }
-    };
-}
-pub const PipelineLayoutDesc = Desc(PipelineLayoutDescApi, null, false);
-
-fn RenderPipelineDescApi(comptime Self: type) type {
-    return struct {
-        pub fn layout(self: Self, value: PipelineLayout) Self {
-            return setDescFieldValue(self, "layout", value);
-        }
-        pub fn vertex(self: Self) VertexStateDesc {
-            return setDescFieldChild(self, "vertex", VertexStateDesc);
-        }
-        pub fn primitive(self: Self) PrimitiveStateDesc {
-            return setDescFieldChild(self, "primitive", PrimitiveStateDesc);
-        }
-        pub fn depthStencil(self: Self) DepthStencilStateDesc {
-            return setDescFieldChild(self, "depthStencil", DepthStencilStateDesc);
-        }
-        pub fn multisample(self: Self) MultisampleStateDesc {
-            return setDescFieldChild(self, "multisample", MultisampleStateDesc);
-        }
-        pub fn fragment(self: Self) FragmentStateDesc {
-            return setDescFieldChild(self, "fragment", FragmentStateDesc);
-        }
-    };
-}
-pub const RenderPipelineDesc = Desc(RenderPipelineDescApi, null, false);
-
-fn VertexStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn module(self: Self, value: Shader) Self {
-            return setDescFieldValue(self, "module", value);
-        }
-        pub fn entryPoint(self: Self, value: []const u8) Self {
-            return setDescFieldValue(self, "entryPoint", value);
-        }
-        pub fn buffers(self: Self) VertexBufferLayoutDescArray {
-            return setDescFieldChild(self, "buffers", VertexBufferLayoutDescArray);
-        }
-    };
-}
-pub const VertexStateDesc = Desc(VertexStateDescApi, RenderPipelineDesc, false);
-
-fn VertexBufferLayoutDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn buffer(self: Self) VertexBufferLayoutDesc {
-            return setDescChild(self, VertexBufferLayoutDesc);
-        }
-    };
-}
-pub const VertexBufferLayoutDescArray = Desc(
-    VertexBufferLayoutDescArrayApi,
-    VertexStateDesc,
-    true,
-);
-
-fn VertexBufferLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn arrayStride(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "arrayStride", value);
-        }
-        pub fn stepMode(self: Self, value: gfx.VertexStepMode) Self {
-            return setDescFieldValue(self, "stepMode", value);
-        }
-        pub fn attributes(self: Self) VertexAttributeDescArray {
-            return setDescFieldChild(self, "attributes", VertexAttributeDescArray);
-        }
-    };
-}
-pub const VertexBufferLayoutDesc = Desc(
-    VertexBufferLayoutDescApi,
-    VertexBufferLayoutDescArray,
-    false,
-);
-
-fn VertexAttributeDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn attribute(self: Self) VertexAttributeDesc {
-            return setDescChild(self, VertexAttributeDesc);
-        }
-    };
-}
-pub const VertexAttributeDescArray = Desc(
-    VertexAttributeDescArrayApi,
-    VertexBufferLayoutDesc,
-    true,
-);
-
-fn VertexAttributeDescApi(comptime Self: type) type {
-    return struct {
-        pub fn format(self: Self, value: gfx.VertexFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn offset(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "offset", value);
-        }
-        pub fn shaderLocation(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "shaderLocation", value);
-        }
-    };
-}
-pub const VertexAttributeDesc = Desc(VertexAttributeDescApi, VertexAttributeDescArray, false);
-
-fn PrimitiveStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn topology(self: Self, value: gfx.PrimitiveTopology) Self {
-            return setDescFieldValue(self, "topology", value);
-        }
-        pub fn stripIndexFormat(self: Self, value: gfx.IndexFormat) Self {
-            return setDescFieldValue(self, "stripIndexFormat", value);
-        }
-        pub fn frontFace(self: Self, value: gfx.FrontFace) Self {
-            return setDescFieldValue(self, "frontFace", value);
-        }
-        pub fn cullMode(self: Self, value: gfx.CullMode) Self {
-            return setDescFieldValue(self, "cullMode", value);
-        }
-    };
-}
-pub const PrimitiveStateDesc = Desc(PrimitiveStateDescApi, RenderPipelineDesc, false);
-
-fn DepthStencilStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn format(self: Self, value: gfx.TextureFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn depthWriteEnabled(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "depthWriteEnabled", value);
-        }
-        pub fn depthCompare(self: Self, value: gfx.CompareFunction) Self {
-            return setDescFieldValue(self, "depthCompare", value);
-        }
-        pub fn stencilFront(self: Self) StencilFaceStateDesc {
-            return setDescFieldChild(self, "stencilFront", StencilFaceStateDesc);
-        }
-        pub fn stencilBack(self: Self) StencilFaceStateDesc {
-            return setDescFieldChild(self, "stencilBack", StencilFaceStateDesc);
-        }
-        pub fn stencilReadMask(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "stencilReadMask", value);
-        }
-        pub fn stencilWriteMask(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "stencilWriteMask", value);
-        }
-        pub fn depthBias(self: Self, value: i32) Self {
-            return setDescFieldValue(self, "depthBias", value);
-        }
-        pub fn depthBiasSlopeScale(self: Self, value: f32) Self {
-            return setDescFieldValue(self, "depthBiasSlopeScale", value);
-        }
-        pub fn depthBiasClamp(self: Self, value: f32) Self {
-            return setDescFieldValue(self, "depthBiasClamp", value);
-        }
-    };
-}
-pub const DepthStencilStateDesc = Desc(DepthStencilStateDescApi, RenderPipelineDesc, false);
-
-fn StencilFaceStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn compare(self: Self, value: gfx.CompareFunction) Self {
-            return setDescFieldValue(self, "compare", value);
-        }
-        pub fn failOp(self: Self, value: gfx.StencilOperation) Self {
-            return setDescFieldValue(self, "failOp", value);
-        }
-        pub fn depthFailOp(self: Self, value: gfx.StencilOperation) Self {
-            return setDescFieldValue(self, "depthFailOp", value);
-        }
-        pub fn passOp(self: Self, value: gfx.StencilOperation) Self {
-            return setDescFieldValue(self, "passOp", value);
-        }
-    };
-}
-pub const StencilFaceStateDesc = Desc(StencilFaceStateDescApi, DepthStencilStateDesc, false);
-
-fn MultisampleStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn count(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "count", value);
-        }
-        pub fn mask(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "mask", value);
-        }
-        pub fn alphaToCoverageEnabled(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "alphaToCoverageEnabled", value);
-        }
-    };
-}
-pub const MultisampleStateDesc = Desc(MultisampleStateDescApi, RenderPipelineDesc, false);
-
-fn FragmentStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn module(self: Self, value: Shader) Self {
-            return setDescFieldValue(self, "module", value);
-        }
-        pub fn entryPoint(self: Self, value: []const u8) Self {
-            return setDescFieldValue(self, "entryPoint", value);
-        }
-        pub fn targets(self: Self) ColorTargetStateDescArray {
-            return setDescFieldChild(self, "targets", ColorTargetStateDescArray);
-        }
-    };
-}
-pub const FragmentStateDesc = Desc(FragmentStateDescApi, RenderPipelineDesc, false);
-
-fn ColorTargetStateDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn target(self: Self) ColorTargetStateDesc {
-            return setDescChild(self, ColorTargetStateDesc);
-        }
-    };
-}
-pub const ColorTargetStateDescArray = Desc(
-    ColorTargetStateDescArrayApi,
-    FragmentStateDesc,
-    true,
-);
-
-fn ColorTargetStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn format(self: Self, value: gfx.TextureFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn blend(self: Self) BlendStateDesc {
-            return setDescFieldChild(self, "blend", BlendStateDesc);
-        }
-        pub fn writeMask(self: Self, value: gfx.ColorWriteMask) Self {
-            return setDescFieldValue(self, "writeMask", value);
-        }
-    };
-}
-pub const ColorTargetStateDesc = Desc(ColorTargetStateDescApi, ColorTargetStateDescArray, false);
-
-fn BlendStateDescApi(comptime Self: type) type {
-    return struct {
-        pub fn color(self: Self) BlendComponentDesc {
-            return setDescFieldChild(self, "color", BlendComponentDesc);
-        }
-        pub fn alpha(self: Self) BlendComponentDesc {
-            return setDescFieldChild(self, "alpha", BlendComponentDesc);
-        }
-    };
-}
-pub const BlendStateDesc = Desc(BlendStateDescApi, ColorTargetStateDesc, false);
-
-fn BlendComponentDescApi(comptime Self: type) type {
-    return struct {
-        pub fn operation(self: Self, value: gfx.BlendOperation) Self {
-            return setDescFieldValue(self, "operation", value);
-        }
-        pub fn srcFactor(self: Self, value: gfx.BlendFactor) Self {
-            return setDescFieldValue(self, "srcFactor", value);
-        }
-        pub fn dstFactor(self: Self, value: gfx.BlendFactor) Self {
-            return setDescFieldValue(self, "dstFactor", value);
-        }
-    };
-}
-pub const BlendComponentDesc = Desc(BlendComponentDescApi, BlendStateDesc, false);
-
-fn RenderPassDescApi(comptime Self: type) type {
-    return struct {
-        pub fn colorAttachments(self: Self) ColorAttachmentDescArray {
-            return setDescFieldChild(self, "colorAttachments", ColorAttachmentDescArray);
-        }
-        pub fn depthStencilAttachment(self: Self) DepthStencilAttachmentDesc {
-            return setDescFieldChild(self, "depthStencilAttachment", DepthStencilAttachmentDesc);
-        }
-    };
-}
-pub const RenderPassDesc = Desc(RenderPassDescApi, null, false);
-
-fn ColorAttachmentDescArrayApi(comptime Self: type) type {
-    return struct {
-        pub fn colorAttachment(self: Self) ColorAttachmentDesc {
-            return setDescChild(self, ColorAttachmentDesc);
-        }
-    };
-}
-pub const ColorAttachmentDescArray = Desc(ColorAttachmentDescArrayApi, RenderPassDesc, true);
-
-fn ColorAttachmentDescApi(comptime Self: type) type {
-    return struct {
-        pub fn view(self: Self, value: TextureView) Self {
-            return setDescFieldValue(self, "view", value);
-        }
-        pub fn resolveTarget(self: Self, value: TextureView) Self {
-            return setDescFieldValue(self, "resolveTarget", value);
-        }
-        pub fn loadOp(self: Self, value: gfx.LoadOp) Self {
-            return setDescFieldValue(self, "loadOp", value);
-        }
-        pub fn clearValue(self: Self, value: gfx.Color) Self {
-            return setDescFieldValue(self, "clearValue", value);
-        }
-        pub fn storeOp(self: Self, value: gfx.StoreOp) Self {
-            return setDescFieldValue(self, "storeOp", value);
-        }
-    };
-}
-pub const ColorAttachmentDesc = Desc(ColorAttachmentDescApi, ColorAttachmentDescArray, false);
-
-fn DepthStencilAttachmentDescApi(comptime Self: type) type {
-    return struct {
-        pub fn view(self: Self, value: TextureView) Self {
-            return setDescFieldValue(self, "view", value);
-        }
-        pub fn depthLoadOp(self: Self, value: gfx.LoadOp) Self {
-            return setDescFieldValue(self, "depthLoadOp", value);
-        }
-        pub fn depthClearValue(self: Self, value: f32) Self {
-            return setDescFieldValue(self, "depthClearValue", value);
-        }
-        pub fn depthStoreOp(self: Self, value: gfx.StoreOp) Self {
-            return setDescFieldValue(self, "depthStoreOp", value);
-        }
-        pub fn depthReadOnly(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "depthReadOnly", value);
-        }
-        pub fn stencilLoadOp(self: Self, value: gfx.LoadOp) Self {
-            return setDescFieldValue(self, "stencilLoadOp", value);
-        }
-        pub fn stencilClearValue(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "stencilClearValue", value);
-        }
-        pub fn stencilStoreOp(self: Self, value: gfx.StoreOp) Self {
-            return setDescFieldValue(self, "stencilStoreOp", value);
-        }
-        pub fn stencilReadOnly(self: Self, value: bool) Self {
-            return setDescFieldValue(self, "stencilReadOnly", value);
-        }
-    };
-}
-pub const DepthStencilAttachmentDesc = Desc(
-    DepthStencilAttachmentDescApi,
-    RenderPassDesc,
-    false,
-);
-
-fn BufferDescApi(comptime Self: type) type {
-    return struct {
-        pub fn size(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "size", value);
-        }
-        pub fn usage(self: Self, value: gfx.BufferUsage) Self {
-            return setDescFieldValue(self, "usage", value);
-        }
-    };
-}
-pub const BufferDesc = Desc(BufferDescApi, null, false);
-
-fn TextureDescApi(comptime Self: type) type {
-    return struct {
-        pub fn size(self: Self, value: gfx.Extent3d) Self {
-            return setDescFieldValue(self, "size", value);
-        }
-        pub fn usage(self: Self, value: gfx.TextureUsage) Self {
-            return setDescFieldValue(self, "usage", value);
-        }
-        pub fn dimension(self: Self, value: gfx.TextureDimension) Self {
-            return setDescFieldValue(self, "dimension", value);
-        }
-        pub fn format(self: Self, value: gfx.TextureFormat) Self {
-            return setDescFieldValue(self, "format", value);
-        }
-        pub fn mipLevelCount(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "mipLevelCount", value);
-        }
-        pub fn sampleCount(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "sampleCount", value);
-        }
-    };
-}
-pub const TextureDesc = Desc(TextureDescApi, null, false);
-
-fn SamplerDescApi(comptime Self: type) type {
-    return struct {
-        pub fn addressModeU(self: Self, value: gfx.AddressMode) Self {
-            return setDescFieldValue(self, "addressModeU", value);
-        }
-        pub fn addressModeV(self: Self, value: gfx.AddressMode) Self {
-            return setDescFieldValue(self, "addressModeV", value);
-        }
-        pub fn addressModeW(self: Self, value: gfx.AddressMode) Self {
-            return setDescFieldValue(self, "addressModeW", value);
-        }
-        pub fn magFilter(self: Self, value: gfx.FilterMode) Self {
-            return setDescFieldValue(self, "magFilter", value);
-        }
-        pub fn minFilter(self: Self, value: gfx.FilterMode) Self {
-            return setDescFieldValue(self, "minFilter", value);
-        }
-        pub fn mipmapFilter(self: Self, value: gfx.FilterMode) Self {
-            return setDescFieldValue(self, "mipmapFilter", value);
-        }
-        pub fn lodMinClamp(self: Self, value: f32) Self {
-            return setDescFieldValue(self, "lodMinClamp", value);
-        }
-        pub fn lodMaxClamp(self: Self, value: f32) Self {
-            return setDescFieldValue(self, "lodMaxClamp", value);
-        }
-        pub fn compare(self: Self, value: gfx.CompareFunction) Self {
-            return setDescFieldValue(self, "compare", value);
-        }
-        pub fn maxAnisotropy(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "maxAnisotropy", value);
-        }
-    };
-}
-pub const SamplerDesc = Desc(SamplerDescApi, null, false);
-
-fn ImageCopyTextureDescApi(comptime Self: type) type {
-    return struct {
-        pub fn texture(self: Self, value: Texture) Self {
-            return setDescFieldValue(self, "texture", value);
-        }
-        pub fn mipLevel(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "mipLevel", value);
-        }
-        pub fn origin(self: Self, value: gfx.Origin3d) Self {
-            return setDescFieldValue(self, "origin", value);
-        }
-        pub fn aspect(self: Self, value: gfx.TextureAspect) Self {
-            return setDescFieldValue(self, "aspect", value);
-        }
-    };
-}
-pub const ImageCopyTextureDesc = Desc(ImageCopyTextureDescApi, null, false);
-
-fn ImageDataLayoutDescApi(comptime Self: type) type {
-    return struct {
-        pub fn offset(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "offset", value);
-        }
-        pub fn bytesPerRow(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "bytesPerRow", value);
-        }
-        pub fn rowsPerImage(self: Self, value: u32) Self {
-            return setDescFieldValue(self, "rowsPerImage", value);
-        }
-    };
-}
-pub const ImageDataLayoutDesc = Desc(ImageDataLayoutDescApi, null, false);
-
 pub const Instance = struct {
     pub fn init() !Instance {
         return Instance{};
     }
+
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(_: *Instance, window: app.Window) !Surface {
-        return Surface{
-            .canvas_id = window.id,
-            .context_id = js.createContext(window.id),
-        };
+    pub fn createSurface(_: *Instance, window: *const app.Window) !Surface {
+        return Surface{ .canvas_id = window.id, .context_id = js.createContext(window.id) };
     }
 
     var request_adapter_frame: anyframe = undefined;
@@ -1139,7 +322,7 @@ pub const Instance = struct {
     }
 
     fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
-        js.requestAdapter(main.wasm_id, desc.id);
+        js.requestAdapter(main.wasm_id, desc.impl.id);
         suspend {
             request_adapter_frame = @frame();
         }
@@ -1155,6 +338,38 @@ pub const Instance = struct {
     }
 };
 
+pub const Surface = struct {
+    canvas_id: js.CanvasId,
+    context_id: js.ContextId,
+
+    pub fn destroy(_: *Surface) void {}
+
+    pub fn getPreferredFormat(surface: Surface, adapter: Adapter) !gfx.TextureFormat {
+        const format = js.getPreferredFormat(main.wasm_id, surface.context_id, adapter.id);
+        return @intToEnum(gfx.TextureFormat, format);
+    }
+};
+
+pub const AdapterDesc = struct {
+    id: js.DescId = js.default_desc_id,
+
+    pub fn setPowerPreference(desc: *AdapterDesc, power_preference: gfx.PowerPreference) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescFieldValue(desc.id, "powerPreference", power_preference);
+    }
+
+    pub fn setForceFallbackAdapter(desc: *AdapterDesc, force_fallback_adapter: bool) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescFieldValue(desc.id, "forceFallbackAdapter", force_fallback_adapter);
+    }
+};
+
 pub const Adapter = struct {
     id: js.AdapterId,
 
@@ -1166,11 +381,11 @@ pub const Adapter = struct {
     var request_device_id: anyerror!js.DeviceId = undefined;
 
     pub fn requestDevice(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
-        return try await async requestDeviceAsync(adapter, desc);
+        return try await async adapter.requestDeviceAsync(desc);
     }
 
     fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
-        js.requestDevice(main.wasm_id, adapter.id, desc.id);
+        js.requestDevice(main.wasm_id, adapter.id, desc.impl.id);
         suspend {
             request_device_frame = @frame();
         }
@@ -1186,8 +401,39 @@ pub const Adapter = struct {
     }
 };
 
+pub const DeviceDesc = struct {
+    id: js.DescId = js.default_desc_id,
+
+    pub fn setRequiredFeatures(
+        desc: *DeviceDesc,
+        required_features: []const gfx.FeatureName,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "requiredFeatures");
+        js.beginDescArray(desc.id);
+        for (required_features) |required_feature| {
+            const name = getEnumName(required_feature);
+            js.setDescString(main.wasm_id, desc.id, name.ptr, name.len);
+        }
+        js.endDescArray(desc.id);
+    }
+
+    pub fn setRequiredLimits(desc: *DeviceDesc, required_limits: gfx.Limits) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        if (required_limits.max_texture_dimension_1d) |max_texture_dimension_1d| {
+            setDescFieldValue(desc.id, "maxTextureDimension1D", max_texture_dimension_1d);
+        }
+    }
+};
+
 pub const Device = struct {
-    id: js.DeviceId,
+    id: js.AdapterId,
 
     pub fn destroy(device: *Device) void {
         js.destroyDevice(device.id);
@@ -1195,11 +441,16 @@ pub const Device = struct {
 
     pub fn createSwapchain(
         device: *Device,
-        surface: Surface,
+        surface: *Surface,
         desc: gfx.SwapchainDesc,
     ) !Swapchain {
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescFieldValue(js_desc, "size", desc.size);
+        setDescFieldValue(js_desc, "format", desc.format);
+
         const swapchain = Swapchain{ .id = surface.context_id };
-        js.configure(main.wasm_id, device.id, swapchain.id, desc.id);
+        js.configure(main.wasm_id, device.id, swapchain.id, js_desc);
         return swapchain;
     }
 
@@ -1212,84 +463,145 @@ pub const Device = struct {
                 shader_res.data.len,
             ),
         };
-        if (cfg.opt_level != .release) {
-            try device.checkShaderCompile(shader);
-        }
         return shader;
     }
 
-    var shader_compile_frame: anyframe = undefined;
-    var shader_compile_result: anyerror!void = undefined;
+    pub fn createBuffer(device: *Device, desc: gfx.BufferDesc) !Buffer {
+        const data = desc.data orelse &[_]u8{};
 
-    fn checkShaderCompile(_: *Device, shader: Shader) !void {
-        try await async checkShaderCompileAsync(shader);
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescFieldValue(js_desc, "size", desc.size);
+        setDescFieldValue(js_desc, "usage", desc.usage);
+
+        return Buffer{
+            .id = js.createBuffer(main.wasm_id, device.id, js_desc, data.ptr, data.len),
+        };
     }
 
-    fn checkShaderCompileAsync(shader: Shader) !void {
-        js.checkShaderCompile(main.wasm_id, shader.id);
-        suspend {
-            shader_compile_frame = @frame();
-        }
-        try shader_compile_result;
-    }
+    pub fn createTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescFieldValue(js_desc, "size", desc.size);
+        setDescFieldValue(js_desc, "format", desc.format);
+        setDescFieldValue(js_desc, "usage", desc.usage);
+        setDescFieldValue(js_desc, "dimension", desc.dimension);
+        setDescFieldValue(js_desc, "mipLevelCount", desc.mip_level_count);
+        setDescFieldValue(js_desc, "sampleCount", desc.sample_count);
 
-    export fn checkShaderCompileComplete(err: bool) void {
-        shader_compile_result = if (err) error.ShaderCompileFailed else {};
-        resume shader_compile_frame;
+        return Texture{ .id = js.createTexture(main.wasm_id, device.id, js_desc) };
     }
 
     pub fn createBindGroupLayout(
         device: *Device,
         desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescField(js_desc, "entries");
+        js.beginDescArray(js_desc);
+        for (desc.entries) |entry| {
+            js.beginDescChild(js_desc);
+            setDescFieldValue(js_desc, "binding", entry.binding);
+            setDescFieldValue(js_desc, "visibility", entry.visibility);
+            switch (entry.layout) {
+                .buffer => |buffer| {
+                    setDescField(js_desc, "buffer");
+                    js.beginDescChild(js_desc);
+                    setDescFieldValue(js_desc, "bindingType", buffer.binding_type);
+                    setDescFieldValue(js_desc, "hasDynamicOffset", buffer.has_dynamic_offset);
+                    setDescFieldValue(js_desc, "minBindingSize", buffer.min_binding_size);
+                    js.endDescChild(js_desc);
+                },
+            }
+            js.endDescChild(js_desc);
+        }
+        js.endDescArray(js_desc);
+
         return BindGroupLayout{
-            .id = js.createBindGroupLayout(main.wasm_id, device.id, desc.id),
+            .id = js.createBindGroupLayout(main.wasm_id, device.id, js_desc),
         };
     }
 
     pub fn createBindGroup(device: *Device, desc: gfx.BindGroupDesc) !BindGroup {
-        return BindGroup{
-            .id = js.createBindGroup(main.wasm_id, device.id, desc.id),
-        };
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescFieldValue(js_desc, "layout", desc.layout.impl.id);
+        setDescField(js_desc, "entries");
+        js.beginDescArray(js_desc);
+        for (desc.entries) |entry| {
+            js.beginDescChild(js_desc);
+            setDescFieldValue(js_desc, "binding", entry.binding);
+            switch (entry.resource) {
+                .buffer_binding => |binding| {
+                    setDescFieldValue(js_desc, "resourceType", @as(u32, 0));
+                    setDescField(js_desc, "resource");
+                    js.beginDescChild(js_desc);
+                    setDescFieldValue(js_desc, "buffer", binding.buffer.impl.id);
+                    setDescFieldValue(js_desc, "offset", binding.offset);
+                    if (binding.size != gfx.whole_size) {
+                        setDescFieldValue(js_desc, "size", binding.size);
+                    }
+                    js.endDescChild(js_desc);
+                },
+            }
+            js.endDescChild(js_desc);
+        }
+        js.endDescArray(js_desc);
+
+        return BindGroup{ .id = js.createBindGroup(main.wasm_id, device.id, js_desc) };
     }
 
     pub fn createPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
-        return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, desc.id) };
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDescField(js_desc, "bindGroupLayouts");
+        js.beginDescArray(js_desc);
+        for (desc.bind_group_layouts) |bind_group_layout| {
+            js.setDescU32(js_desc, bind_group_layout.impl.id);
+        }
+        js.endDescArray(js_desc);
+
+        return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, js_desc) };
     }
 
     pub fn createRenderPipeline(device: *Device, desc: gfx.RenderPipelineDesc) !RenderPipeline {
+        defer js.destroyDesc(desc.impl.id);
         return RenderPipeline{
-            .id = js.createRenderPipeline(main.wasm_id, device.id, desc.id),
+            .id = js.createRenderPipeline(main.wasm_id, device.id, desc.impl.id),
         };
     }
 
-    pub fn createCommandEncoder(device: *Device) CommandEncoder {
+    pub fn createCommandEncoder(device: *Device) !CommandEncoder {
         return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
     }
 
-    pub fn getQueue(device: *Device) Queue {
+    pub fn getQueue(device: *Device) !Queue {
         return Queue{ .id = device.id };
     }
+};
 
-    pub fn createBuffer(device: *Device, desc: gfx.BufferDesc, data: ?[]const u8) !Buffer {
-        const init_data = data orelse &[_]u8{};
-        return Buffer{
-            .id = js.createBuffer(
-                main.wasm_id,
-                device.id,
-                desc.id,
-                init_data.ptr,
-                init_data.len,
-            ),
-        };
+pub const Swapchain = struct {
+    id: js.ContextId,
+
+    pub fn destroy(swapchain: *Swapchain) void {
+        js.destroyContext(swapchain.id);
     }
 
-    pub fn createTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
-        return Texture{ .id = js.createTexture(main.wasm_id, device.id, desc.id) };
+    pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
+        const tex_id = js.getContextCurrentTexture(swapchain.id);
+        const view_id = js.createTextureView(tex_id);
+        return TextureView{ .id = view_id };
     }
 
-    pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
-        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, desc.id) };
+    pub fn present(_: *Swapchain) !void {}
+};
+
+pub const Shader = struct {
+    id: js.ShaderId,
+
+    pub fn destroy(shader: *Shader) void {
+        js.destroyShader(shader.id);
     }
 };
 
@@ -1304,10 +616,8 @@ pub const Buffer = struct {
 pub const Texture = struct {
     id: js.TextureId,
 
-    pub fn createView(texture: *Texture) TextureView {
-        return TextureView{
-            .id = js.createTextureView(texture.id),
-        };
+    pub fn createView(texture: *Texture) !TextureView {
+        return TextureView{ .id = js.createTextureView(texture.id) };
     }
 
     pub fn destroy(texture: *Texture) void {
@@ -1318,52 +628,8 @@ pub const Texture = struct {
 pub const TextureView = struct {
     id: js.TextureViewId,
 
-    pub fn destroy(view: *TextureView) void {
-        js.destroyTextureView(view.id);
-    }
-};
-
-pub const Sampler = struct {
-    id: js.SamplerId,
-
-    pub fn destroy(sampler: *Sampler) void {
-        js.destroySampler(sampler.id);
-    }
-};
-
-pub const Shader = struct {
-    id: js.ShaderId,
-
-    pub fn destroy(shader: *Shader) void {
-        js.destroyShader(shader.id);
-    }
-};
-
-pub const Surface = struct {
-    canvas_id: js.CanvasId,
-    context_id: js.ContextId,
-
-    pub fn getPreferredFormat(surface: Surface, adapter: Adapter) gfx.TextureFormat {
-        const format = js.getPreferredFormat(main.wasm_id, surface.context_id, adapter.id);
-        return @intToEnum(gfx.TextureFormat, format);
-    }
-
-    pub fn destroy(_: *Surface) void {}
-};
-
-pub const Swapchain = struct {
-    id: js.ContextId,
-
-    pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
-        const tex_id = js.getContextCurrentTexture(swapchain.id);
-        const view_id = js.createTextureView(tex_id);
-        return TextureView{ .id = view_id };
-    }
-
-    pub fn present(_: *Swapchain) void {}
-
-    pub fn destroy(swapchain: *Swapchain) void {
-        js.destroyContext(swapchain.id);
+    pub fn destroy(texture_view: *TextureView) void {
+        js.destroyTextureView(texture_view.id);
     }
 };
 
@@ -1391,6 +657,136 @@ pub const PipelineLayout = struct {
     }
 };
 
+pub const RenderPipelineDesc = struct {
+    id: js.DescId = js.default_desc_id,
+
+    pub fn setPipelineLayout(
+        desc: *RenderPipelineDesc,
+        pipeline_layout: *const gfx.PipelineLayout,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescFieldValue(desc.id, "layout", pipeline_layout.impl.id);
+    }
+
+    pub fn setVertexState(desc: *RenderPipelineDesc, vertex_state: gfx.VertexState) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "vertex");
+        js.beginDescChild(desc.id);
+        defer js.endDescChild(desc.id);
+        setDescFieldValue(desc.id, "module", vertex_state.module.impl.id);
+        setDescFieldValue(desc.id, "entryPoint", vertex_state.entry_point);
+        if (vertex_state.buffers.len == 0) {
+            return;
+        }
+        setDescField(desc.id, "buffers");
+        js.beginDescArray(desc.id);
+        for (vertex_state.buffers) |buffer| {
+            js.beginDescChild(desc.id);
+            defer js.endDescChild(desc.id);
+            setDescFieldValue(desc.id, "arrayStride", buffer.array_stride);
+            setDescFieldValue(desc.id, "stepMode", buffer.step_mode);
+            if (buffer.attributes.len == 0) {
+                continue;
+            }
+            setDescField(desc.id, "attributes");
+            js.beginDescArray(desc.id);
+            for (buffer.attributes) |attribute| {
+                js.beginDescChild(desc.id);
+                setDescFieldValue(desc.id, "format", attribute.format);
+                setDescFieldValue(desc.id, "offset", attribute.offset);
+                setDescFieldValue(desc.id, "shaderLocation", attribute.shader_location);
+                js.endDescChild(desc.id);
+            }
+            js.endDescArray(desc.id);
+        }
+        js.endDescArray(desc.id);
+    }
+
+    pub fn setPrimitiveState(
+        desc: *RenderPipelineDesc,
+        primitive_state: gfx.PrimitiveState,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "primitive");
+        js.beginDescChild(desc.id);
+        setDescFieldValue(desc.id, "topology", primitive_state.topology);
+        setDescFieldValue(desc.id, "frontFace", primitive_state.front_face);
+        setDescFieldValue(desc.id, "cullMode", primitive_state.cull_mode);
+        if (primitive_state.strip_index_format) |strip_index_format| {
+            setDescFieldValue(desc.id, "stripIndexFormat", strip_index_format);
+        }
+        js.endDescChild(desc.id);
+    }
+
+    pub fn setDepthStencilState(
+        desc: *RenderPipelineDesc,
+        depth_stencil_state: gfx.DepthStencilState,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "depthStencil");
+        js.beginDescChild(desc.id);
+        setDescFieldValue(desc.id, "format", depth_stencil_state.format);
+        if (depth_stencil_state.depth) |depth| {
+            setDescFieldValue(desc.id, "depthWriteEnabled", depth.write_enabled);
+            setDescFieldValue(desc.id, "depthCompare", depth.compare);
+            setDescFieldValue(desc.id, "depthBias", depth.bias);
+            setDescFieldValue(desc.id, "depthBiasClamp", depth.bias_clamp);
+            setDescFieldValue(desc.id, "depthBiasSlopeScale", depth.bias_slope_scale);
+        }
+        if (depth_stencil_state.stencil) |stencil| {
+            setDescField(desc.id, "stencilFront");
+            js.beginDescChild(desc.id);
+            setDescFieldValue(desc.id, "compare", stencil.front.compare);
+            setDescFieldValue(desc.id, "failOp", stencil.front.fail_op);
+            setDescFieldValue(desc.id, "depthFailOp", stencil.front.depth_fail_op);
+            setDescFieldValue(desc.id, "passOp", stencil.front.pass_op);
+            js.endDescChild(desc.id);
+            setDescField(desc.id, "stencilBack");
+            js.beginDescChild(desc.id);
+            setDescFieldValue(desc.id, "compare", stencil.back.compare);
+            setDescFieldValue(desc.id, "failOp", stencil.back.fail_op);
+            setDescFieldValue(desc.id, "depthFailOp", stencil.back.depth_fail_op);
+            setDescFieldValue(desc.id, "passOp", stencil.back.pass_op);
+            js.endDescChild(desc.id);
+            setDescFieldValue(desc.id, "stencilReadMask", stencil.read_mask);
+            setDescFieldValue(desc.id, "stencilWriteMask", stencil.write_mask);
+        }
+        js.endDescChild(desc.id);
+    }
+
+    pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: gfx.FragmentState) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "fragment");
+        js.beginDescChild(desc.id);
+        setDescFieldValue(desc.id, "module", fragment_state.module.impl.id);
+        setDescFieldValue(desc.id, "entryPoint", fragment_state.entry_point);
+        setDescField(desc.id, "targets");
+        js.beginDescArray(desc.id);
+        for (fragment_state.targets) |target| {
+            js.beginDescChild(desc.id);
+            setDescFieldValue(desc.id, "format", target.format);
+            js.endDescChild(desc.id);
+        }
+        js.endDescArray(desc.id);
+        js.endDescChild(desc.id);
+    }
+};
+
 pub const RenderPipeline = struct {
     id: js.RenderPipelineId,
 
@@ -1399,19 +795,87 @@ pub const RenderPipeline = struct {
     }
 };
 
+pub const CommandEncoder = struct {
+    id: js.CommandEncoderId,
+
+    pub fn beginRenderPass(encoder: *CommandEncoder, desc: gfx.RenderPassDesc) !RenderPass {
+        defer js.destroyDesc(desc.impl.id);
+        return RenderPass{ .id = js.beginRenderPass(main.wasm_id, encoder.id, desc.impl.id) };
+    }
+
+    pub fn finish(encoder: *CommandEncoder) !CommandBuffer {
+        return CommandBuffer{ .id = js.finishCommandEncoder(encoder.id) };
+    }
+};
+
+pub const CommandBuffer = struct {
+    id: js.CommandBufferId,
+};
+
+pub const RenderPassDesc = struct {
+    id: js.DescId = js.default_desc_id,
+
+    pub fn setColorAttachments(
+        desc: *RenderPassDesc,
+        attachments: []const gfx.ColorAttachment,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "colorAttachments");
+        js.beginDescArray(desc.id);
+        for (attachments) |attachment| {
+            js.beginDescChild(desc.id);
+            setDescFieldValue(desc.id, "view", attachment.view.impl.id);
+            setDescFieldValue(desc.id, "loadOp", attachment.load_op);
+            setDescFieldValue(desc.id, "storeOp", attachment.store_op);
+            setDescFieldValue(desc.id, "clearValue", attachment.clear_value);
+            js.endDescChild(desc.id);
+        }
+        js.endDescArray(desc.id);
+    }
+
+    pub fn setDepthStencilAttachment(
+        desc: *RenderPassDesc,
+        depth_stencil_attachment: gfx.DepthStencilAttachment,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+
+        setDescField(desc.id, "depthStencilAttachment");
+        js.beginDescChild(desc.id);
+        setDescFieldValue(desc.id, "view", depth_stencil_attachment.view.impl.id);
+        if (depth_stencil_attachment.depth) |depth| {
+            setDescFieldValue(desc.id, "depthClearValue", depth.clear_value);
+            setDescFieldValue(desc.id, "depthLoadOp", depth.load_op);
+            setDescFieldValue(desc.id, "depthStoreOp", depth.store_op);
+            setDescFieldValue(desc.id, "depthReadOnly", depth.read_only);
+        }
+        if (depth_stencil_attachment.stencil) |stencil| {
+            setDescFieldValue(desc.id, "stencilClearValue", stencil.clear_value);
+            setDescFieldValue(desc.id, "stencilLoadOp", stencil.load_op);
+            setDescFieldValue(desc.id, "stencilStoreOp", stencil.store_op);
+            setDescFieldValue(desc.id, "stencilReadOnly", stencil.read_only);
+        }
+        js.endDescChild(desc.id);
+    }
+};
+
 pub const RenderPass = struct {
     id: js.RenderPassId,
 
-    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: RenderPipeline) void {
+    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *const RenderPipeline) !void {
         js.setPipeline(render_pass.id, render_pipeline.id);
     }
 
     pub fn setBindGroup(
         render_pass: *RenderPass,
         group_index: u32,
-        group: BindGroup,
+        group: *const BindGroup,
         dynamic_offsets: ?[]const u32,
-    ) void {
+    ) !void {
         const offsets = if (dynamic_offsets) |offsets|
             std.mem.sliceAsBytes(offsets)
         else
@@ -1430,20 +894,20 @@ pub const RenderPass = struct {
     pub fn setVertexBuffer(
         render_pass: *RenderPass,
         slot: u32,
-        buffer: Buffer,
+        buffer: *const Buffer,
         offset: u32,
         size: usize,
-    ) void {
+    ) !void {
         js.setVertexBuffer(render_pass.id, slot, buffer.id, offset, size);
     }
 
     pub fn setIndexBuffer(
         render_pass: *RenderPass,
-        buffer: Buffer,
+        buffer: *const Buffer,
         index_format: gfx.IndexFormat,
-        offset: usize,
+        offset: u32,
         size: usize,
-    ) void {
+    ) !void {
         const index_format_name = getEnumName(index_format);
         js.setIndexBuffer(
             main.wasm_id,
@@ -1462,7 +926,7 @@ pub const RenderPass = struct {
         instance_count: usize,
         first_vertex: usize,
         first_instance: usize,
-    ) void {
+    ) !void {
         js.draw(render_pass.id, vertex_count, instance_count, first_vertex, first_instance);
     }
 
@@ -1473,7 +937,7 @@ pub const RenderPass = struct {
         first_index: usize,
         base_vertex: i32,
         first_instance: usize,
-    ) void {
+    ) !void {
         js.drawIndexed(
             render_pass.id,
             index_count,
@@ -1484,34 +948,9 @@ pub const RenderPass = struct {
         );
     }
 
-    pub fn end(render_pass: *RenderPass) void {
+    pub fn end(render_pass: *RenderPass) !void {
         js.endRenderPass(render_pass.id);
     }
-};
-
-pub const CommandEncoder = struct {
-    id: js.CommandEncoderId,
-
-    pub fn beginRenderPass(
-        command_encoder: *CommandEncoder,
-        desc: gfx.RenderPassDesc,
-    ) !RenderPass {
-        return RenderPass{
-            .id = js.beginRenderPass(main.wasm_id, command_encoder.id, desc.id),
-        };
-    }
-
-    pub fn finish(command_encoder: *CommandEncoder, _: gfx.CommandBufferDesc) CommandBuffer {
-        return CommandBuffer{ .id = js.finishCommandEncoder(command_encoder.id) };
-    }
-};
-
-pub const CommandBuffer = struct {
-    id: js.CommandBufferId,
-};
-
-pub const QuerySet = struct {
-    id: js.QuerySetId,
 };
 
 pub const Queue = struct {
@@ -1519,11 +958,11 @@ pub const Queue = struct {
 
     pub fn writeBuffer(
         queue: *Queue,
-        buffer: Buffer,
+        buffer: *const Buffer,
         buffer_offset: usize,
         data: []const u8,
         data_offset: usize,
-    ) void {
+    ) !void {
         js.queueWriteBuffer(
             main.wasm_id,
             queue.id,
@@ -1535,29 +974,9 @@ pub const Queue = struct {
         );
     }
 
-    pub fn writeTexture(
-        queue: *Queue,
-        destination: gfx.ImageCopyTextureDesc,
-        data: []const u8,
-        data_layout: gfx.ImageDataLayoutDesc,
-        size: gfx.Extent3d,
-    ) void {
-        js.queueWriteTexture(
-            main.wasm_id,
-            queue.id,
-            destination.id,
-            data.ptr,
-            data.len,
-            data_layout.id,
-            size.width,
-            size.height,
-            size.depth_or_array_layers,
-        );
-    }
-
-    pub fn submit(queue: *Queue, command_buffers: []const CommandBuffer) void {
+    pub fn submit(queue: *Queue, command_buffers: []const gfx.CommandBuffer) !void {
         for (command_buffers) |command_buffer| {
-            js.queueSubmit(main.wasm_id, queue.id, command_buffer.id);
+            js.queueSubmit(main.wasm_id, queue.id, command_buffer.impl.id);
         }
     }
 };

@@ -269,7 +269,9 @@ const _webgpu = {
         _descId,
     ) {
         const _desc = _webgpu._getDesc(_descId)._obj;
-        _desc.layout = _webgpu._pipelineLayouts._get(_desc.layout);
+        if (_desc.layout !== undefined) {
+            _desc.layout = _webgpu._pipelineLayouts._get(_desc.layout);
+        }
         _desc.vertex.module = _webgpu._shaders._get(_desc.vertex.module);
         if (_desc.fragment !== undefined) {
             _desc.fragment.module = _webgpu._shaders._get(_desc.fragment.module);

@@ -1,12 +1,12 @@
 struct _Uniforms {
-    _mvp : mat4x4<f32>;
+    _mvp : mat4x4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> _uniforms : _Uniforms;
 
 struct _VertexOutput {
-    @builtin(position) _pos : vec4<f32>;
-    @location(1) _color: vec4<f32>;
+    @builtin(position) _pos : vec4<f32>,
+    @location(1) _color: vec4<f32>,
 };
 
 @stage(vertex)
