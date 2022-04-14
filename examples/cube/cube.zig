@@ -70,7 +70,7 @@ pub fn init() !void {
         .entries = &.{.{
             .binding = 0,
             .visibility = .{ .vertex = true },
-            .layout = .{ .buffer = .{} },
+            .buffer = .{},
         }},
     });
     defer bind_group_layout.destroy();
@@ -112,10 +112,8 @@ pub fn init() !void {
     render_pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });
     render_pipeline_desc.setDepthStencilState(.{
         .format = ex.gctx.depth_texture_format,
-        .depth = .{
-            .write_enabled = true,
-            .compare = .less,
-        },
+        .depth_write_enabled = true,
+        .depth_compare = .less,
     });
     render_pipeline_desc.setFragmentState(.{
         .module = &frag_shader,
@@ -163,11 +161,9 @@ pub fn update() !void {
     }});
     render_pass_desc.setDepthStencilAttachment(.{
         .view = &ex.gctx.depth_texture_view,
-        .depth = .{
-            .clear_value = 1.0,
-            .load_op = .clear,
-            .store_op = .store,
-        },
+        .depth_clear_value = 1.0,
+        .depth_load_op = .clear,
+        .depth_store_op = .store,
     });
 
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);

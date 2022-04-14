@@ -511,14 +511,10 @@ pub const BufferBindingLayout = struct {
     min_binding_size: usize = 0,
 };
 
-pub const BindingLayout = union(enum) {
-    buffer: BufferBindingLayout,
-};
-
 pub const BindGroupLayoutEntry = struct {
     binding: u32,
     visibility: ShaderStage,
-    layout: BindingLayout,
+    buffer: ?BufferBindingLayout = null,
 };
 
 pub const BindGroupLayoutDesc = struct {
@@ -535,8 +531,8 @@ pub const BindGroupLayout = struct {
 
 pub const BufferBinding = struct {
     buffer: *const Buffer,
-    offset: usize = 0,
-    size: usize = whole_size,
+    offset: ?usize = null,
+    size: ?usize = null,
 };
 
 pub const BindingResource = union(enum) {
@@ -671,14 +667,6 @@ pub const CompareFunction = enum {
     always,
 };
 
-pub const DepthState = struct {
-    write_enabled: bool = false,
-    compare: CompareFunction = .always,
-    bias: i32 = 0,
-    bias_clamp: f32 = 0.0,
-    bias_slope_scale: f32 = 0.0,
-};
-
 pub const StencilOperation = enum {
     keep,
     zero,
@@ -697,17 +685,17 @@ pub const StencilFaceState = struct {
     pass_op: StencilOperation = .keep,
 };
 
-pub const StencilState = struct {
-    front: StencilFaceState = .{},
-    back: StencilFaceState = .{},
-    read_mask: u32,
-    write_mask: u32,
-};
-
 pub const DepthStencilState = struct {
     format: TextureFormat,
-    depth: ?DepthState = null,
-    stencil: ?StencilState = null,
+    depth_write_enabled: ?bool = null,
+    depth_compare: ?CompareFunction = null,
+    depth_bias: ?i32 = null,
+    depth_bias_clamp: ?f32 = null,
+    depth_bias_slope_scale: ?f32 = null,
+    stencil_front: ?StencilFaceState = null,
+    stencil_back: ?StencilFaceState = null,
+    stencil_read_mask: ?u32 = null,
+    stencil_write_mask: ?u32 = null,
 };
 
 pub const ColorTargetState = struct {
@@ -798,24 +786,16 @@ pub const ColorAttachment = struct {
     clear_value: Color,
 };
 
-pub const DepthAttachment = struct {
-    clear_value: f32 = 0.0,
-    load_op: LoadOp,
-    store_op: StoreOp,
-    read_only: bool = false,
-};
-
-pub const StencilAttachment = struct {
-    clear_value: u32 = 0,
-    load_op: LoadOp,
-    store_op: StoreOp,
-    read_only: bool = false,
-};
-
 pub const DepthStencilAttachment = struct {
     view: *const TextureView,
-    depth: ?DepthAttachment = null,
-    stencil: ?StencilAttachment = null,
+    depth_clear_value: ?f32 = null,
+    depth_load_op: ?LoadOp = null,
+    depth_store_op: ?StoreOp = null,
+    depth_read_only: ?bool = null,
+    stencil_clear_value: ?u32 = null,
+    stencil_load_op: ?LoadOp = null,
+    stencil_store_op: ?StoreOp = null,
+    stencil_read_only: ?bool = null,
 };
 
 pub const RenderPassDesc = struct {

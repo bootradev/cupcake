@@ -238,9 +238,18 @@ fn getEnumName(value: anytype) []const u8 {
     return enum_names[@enumToInt(value)];
 }
 
-fn setDescFieldValue(desc_id: js.DescId, field: []const u8, value: anytype) void {
-    setDescField(desc_id, field);
-    setDescValue(desc_id, value);
+fn getFieldName(comptime name: []const u8) []const u8 {
+    comptime var field_name: []const u8 = &.{};
+    comptime var next_upper = false;
+    inline for (name) |char| {
+        if (char == '_') {
+            next_upper = true;
+            continue;
+        }
+        field_name = field_name ++ &[_]u8{if (next_upper) std.ascii.toUpper(char) else char};
+        next_upper = false;
+    }
+    return field_name;
 }
 
 fn setDescField(desc_id: js.DescId, field: []const u8) void {
@@ -269,8 +278,16 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
             const enum_name = getEnumName(value);
             js.setDescString(main.wasm_id, desc_id, enum_name.ptr, enum_name.len);
         },
+        .Optional => {
+            if (value) |v| {
+                setDescValue(desc_id, v);
+            }
+        },
         .Pointer => |P| {
             switch (P.size) {
+                .One => {
+                    setDescValue(desc_id, value.*);
+                },
                 .Slice => {
                     if (P.child == u8) {
                         js.setDescString(main.wasm_id, desc_id, value.ptr, value.len);
@@ -291,15 +308,52 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
                     .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
                 });
                 js.setDescU32(desc_id, @intCast(u32, @bitCast(BitType, value)));
-            } else {
+            } else if (typeIsArrayDesc(@TypeOf(value))) {
                 js.beginDescArray(desc_id);
                 inline for (S.fields) |field| {
                     setDescValue(desc_id, @field(value, field.name));
                 }
                 js.endDescArray(desc_id);
+            } else if (S.fields.len == 1 and @hasField(@TypeOf(value), "impl")) {
+                setDescValue(desc_id, value.impl.id);
+            } else {
+                js.beginDescChild(desc_id);
+                inline for (S.fields) |field| {
+                    const field_name = comptime getFieldName(field.name);
+                    setDescFieldValue(desc_id, field_name, @field(value, field.name));
+                }
+                js.endDescChild(desc_id);
+            }
+        },
+        .Union => |U| {
+            inline for (U.fields) |field, i| {
+                const Tag = U.tag_type orelse @compileError("Desc union must be tagged!");
+                const tag = std.meta.activeTag(value);
+                const type_name = @typeName(@TypeOf(value)) ++ "Type";
+                if (@field(Tag, field.name) == tag) {
+                    setDescValue(desc_id, @field(value, field.name));
+                    setDescFieldValue(desc_id, type_name, @as(u32, i));
+                    break;
+                }
             }
         },
         else => @compileError("Invalid desc type!"),
+    }
+}
+
+fn typeIsArrayDesc(comptime Type: type) bool {
+    return Type == gfx.Extent3d or Type == gfx.Color;
+}
+
+fn setDescFieldValue(desc_id: js.DescId, field: []const u8, value: anytype) void {
+    setDescField(desc_id, field);
+    setDescValue(desc_id, value);
+}
+
+fn setDesc(desc_id: js.DescId, desc: anytype) void {
+    inline for (@typeInfo(@TypeOf(desc)).Struct.fields) |field| {
+        const field_name = comptime getFieldName(field.name);
+        setDescFieldValue(desc_id, field_name, @field(desc, field.name));
     }
 }
 
@@ -322,6 +376,7 @@ pub const Instance = struct {
     }
 
     fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
+        defer js.destroyDesc(desc.impl.id);
         js.requestAdapter(main.wasm_id, desc.impl.id);
         suspend {
             request_adapter_frame = @frame();
@@ -357,7 +412,6 @@ pub const AdapterDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
         setDescFieldValue(desc.id, "powerPreference", power_preference);
     }
 
@@ -365,7 +419,6 @@ pub const AdapterDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
         setDescFieldValue(desc.id, "forceFallbackAdapter", force_fallback_adapter);
     }
 };
@@ -385,6 +438,7 @@ pub const Adapter = struct {
     }
 
     fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
+        defer js.destroyDesc(desc.impl.id);
         js.requestDevice(main.wasm_id, adapter.id, desc.impl.id);
         suspend {
             request_device_frame = @frame();
@@ -411,24 +465,14 @@ pub const DeviceDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "requiredFeatures");
-        js.beginDescArray(desc.id);
-        for (required_features) |required_feature| {
-            const name = getEnumName(required_feature);
-            js.setDescString(main.wasm_id, desc.id, name.ptr, name.len);
-        }
-        js.endDescArray(desc.id);
+        setDescFieldValue(desc.id, "requiredFeatures", required_features);
     }
 
     pub fn setRequiredLimits(desc: *DeviceDesc, required_limits: gfx.Limits) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        if (required_limits.max_texture_dimension_1d) |max_texture_dimension_1d| {
-            setDescFieldValue(desc.id, "maxTextureDimension1D", max_texture_dimension_1d);
-        }
+        setDescFieldValue(desc.id, "requiredLimits", required_limits);
     }
 };
 
@@ -446,8 +490,7 @@ pub const Device = struct {
     ) !Swapchain {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescFieldValue(js_desc, "size", desc.size);
-        setDescFieldValue(js_desc, "format", desc.format);
+        setDesc(js_desc, desc);
 
         const swapchain = Swapchain{ .id = surface.context_id };
         js.configure(main.wasm_id, device.id, swapchain.id, js_desc);
@@ -467,13 +510,11 @@ pub const Device = struct {
     }
 
     pub fn createBuffer(device: *Device, desc: gfx.BufferDesc) !Buffer {
-        const data = desc.data orelse &[_]u8{};
-
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescFieldValue(js_desc, "size", desc.size);
-        setDescFieldValue(js_desc, "usage", desc.usage);
+        setDesc(js_desc, desc);
 
+        const data = desc.data orelse &[_]u8{};
         return Buffer{
             .id = js.createBuffer(main.wasm_id, device.id, js_desc, data.ptr, data.len),
         };
@@ -482,12 +523,7 @@ pub const Device = struct {
     pub fn createTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescFieldValue(js_desc, "size", desc.size);
-        setDescFieldValue(js_desc, "format", desc.format);
-        setDescFieldValue(js_desc, "usage", desc.usage);
-        setDescFieldValue(js_desc, "dimension", desc.dimension);
-        setDescFieldValue(js_desc, "mipLevelCount", desc.mip_level_count);
-        setDescFieldValue(js_desc, "sampleCount", desc.sample_count);
+        setDesc(js_desc, desc);
 
         return Texture{ .id = js.createTexture(main.wasm_id, device.id, js_desc) };
     }
@@ -498,25 +534,7 @@ pub const Device = struct {
     ) !BindGroupLayout {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescField(js_desc, "entries");
-        js.beginDescArray(js_desc);
-        for (desc.entries) |entry| {
-            js.beginDescChild(js_desc);
-            setDescFieldValue(js_desc, "binding", entry.binding);
-            setDescFieldValue(js_desc, "visibility", entry.visibility);
-            switch (entry.layout) {
-                .buffer => |buffer| {
-                    setDescField(js_desc, "buffer");
-                    js.beginDescChild(js_desc);
-                    setDescFieldValue(js_desc, "bindingType", buffer.binding_type);
-                    setDescFieldValue(js_desc, "hasDynamicOffset", buffer.has_dynamic_offset);
-                    setDescFieldValue(js_desc, "minBindingSize", buffer.min_binding_size);
-                    js.endDescChild(js_desc);
-                },
-            }
-            js.endDescChild(js_desc);
-        }
-        js.endDescArray(js_desc);
+        setDesc(js_desc, desc);
 
         return BindGroupLayout{
             .id = js.createBindGroupLayout(main.wasm_id, device.id, js_desc),
@@ -526,28 +544,7 @@ pub const Device = struct {
     pub fn createBindGroup(device: *Device, desc: gfx.BindGroupDesc) !BindGroup {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescFieldValue(js_desc, "layout", desc.layout.impl.id);
-        setDescField(js_desc, "entries");
-        js.beginDescArray(js_desc);
-        for (desc.entries) |entry| {
-            js.beginDescChild(js_desc);
-            setDescFieldValue(js_desc, "binding", entry.binding);
-            switch (entry.resource) {
-                .buffer_binding => |binding| {
-                    setDescFieldValue(js_desc, "resourceType", @as(u32, 0));
-                    setDescField(js_desc, "resource");
-                    js.beginDescChild(js_desc);
-                    setDescFieldValue(js_desc, "buffer", binding.buffer.impl.id);
-                    setDescFieldValue(js_desc, "offset", binding.offset);
-                    if (binding.size != gfx.whole_size) {
-                        setDescFieldValue(js_desc, "size", binding.size);
-                    }
-                    js.endDescChild(js_desc);
-                },
-            }
-            js.endDescChild(js_desc);
-        }
-        js.endDescArray(js_desc);
+        setDesc(js_desc, desc);
 
         return BindGroup{ .id = js.createBindGroup(main.wasm_id, device.id, js_desc) };
     }
@@ -555,12 +552,7 @@ pub const Device = struct {
     pub fn createPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
-        setDescField(js_desc, "bindGroupLayouts");
-        js.beginDescArray(js_desc);
-        for (desc.bind_group_layouts) |bind_group_layout| {
-            js.setDescU32(js_desc, bind_group_layout.impl.id);
-        }
-        js.endDescArray(js_desc);
+        setDesc(js_desc, desc);
 
         return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, js_desc) };
     }
@@ -667,45 +659,14 @@ pub const RenderPipelineDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescFieldValue(desc.id, "layout", pipeline_layout.impl.id);
+        setDescFieldValue(desc.id, "layout", pipeline_layout);
     }
 
     pub fn setVertexState(desc: *RenderPipelineDesc, vertex_state: gfx.VertexState) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "vertex");
-        js.beginDescChild(desc.id);
-        defer js.endDescChild(desc.id);
-        setDescFieldValue(desc.id, "module", vertex_state.module.impl.id);
-        setDescFieldValue(desc.id, "entryPoint", vertex_state.entry_point);
-        if (vertex_state.buffers.len == 0) {
-            return;
-        }
-        setDescField(desc.id, "buffers");
-        js.beginDescArray(desc.id);
-        for (vertex_state.buffers) |buffer| {
-            js.beginDescChild(desc.id);
-            defer js.endDescChild(desc.id);
-            setDescFieldValue(desc.id, "arrayStride", buffer.array_stride);
-            setDescFieldValue(desc.id, "stepMode", buffer.step_mode);
-            if (buffer.attributes.len == 0) {
-                continue;
-            }
-            setDescField(desc.id, "attributes");
-            js.beginDescArray(desc.id);
-            for (buffer.attributes) |attribute| {
-                js.beginDescChild(desc.id);
-                setDescFieldValue(desc.id, "format", attribute.format);
-                setDescFieldValue(desc.id, "offset", attribute.offset);
-                setDescFieldValue(desc.id, "shaderLocation", attribute.shader_location);
-                js.endDescChild(desc.id);
-            }
-            js.endDescArray(desc.id);
-        }
-        js.endDescArray(desc.id);
+        setDescFieldValue(desc.id, "vertex", vertex_state);
     }
 
     pub fn setPrimitiveState(
@@ -715,16 +676,7 @@ pub const RenderPipelineDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "primitive");
-        js.beginDescChild(desc.id);
-        setDescFieldValue(desc.id, "topology", primitive_state.topology);
-        setDescFieldValue(desc.id, "frontFace", primitive_state.front_face);
-        setDescFieldValue(desc.id, "cullMode", primitive_state.cull_mode);
-        if (primitive_state.strip_index_format) |strip_index_format| {
-            setDescFieldValue(desc.id, "stripIndexFormat", strip_index_format);
-        }
-        js.endDescChild(desc.id);
+        setDescFieldValue(desc.id, "primitive", primitive_state);
     }
 
     pub fn setDepthStencilState(
@@ -734,56 +686,14 @@ pub const RenderPipelineDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "depthStencil");
-        js.beginDescChild(desc.id);
-        setDescFieldValue(desc.id, "format", depth_stencil_state.format);
-        if (depth_stencil_state.depth) |depth| {
-            setDescFieldValue(desc.id, "depthWriteEnabled", depth.write_enabled);
-            setDescFieldValue(desc.id, "depthCompare", depth.compare);
-            setDescFieldValue(desc.id, "depthBias", depth.bias);
-            setDescFieldValue(desc.id, "depthBiasClamp", depth.bias_clamp);
-            setDescFieldValue(desc.id, "depthBiasSlopeScale", depth.bias_slope_scale);
-        }
-        if (depth_stencil_state.stencil) |stencil| {
-            setDescField(desc.id, "stencilFront");
-            js.beginDescChild(desc.id);
-            setDescFieldValue(desc.id, "compare", stencil.front.compare);
-            setDescFieldValue(desc.id, "failOp", stencil.front.fail_op);
-            setDescFieldValue(desc.id, "depthFailOp", stencil.front.depth_fail_op);
-            setDescFieldValue(desc.id, "passOp", stencil.front.pass_op);
-            js.endDescChild(desc.id);
-            setDescField(desc.id, "stencilBack");
-            js.beginDescChild(desc.id);
-            setDescFieldValue(desc.id, "compare", stencil.back.compare);
-            setDescFieldValue(desc.id, "failOp", stencil.back.fail_op);
-            setDescFieldValue(desc.id, "depthFailOp", stencil.back.depth_fail_op);
-            setDescFieldValue(desc.id, "passOp", stencil.back.pass_op);
-            js.endDescChild(desc.id);
-            setDescFieldValue(desc.id, "stencilReadMask", stencil.read_mask);
-            setDescFieldValue(desc.id, "stencilWriteMask", stencil.write_mask);
-        }
-        js.endDescChild(desc.id);
+        setDescFieldValue(desc.id, "depthStencil", depth_stencil_state);
     }
 
     pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: gfx.FragmentState) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "fragment");
-        js.beginDescChild(desc.id);
-        setDescFieldValue(desc.id, "module", fragment_state.module.impl.id);
-        setDescFieldValue(desc.id, "entryPoint", fragment_state.entry_point);
-        setDescField(desc.id, "targets");
-        js.beginDescArray(desc.id);
-        for (fragment_state.targets) |target| {
-            js.beginDescChild(desc.id);
-            setDescFieldValue(desc.id, "format", target.format);
-            js.endDescChild(desc.id);
-        }
-        js.endDescArray(desc.id);
-        js.endDescChild(desc.id);
+        setDescFieldValue(desc.id, "fragment", fragment_state);
     }
 };
 
@@ -817,23 +727,12 @@ pub const RenderPassDesc = struct {
 
     pub fn setColorAttachments(
         desc: *RenderPassDesc,
-        attachments: []const gfx.ColorAttachment,
+        color_attachments: []const gfx.ColorAttachment,
     ) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "colorAttachments");
-        js.beginDescArray(desc.id);
-        for (attachments) |attachment| {
-            js.beginDescChild(desc.id);
-            setDescFieldValue(desc.id, "view", attachment.view.impl.id);
-            setDescFieldValue(desc.id, "loadOp", attachment.load_op);
-            setDescFieldValue(desc.id, "storeOp", attachment.store_op);
-            setDescFieldValue(desc.id, "clearValue", attachment.clear_value);
-            js.endDescChild(desc.id);
-        }
-        js.endDescArray(desc.id);
+        setDescFieldValue(desc.id, "colorAttachments", color_attachments);
     }
 
     pub fn setDepthStencilAttachment(
@@ -843,23 +742,7 @@ pub const RenderPassDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.createDesc();
         }
-
-        setDescField(desc.id, "depthStencilAttachment");
-        js.beginDescChild(desc.id);
-        setDescFieldValue(desc.id, "view", depth_stencil_attachment.view.impl.id);
-        if (depth_stencil_attachment.depth) |depth| {
-            setDescFieldValue(desc.id, "depthClearValue", depth.clear_value);
-            setDescFieldValue(desc.id, "depthLoadOp", depth.load_op);
-            setDescFieldValue(desc.id, "depthStoreOp", depth.store_op);
-            setDescFieldValue(desc.id, "depthReadOnly", depth.read_only);
-        }
-        if (depth_stencil_attachment.stencil) |stencil| {
-            setDescFieldValue(desc.id, "stencilClearValue", stencil.clear_value);
-            setDescFieldValue(desc.id, "stencilLoadOp", stencil.load_op);
-            setDescFieldValue(desc.id, "stencilStoreOp", stencil.store_op);
-            setDescFieldValue(desc.id, "stencilReadOnly", stencil.read_only);
-        }
-        js.endDescChild(desc.id);
+        setDescFieldValue(desc.id, "depthStencilAttachment", depth_stencil_attachment);
     }
 };
 

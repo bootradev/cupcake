@@ -32,7 +32,9 @@ const _webgpu = {
     },
 
     destroyDesc(_descId) {
-        _webgpu._descs._remove(_descId);
+        if (_descId != _DefaultDescId) {
+            _webgpu._descs._remove(_descId);
+        }
     },
 
     setDescField(_wasmId, _descId, _fieldPtr, _fieldLen) {
@@ -221,7 +223,7 @@ const _webgpu = {
         const _desc = _webgpu._getDesc(_descId)._obj;
         _desc.layout = _webgpu._bindGroupLayouts._get(_desc.layout);
         for (let i = 0; i < _desc.entries.length; ++i) {
-            switch (_desc.entries[i].resourceType) {
+            switch (_desc.entries[i].BindingResourceType) {
                 case _BindTypeBuffer:
                     _desc.entries[i].resource.buffer = _webgpu._buffers._get(
                         _desc.entries[i].resource.buffer
