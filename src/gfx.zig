@@ -262,6 +262,10 @@ pub const Device = struct {
         return Texture{ .impl = try device.impl.createTexture(desc) };
     }
 
+    pub fn createSampler(device: *Device, desc: SamplerDesc) !Sampler {
+        return Sampler{ .impl = try device.impl.createSampler(desc) };
+    }
+
     pub fn createBindGroupLayout(device: *Device, desc: BindGroupLayoutDesc) !BindGroupLayout {
         return BindGroupLayout{ .impl = try device.impl.createBindGroupLayout(desc) };
     }
@@ -499,6 +503,38 @@ pub const TextureView = struct {
     }
 };
 
+pub const AddressMode = enum {
+    clamp_to_edge,
+    repeat,
+    mirror_repeat,
+};
+
+pub const FilterMode = enum {
+    nearest,
+    linear,
+};
+
+pub const SamplerDesc = struct {
+    address_mode_u: AddressMode = .clamp_to_edge,
+    address_mode_v: AddressMode = .clamp_to_edge,
+    address_mode_w: AddressMode = .clamp_to_edge,
+    mag_filter: FilterMode = .nearest,
+    min_filter: FilterMode = .nearest,
+    mipmap_filter: FilterMode = .nearest,
+    lod_min_clamp: f32 = 0.0,
+    lod_max_clamp: f32 = 32.0,
+    max_anisotropy: u16 = 1,
+    compare: ?CompareFunction = null,
+};
+
+pub const Sampler = struct {
+    impl: api.Sampler,
+
+    pub fn destroy(sampler: *Sampler) void {
+        sampler.impl.destroy();
+    }
+};
+
 pub const BufferBindingType = enum {
     uniform,
     storage,
@@ -506,15 +542,52 @@ pub const BufferBindingType = enum {
 };
 
 pub const BufferBindingLayout = struct {
-    binding_type: BufferBindingType = .uniform,
+    @"type": BufferBindingType = .uniform,
     has_dynamic_offset: bool = false,
     min_binding_size: usize = 0,
+};
+
+pub const TextureSampleType = enum {
+    float,
+    unfilterable_float,
+    depth,
+    sint,
+    uint,
+};
+
+pub const TextureBindingLayout = struct {
+    sample_type: TextureSampleType = .float,
+    view_dimension: TextureViewDimension = .@"2d",
+    multisampled: bool = false,
+};
+
+pub const StorageTextureAccess = enum {
+    write_only,
+};
+
+pub const StorageTextureBindingLayout = struct {
+    format: TextureFormat,
+    access: StorageTextureAccess = .write_only,
+    view_dimension: TextureViewDimension = .@"2d",
+};
+
+pub const SamplerBindingType = enum {
+    filtering,
+    non_filtering,
+    comparison,
+};
+
+pub const SamplerBindingLayout = struct {
+    @"type": SamplerBindingType = .filtering,
 };
 
 pub const BindGroupLayoutEntry = struct {
     binding: u32,
     visibility: ShaderStage,
     buffer: ?BufferBindingLayout = null,
+    texture: ?TextureBindingLayout = null,
+    storage_texture: ?StorageTextureBindingLayout = null,
+    sampler: ?SamplerBindingLayout = null,
 };
 
 pub const BindGroupLayoutDesc = struct {
@@ -531,12 +604,14 @@ pub const BindGroupLayout = struct {
 
 pub const BufferBinding = struct {
     buffer: *const Buffer,
-    offset: ?usize = null,
-    size: ?usize = null,
+    offset: usize = 0,
+    size: usize = whole_size,
 };
 
 pub const BindingResource = union(enum) {
     buffer_binding: BufferBinding,
+    texture_view: *const TextureView,
+    sampler: *const Sampler,
 };
 
 pub const BindGroupEntry = struct {
@@ -687,19 +762,71 @@ pub const StencilFaceState = struct {
 
 pub const DepthStencilState = struct {
     format: TextureFormat,
-    depth_write_enabled: ?bool = null,
-    depth_compare: ?CompareFunction = null,
-    depth_bias: ?i32 = null,
-    depth_bias_clamp: ?f32 = null,
-    depth_bias_slope_scale: ?f32 = null,
-    stencil_front: ?StencilFaceState = null,
-    stencil_back: ?StencilFaceState = null,
-    stencil_read_mask: ?u32 = null,
-    stencil_write_mask: ?u32 = null,
+    depth_write_enabled: bool = false,
+    depth_compare: CompareFunction = .always,
+    depth_bias: i32 = 0,
+    depth_bias_clamp: f32 = 0.0,
+    depth_bias_slope_scale: f32 = 0.0,
+    stencil_front: StencilFaceState = .{},
+    stencil_back: StencilFaceState = .{},
+    stencil_read_mask: u32 = 0xFFFFFFFF,
+    stencil_write_mask: u32 = 0xFFFFFFFF,
+};
+
+pub const MultisampleState = struct {
+    count: u32 = 1,
+    mask: u32 = 0xFFFFFFFF,
+    alpha_to_coverage_enabled: bool = false,
+};
+
+pub const BlendOperation = enum {
+    add,
+    subtract,
+    reverse_subtract,
+    min,
+    max,
+};
+
+pub const BlendFactor = enum {
+    zero,
+    one,
+    src,
+    one_minus_src,
+    src_alpha,
+    one_minus_src_alpha,
+    dst,
+    one_minus_dst,
+    dst_alpha,
+    one_minus_dst_alpha,
+    src_alpha_saturated,
+    constant,
+    one_minus_constant,
+};
+
+pub const BlendComponent = struct {
+    operation: BlendOperation = .add,
+    src_factor: BlendFactor = .one,
+    dst_factor: BlendFactor = .zero,
+};
+
+pub const BlendState = struct {
+    color: BlendComponent = .{},
+    alpha: BlendComponent = .{},
+};
+
+pub const ColorWrite = packed struct {
+    red: bool = false,
+    green: bool = false,
+    blue: bool = false,
+    alpha: bool = false,
+
+    pub const all = ColorWrite{ .red = true, .green = true, .blue = true, .alpha = true };
 };
 
 pub const ColorTargetState = struct {
     format: TextureFormat,
+    blend: BlendState = .{},
+    write_mask: ColorWrite = ColorWrite.all,
 };
 
 pub const FragmentState = struct {
@@ -731,6 +858,13 @@ pub const RenderPipelineDesc = struct {
         depth_stencil_state: DepthStencilState,
     ) void {
         desc.impl.setDepthStencilState(depth_stencil_state);
+    }
+
+    pub fn setMultisampleState(
+        desc: *RenderPipelineDesc,
+        multisample_state: MultisampleState,
+    ) void {
+        desc.impl.setMultisampleState(multisample_state);
     }
 
     pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: FragmentState) void {
@@ -781,21 +915,22 @@ pub const Color = struct {
 
 pub const ColorAttachment = struct {
     view: *const TextureView,
+    resolve_target: ?*const TextureView = null,
     load_op: LoadOp,
     store_op: StoreOp,
-    clear_value: Color,
+    clear_value: Color = Color{ .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
 };
 
 pub const DepthStencilAttachment = struct {
     view: *const TextureView,
-    depth_clear_value: ?f32 = null,
+    depth_clear_value: f32 = 0.0,
     depth_load_op: ?LoadOp = null,
     depth_store_op: ?StoreOp = null,
-    depth_read_only: ?bool = null,
-    stencil_clear_value: ?u32 = null,
+    depth_read_only: bool = false,
+    stencil_clear_value: u32 = 0,
     stencil_load_op: ?LoadOp = null,
     stencil_store_op: ?StoreOp = null,
-    stencil_read_only: ?bool = null,
+    stencil_read_only: bool = false,
 };
 
 pub const RenderPassDesc = struct {

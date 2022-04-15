@@ -50,7 +50,7 @@ const _webgpu = {
     },
 
     setDescU32(_descId, _value) {
-        _webgpu._setDescValue(_descId, _value);
+        _webgpu._setDescValue(_descId, _value >>> 0);
     },
 
     setDescI32(_descId, _value) {
@@ -228,6 +228,9 @@ const _webgpu = {
                     _desc.entries[i].resource.buffer = _webgpu._buffers._get(
                         _desc.entries[i].resource.buffer
                     );
+                    if (_desc.entries[i].resource.size == _WholeSize) {
+                        _desc.entries[i].resource.size = undefined;
+                    }
                 break;
                 case _BindTypeSampler:
                     _desc.entries[i].resource = _webgpu._samplers._get(

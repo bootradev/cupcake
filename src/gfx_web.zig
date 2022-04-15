@@ -528,6 +528,14 @@ pub const Device = struct {
         return Texture{ .id = js.createTexture(main.wasm_id, device.id, js_desc) };
     }
 
+    pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
+        var js_desc = js.createDesc();
+        defer js.destroyDesc(js_desc);
+        setDesc(js_desc, desc);
+
+        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, js_desc) };
+    }
+
     pub fn createBindGroupLayout(
         device: *Device,
         desc: gfx.BindGroupLayoutDesc,
@@ -625,6 +633,14 @@ pub const TextureView = struct {
     }
 };
 
+pub const Sampler = struct {
+    id: js.SamplerId,
+
+    pub fn destroy(sampler: *Sampler) void {
+        js.destroySampler(sampler.id);
+    }
+};
+
 pub const BindGroupLayout = struct {
     id: js.BindGroupLayoutId,
 
@@ -687,6 +703,16 @@ pub const RenderPipelineDesc = struct {
             desc.id = js.createDesc();
         }
         setDescFieldValue(desc.id, "depthStencil", depth_stencil_state);
+    }
+
+    pub fn setMultisampleState(
+        desc: *RenderPipelineDesc,
+        multisample_state: gfx.MultisampleState,
+    ) void {
+        if (desc.id == js.default_desc_id) {
+            desc.id = js.createDesc();
+        }
+        setDescFieldValue(desc.id, "multisample", multisample_state);
     }
 
     pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: gfx.FragmentState) void {
