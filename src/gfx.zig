@@ -41,14 +41,14 @@ pub const Context = struct {
         ctx.swapchain = try ctx.device.createSwapchain(
             &ctx.surface,
             .{
-                .size = .{ .width = window.width, .height = window.height },
+                .size = .{ .width = window.getWidth(), .height = window.getHeight() },
                 .format = ctx.swapchain_format,
             },
         );
         ctx.clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
         ctx.depth_texture_format = .depth24plus;
         ctx.depth_texture = try ctx.device.createTexture(.{
-            .size = .{ .width = ctx.window.width, .height = ctx.window.height },
+            .size = .{ .width = ctx.window.getWidth(), .height = ctx.window.getHeight() },
             .format = ctx.depth_texture_format,
             .usage = .{ .render_attachment = true },
         });

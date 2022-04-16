@@ -365,7 +365,10 @@ pub const Instance = struct {
     pub fn deinit(_: *Instance) void {}
 
     pub fn createSurface(_: *Instance, window: *const app.Window) !Surface {
-        return Surface{ .canvas_id = window.id, .context_id = js.createContext(window.id) };
+        return Surface{
+            .canvas_id = window.impl.id,
+            .context_id = js.createContext(window.impl.id),
+        };
     }
 
     var request_adapter_frame: anyframe = undefined;

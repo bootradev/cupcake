@@ -126,7 +126,7 @@ pub fn init() !void {
 }
 
 pub fn update() !void {
-    const time = cc.app.readSeconds(ex.game_clock);
+    const time = ex.game_clock.readSeconds();
     const model_matrix = cc.math.matFromAxisAngle(
         cc.math.f32x4(cc.math.sin(time), cc.math.cos(time), 0.0, 0.0),
         1.0,
@@ -138,7 +138,7 @@ pub fn update() !void {
     );
     const proj_matrix = cc.math.perspectiveFovLh(
         2.0 * std.math.pi / 5.0,
-        @intToFloat(f32, ex.window.width) / @intToFloat(f32, ex.window.height),
+        @intToFloat(f32, ex.window.getWidth()) / @intToFloat(f32, ex.window.getHeight()),
         1,
         100,
     );
