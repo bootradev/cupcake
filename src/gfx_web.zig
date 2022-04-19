@@ -494,6 +494,7 @@ pub const Device = struct {
         var js_desc = js.createDesc();
         defer js.destroyDesc(js_desc);
         setDesc(js_desc, desc);
+        setDescFieldValue(js_desc, "compositingAlphaMode", @as([]const u8, "opaque"));
 
         const swapchain = Swapchain{ .id = surface.context_id };
         js.configure(main.wasm_id, device.id, swapchain.id, js_desc);

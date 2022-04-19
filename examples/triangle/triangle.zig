@@ -34,7 +34,7 @@ pub fn init() !void {
     ex.render_pipeline = try ex.gctx.createRenderPipeline(render_pipeline_desc);
 }
 
-pub fn update() !void {
+pub fn loop() !void {
     try ex.gctx.beginFrame();
     var command_encoder = try ex.gctx.createCommandEncoder();
 

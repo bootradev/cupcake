@@ -125,7 +125,7 @@ pub fn init() !void {
     ex.render_pipeline = try ex.gctx.createRenderPipeline(render_pipeline_desc);
 }
 
-pub fn update() !void {
+pub fn loop() !void {
     const time = ex.game_clock.readSeconds();
     const model_matrix = cc.math.matFromAxisAngle(
         cc.math.f32x4(cc.math.sin(time), cc.math.cos(time), 0.0, 0.0),

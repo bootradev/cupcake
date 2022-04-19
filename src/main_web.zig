@@ -30,7 +30,7 @@ pub const main = struct {
     // store the async calls in these variables in order to prevent the stack from
     // reclaiming the frame memory once the export fn completes
     var init_frame: @Frame(appInit) = undefined;
-    var update_frame: @Frame(appUpdate) = undefined;
+    var loop_frame: @Frame(appLoop) = undefined;
     var deinit_frame: @Frame(appDeinit) = undefined;
 
     pub export fn init(id: WasmId) void {
@@ -43,14 +43,14 @@ pub const main = struct {
         async_complete = true;
     }
 
-    pub export fn update() void {
-        update_frame = async appUpdate();
+    pub export fn loop() void {
+        loop_frame = async appLoop();
     }
 
-    fn appUpdate() void {
+    fn appLoop() void {
         if (async_complete) {
             async_complete = false;
-            app.update() catch |err| handleError(err);
+            app.loop() catch |err| handleError(err);
             async_complete = true;
         }
     }

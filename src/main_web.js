@@ -21,22 +21,22 @@ const _main = {
                     _canUpdate: false,
                 });
                 _main._wasms._get(_wasmId)._obj.init(_wasmId);
-                window.requestAnimationFrame(_main._update);
+                window.requestAnimationFrame(_main._loop);
             })
             .catch(_err => console.log(_err));
     },
 
-    _update(_timestamp) {
-        //console.log(performance.memory.totalJSHeapSize);
+    _loop(_timestamp) {
+        // console.log(performance.memory.totalJSHeapSize);
         for (let i = _main._wasms._begin();
             i < _main._wasms._end();
             i = _main._wasms._next(i))
         {
             if (_main._wasms._get(i)._canUpdate) {
-                _main._wasms._get(i)._obj.update();
+                _main._wasms._get(i)._obj.loop();
             }
         }
-        window.requestAnimationFrame(_main._update);
+        window.requestAnimationFrame(_main._loop);
     },
 
     _u8Array(_wasmId, _ptr, _len) {
