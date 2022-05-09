@@ -221,7 +221,10 @@ pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
         .name = "cc",
         .root = "",
         .res_dir = ".",
-        .res = &.{},
+        .res = &.{
+            .{ .path = "src/ui_vert.wgsl", .embed = true },
+            .{ .path = "src/ui_frag.wgsl", .embed = true },
+        },
     };
     const cc_manifest = try manifest.initDupe(builder, cc_manifest_desc);
 

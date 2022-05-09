@@ -4,6 +4,7 @@ const std = @import("std");
 const Example = enum {
     triangle,
     cube,
+    ui,
 };
 
 pub fn build(builder: *std.build.Builder) !void {
@@ -27,6 +28,10 @@ pub fn build(builder: *std.build.Builder) !void {
                 .{ .path = "cube_vert.wgsl", .embed = true },
                 .{ .path = "cube_frag.wgsl", .embed = true },
             },
+        },
+        .ui => .{
+            .name = "ui",
+            .root = "examples/ui/ui.zig",
         },
     };
 

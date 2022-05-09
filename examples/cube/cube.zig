@@ -45,7 +45,7 @@ var ex: Example = undefined;
 pub fn init() !void {
     ex.game_clock = try cc.app.Timer.start();
     ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
-    ex.gctx = try cc.gfx.Context.init(&ex.window, .{});
+    ex.gctx = try cc.gfx.Context.init(.{ .window = &ex.window });
 
     const cube_vertices_bytes = std.mem.sliceAsBytes(cube.vertices);
     ex.vertex_buffer = try ex.gctx.createBuffer(.{

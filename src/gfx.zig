@@ -4,12 +4,12 @@ const api = switch (cfg.platform) {
 const app = @import("app.zig");
 const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
+const math = @import("math.zig");
 const res = @import("res.zig");
 const std = @import("std");
 
-pub const whole_size = std.math.maxInt(usize);
-
 pub const ContextDesc = struct {
+    window: *const app.Window,
     adapter_desc: AdapterDesc = .{},
     device_desc: DeviceDesc = .{},
 };
@@ -29,19 +29,19 @@ pub const Context = struct {
     depth_texture_format: TextureFormat,
     depth_texture_view: TextureView,
 
-    pub fn init(window: *const app.Window, desc: ContextDesc) !Context {
+    pub fn init(desc: ContextDesc) !Context {
         var ctx: Context = undefined;
 
-        ctx.window = window;
+        ctx.window = desc.window;
         ctx.instance = try Instance.init();
-        ctx.surface = try ctx.instance.createSurface(window);
+        ctx.surface = try ctx.instance.createSurface(ctx.window);
         ctx.adapter = try ctx.instance.requestAdapter(desc.adapter_desc);
         ctx.device = try ctx.adapter.requestDevice(desc.device_desc);
         ctx.swapchain_format = try ctx.surface.getPreferredFormat(ctx.adapter);
         ctx.swapchain = try ctx.device.createSwapchain(
             &ctx.surface,
             .{
-                .size = .{ .width = window.getWidth(), .height = window.getHeight() },
+                .size = .{ .width = ctx.window.getWidth(), .height = ctx.window.getHeight() },
                 .format = ctx.swapchain_format,
             },
         );
@@ -73,8 +73,8 @@ pub const Context = struct {
     }
 
     pub fn endFrame(ctx: *Context) !void {
-        ctx.swapchain_view.destroy();
         try ctx.swapchain.present();
+        ctx.swapchain_view.destroy();
     }
 
     pub fn submit(ctx: *Context, buffers: []const CommandBuffer) !void {
@@ -82,12 +82,15 @@ pub const Context = struct {
     }
 
     pub fn loadShader(ctx: *Context, comptime r: res.Res, desc: res.LoadDesc) !Shader {
-        const shader_res = try res.load(r, desc);
-        return try ctx.device.createShader(shader_res);
+        return try ctx.device.loadShader(r, desc);
     }
 
     pub fn createBuffer(ctx: *Context, desc: BufferDesc) !Buffer {
         return try ctx.device.createBuffer(desc);
+    }
+
+    pub fn createBufferFromSlice(ctx: *Context, slice: anytype, usage: BufferUsage) !Buffer {
+        return try ctx.device.createBufferFromSlice(slice, usage);
     }
 
     pub fn createTexture(ctx: *Context, desc: TextureDesc) !Texture {
@@ -254,8 +257,18 @@ pub const Device = struct {
         return Shader{ .impl = try device.impl.createShader(shader_res) };
     }
 
+    pub fn loadShader(device: *Device, comptime r: res.Res, desc: res.LoadDesc) !Shader {
+        const shader_res = try res.load(r, desc);
+        return try device.createShader(shader_res);
+    }
+
     pub fn createBuffer(device: *Device, desc: BufferDesc) !Buffer {
         return Buffer{ .impl = try device.impl.createBuffer(desc) };
+    }
+
+    pub fn createBufferFromSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
+        const bytes = std.mem.sliceAsBytes(slice);
+        return try device.createBuffer(.{ .size = bytes.len, .usage = usage, .data = bytes });
     }
 
     pub fn createTexture(device: *Device, desc: TextureDesc) !Texture {
@@ -344,6 +357,8 @@ pub const BufferUsage = packed struct {
     indirect: bool = false,
     query_resolve: bool = false,
 };
+
+pub const whole_size = std.math.maxInt(usize);
 
 pub const BufferDesc = struct {
     size: usize,
@@ -699,6 +714,64 @@ pub const VertexState = struct {
     entry_point: []const u8,
     buffers: []const VertexBufferLayout = &.{},
 };
+
+pub fn getVertexBufferLayout(
+    comptime Type: type,
+    comptime step_mode: VertexStepMode,
+    comptime base_location: u32,
+) VertexBufferLayout {
+    comptime var attributes: []const VertexAttribute = &.{};
+    comptime var offset: usize = 0;
+    comptime var location: u32 = base_location;
+    inline for (@typeInfo(Type).Struct.fields) |field| {
+        switch (field.field_type) {
+            math.F32x4 => {
+                attributes = attributes ++ &[_]VertexAttribute{comptime getVertexAttribute(
+                    field.field_type,
+                    &offset,
+                    &location,
+                )};
+            },
+            math.Mat => {
+                // a mat4x4 is sent using 4 vec4 attribute slots
+                comptime var row_index = 0;
+                inline while (row_index < 4) : (row_index += 1) {
+                    attributes = attributes ++ &[_]VertexAttribute{comptime getVertexAttribute(
+                        math.F32x4,
+                        &offset,
+                        &location,
+                    )};
+                }
+            },
+            else => @compileError("Invalid vertex attribute type " ++ @typeName(field.field_type) ++ "!"),
+        }
+    }
+
+    return VertexBufferLayout{
+        .array_stride = offset,
+        .step_mode = step_mode,
+        .attributes = attributes,
+    };
+}
+
+pub fn getVertexAttribute(
+    comptime Type: type,
+    comptime offset: *usize,
+    comptime location: *u32,
+) VertexAttribute {
+    const attribute = VertexAttribute{
+        .format = switch (Type) {
+            math.F32x4 => .float32x4,
+            else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
+        },
+        .offset = offset.*,
+        .shader_location = location.*,
+    };
+    // todo: alignment
+    offset.* += @sizeOf(Type);
+    location.* += 1;
+    return attribute;
+}
 
 pub const PrimitiveTopology = enum {
     point_list,
