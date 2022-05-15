@@ -39,34 +39,41 @@ pub const Context = struct {
     instance_count: usize,
 
     pub fn init(desc: ContextDesc) !Context {
-        const vertex_buffer = try desc.device.createBufferFromSlice(quad_vertices, .{ .vertex = true });
-        const index_buffer = try desc.device.createBufferFromSlice(
+        const vertex_buffer = try desc.device.initBufferWithSlice(
+            quad_vertices,
+            .{ .vertex = true },
+        );
+        const index_buffer = try desc.device.initBufferWithSlice(
             quad_indices,
             .{ .index = true },
         );
-        const instance_buffer = try desc.device.createBuffer(.{
+        const instance_buffer = try desc.device.initBuffer(.{
             .size = @sizeOf(Instance) * max_instances,
             .usage = .{ .vertex = true, .copy_dst = true },
         });
 
         var vert_shader = try desc.device.loadShader(cc_res.src_ui_vert_shader, .{});
-        defer vert_shader.destroy();
+        defer desc.device.deinitShader(&vert_shader);
 
         var frag_shader = try desc.device.loadShader(cc_res.src_ui_frag_shader, .{});
-        defer frag_shader.destroy();
+        defer desc.device.deinitShader(&frag_shader);
 
         var render_pipeline_desc = gfx.RenderPipelineDesc{};
-        render_pipeline_desc.setVertexState(.{ .module = &vert_shader, .entry_point = "vs_main", .buffers = &[_]gfx.VertexBufferLayout{
-            gfx.getVertexBufferLayout(Quad, .vertex, 0),
-            gfx.getVertexBufferLayout(Instance, .instance, 2),
-        } });
+        render_pipeline_desc.setVertexState(.{
+            .module = &vert_shader,
+            .entry_point = "vs_main",
+            .buffers = &[_]gfx.VertexBufferLayout{
+                gfx.getVertexBufferLayout(Quad, .vertex, 0),
+                gfx.getVertexBufferLayout(Instance, .instance, 2),
+            },
+        });
         render_pipeline_desc.setFragmentState(.{
             .module = &frag_shader,
             .entry_point = "fs_main",
             .targets = &[_]gfx.ColorTargetState{.{ .format = desc.format }},
         });
 
-        const render_pipeline = try desc.device.createRenderPipeline(render_pipeline_desc);
+        const render_pipeline = try desc.device.initRenderPipeline(render_pipeline_desc);
 
         return Context{
             .window = desc.window,
@@ -81,16 +88,15 @@ pub const Context = struct {
     }
 
     pub fn deinit(ctx: *Context) void {
-        ctx.render_pipeline.destroy();
-        ctx.instance_buffer.destroy();
-        ctx.index_buffer.destroy();
-        ctx.vertex_buffer.destroy();
+        ctx.device.deinitRenderPipeline(&ctx.render_pipeline);
+        ctx.device.deinitBuffer(&ctx.instance_buffer);
+        ctx.device.deinitBuffer(&ctx.index_buffer);
+        ctx.device.deinitBuffer(&ctx.vertex_buffer);
     }
 
     pub fn render(ctx: *Context, render_pass: *gfx.RenderPass) !void {
         const instance_bytes = std.mem.sliceAsBytes(ctx.instances[0..ctx.instance_count]);
-        var queue = try ctx.device.getQueue();
-        try queue.writeBuffer(&ctx.instance_buffer, 0, instance_bytes, 0);
+        try ctx.device.getQueue().writeBuffer(&ctx.instance_buffer, 0, instance_bytes, 0);
 
         try render_pass.setPipeline(&ctx.render_pipeline);
         try render_pass.setVertexBuffer(0, &ctx.vertex_buffer, 0, gfx.whole_size);

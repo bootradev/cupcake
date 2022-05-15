@@ -18,9 +18,9 @@ const _main = {
                 _app._setCanvasParent(_canvasParent);
                 const _wasmId = _main._wasms._insert({
                     _obj: _results.instance.exports,
-                    _canUpdate: false,
+                    _canLoop: false,
                 });
-                _main._wasms._get(_wasmId)._obj.init(_wasmId);
+                _results.instance.exports.init(_wasmId);
                 window.requestAnimationFrame(_main._loop);
             })
             .catch(_err => console.log(_err));
@@ -32,19 +32,20 @@ const _main = {
             i < _main._wasms._end();
             i = _main._wasms._next(i))
         {
-            if (_main._wasms._get(i)._canUpdate) {
-                _main._wasms._get(i)._obj.loop();
+            const _wasm = _main._wasms._get(i);
+            if (_wasm._canLoop) {
+                _wasm._obj.loop();
             }
         }
         window.requestAnimationFrame(_main._loop);
     },
 
     _u8Array(_wasmId, _ptr, _len) {
-        return new Uint8Array(_main._wasms._get(_wasmId)._obj.memory.buffer, _ptr, _len);
+        return new Uint8Array(_main._wasms._getObj(_wasmId).memory.buffer, _ptr, _len);
     },
 
     _u32Array(_wasmId, _ptr, _len) {
-        return new Uint32Array(_main._wasms._get(_wasmId)._obj.memory.buffer, _ptr, _len / 4);
+        return new Uint32Array(_main._wasms._getObj(_wasmId).memory.buffer, _ptr, _len / 4);
     },
 
     _getString(_wasmId, _ptr, _len) {

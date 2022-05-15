@@ -22,8 +22,6 @@ pub const Context = struct {
     device: Device,
     swapchain: Swapchain,
     swapchain_format: TextureFormat,
-    swapchain_view: TextureView,
-    queue: Queue,
     clear_color: Color,
     depth_texture: Texture,
     depth_texture_format: TextureFormat,
@@ -34,97 +32,40 @@ pub const Context = struct {
 
         ctx.window = desc.window;
         ctx.instance = try Instance.init();
-        ctx.surface = try ctx.instance.createSurface(ctx.window);
-        ctx.adapter = try ctx.instance.requestAdapter(desc.adapter_desc);
-        ctx.device = try ctx.adapter.requestDevice(desc.device_desc);
+        ctx.surface = try ctx.instance.initSurface(desc.window);
+        ctx.adapter = try ctx.instance.initAdapter(desc.adapter_desc);
+        ctx.device = try ctx.adapter.initDevice(desc.device_desc);
         ctx.swapchain_format = try ctx.surface.getPreferredFormat(ctx.adapter);
-        ctx.swapchain = try ctx.device.createSwapchain(
+        ctx.swapchain = try ctx.device.initSwapchain(
             &ctx.surface,
             .{
-                .size = .{ .width = ctx.window.getWidth(), .height = ctx.window.getHeight() },
+                .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
                 .format = ctx.swapchain_format,
             },
         );
         ctx.clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
         ctx.depth_texture_format = .depth24plus;
-        ctx.depth_texture = try ctx.device.createTexture(.{
-            .size = .{ .width = ctx.window.getWidth(), .height = ctx.window.getHeight() },
+        ctx.depth_texture = try ctx.device.initTexture(.{
+            .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
             .format = ctx.depth_texture_format,
             .usage = .{ .render_attachment = true },
         });
-        ctx.depth_texture_view = try ctx.depth_texture.createView();
+        ctx.depth_texture_view = try ctx.device.initTextureView(.{
+            .texture = &ctx.depth_texture,
+            .format = ctx.depth_texture_format,
+        });
 
         return ctx;
     }
 
     pub fn deinit(ctx: *Context) void {
-        ctx.depth_texture_view.destroy();
-        ctx.depth_texture.destroy();
-        ctx.swapchain.destroy();
-        ctx.device.destroy();
-        ctx.adapter.destroy();
-        ctx.surface.destroy();
+        ctx.device.deinitTextureView(&ctx.depth_texture_view);
+        ctx.device.deinitTexture(&ctx.depth_texture);
+        ctx.device.deinitSwapchain(&ctx.swapchain);
+        ctx.adapter.deinitDevice(&ctx.device);
+        ctx.instance.deinitAdapter(&ctx.adapter);
+        ctx.instance.deinitSurface(&ctx.surface);
         ctx.instance.deinit();
-    }
-
-    pub fn beginFrame(ctx: *Context) !void {
-        ctx.swapchain_view = try ctx.swapchain.getCurrentTextureView();
-        ctx.queue = try ctx.device.getQueue();
-    }
-
-    pub fn endFrame(ctx: *Context) !void {
-        try ctx.swapchain.present();
-        ctx.swapchain_view.destroy();
-    }
-
-    pub fn submit(ctx: *Context, buffers: []const CommandBuffer) !void {
-        try ctx.queue.submit(buffers);
-    }
-
-    pub fn loadShader(ctx: *Context, comptime r: res.Res, desc: res.LoadDesc) !Shader {
-        return try ctx.device.loadShader(r, desc);
-    }
-
-    pub fn createBuffer(ctx: *Context, desc: BufferDesc) !Buffer {
-        return try ctx.device.createBuffer(desc);
-    }
-
-    pub fn createBufferFromSlice(ctx: *Context, slice: anytype, usage: BufferUsage) !Buffer {
-        return try ctx.device.createBufferFromSlice(slice, usage);
-    }
-
-    pub fn createTexture(ctx: *Context, desc: TextureDesc) !Texture {
-        return try ctx.device.createTexture(desc);
-    }
-
-    pub fn createBindGroupLayout(ctx: *Context, desc: BindGroupLayoutDesc) !BindGroupLayout {
-        return try ctx.device.createBindGroupLayout(desc);
-    }
-
-    pub fn createBindGroup(ctx: *Context, desc: BindGroupDesc) !BindGroup {
-        return try ctx.device.createBindGroup(desc);
-    }
-
-    pub fn createPipelineLayout(ctx: *Context, desc: PipelineLayoutDesc) !PipelineLayout {
-        return try ctx.device.createPipelineLayout(desc);
-    }
-
-    pub fn createRenderPipeline(ctx: *Context, desc: RenderPipelineDesc) !RenderPipeline {
-        return try ctx.device.createRenderPipeline(desc);
-    }
-
-    pub fn createCommandEncoder(ctx: *Context) !CommandEncoder {
-        return try ctx.device.createCommandEncoder();
-    }
-
-    pub fn writeBuffer(
-        ctx: *Context,
-        buffer: *const Buffer,
-        buffer_offset: usize,
-        data: []const u8,
-        data_offset: usize,
-    ) !void {
-        return try ctx.queue.writeBuffer(buffer, buffer_offset, data, data_offset);
     }
 };
 
@@ -139,21 +80,25 @@ pub const Instance = struct {
         instance.impl.deinit();
     }
 
-    pub fn createSurface(instance: *Instance, window: *const app.Window) !Surface {
-        return Surface{ .impl = try instance.impl.createSurface(window) };
+    pub fn initSurface(instance: *Instance, window: *const app.Window) !Surface {
+        return Surface{ .impl = try instance.impl.initSurface(window) };
     }
 
-    pub fn requestAdapter(instance: *Instance, desc: AdapterDesc) !Adapter {
-        return Adapter{ .impl = try instance.impl.requestAdapter(desc) };
+    pub fn deinitSurface(instance: *Instance, surface: *Surface) void {
+        instance.impl.deinitSurface(&surface.impl);
+    }
+
+    pub fn initAdapter(instance: *Instance, desc: AdapterDesc) !Adapter {
+        return Adapter{ .impl = try instance.impl.initAdapter(desc) };
+    }
+
+    pub fn deinitAdapter(instance: *Instance, adapter: *Adapter) void {
+        instance.impl.deinitAdapter(&adapter.impl);
     }
 };
 
 pub const Surface = struct {
     impl: api.Surface,
-
-    pub fn destroy(surface: *Surface) void {
-        surface.impl.destroy();
-    }
 
     pub fn getPreferredFormat(surface: *Surface, adapter: Adapter) !TextureFormat {
         return try surface.impl.getPreferredFormat(adapter.impl);
@@ -180,12 +125,12 @@ pub const AdapterDesc = struct {
 pub const Adapter = struct {
     impl: api.Adapter,
 
-    pub fn destroy(adapter: *Adapter) void {
-        adapter.impl.destroy();
+    pub fn initDevice(adapter: *Adapter, desc: DeviceDesc) !Device {
+        return Device{ .impl = try adapter.impl.initDevice(desc) };
     }
 
-    pub fn requestDevice(adapter: *Adapter, desc: DeviceDesc) !Device {
-        return Device{ .impl = try adapter.impl.requestDevice(desc) };
+    pub fn deinitDevice(adapter: *Adapter, device: *Device) void {
+        adapter.impl.deinitDevice(&device.impl);
     }
 };
 
@@ -245,62 +190,102 @@ pub const DeviceDesc = struct {
 pub const Device = struct {
     impl: api.Device,
 
-    pub fn destroy(device: *Device) void {
-        device.impl.destroy();
+    pub fn initSwapchain(device: *Device, surface: *Surface, desc: SwapchainDesc) !Swapchain {
+        return Swapchain{ .impl = try device.impl.initSwapchain(&surface.impl, desc) };
     }
 
-    pub fn createSwapchain(device: *Device, surface: *Surface, desc: SwapchainDesc) !Swapchain {
-        return Swapchain{ .impl = try device.impl.createSwapchain(&surface.impl, desc) };
+    pub fn deinitSwapchain(device: *Device, swapchain: *Swapchain) void {
+        device.impl.deinitSwapchain(&swapchain.impl);
     }
 
-    pub fn createShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
-        return Shader{ .impl = try device.impl.createShader(shader_res) };
+    pub fn initShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
+        return Shader{ .impl = try device.impl.initShader(shader_res) };
     }
 
     pub fn loadShader(device: *Device, comptime r: res.Res, desc: res.LoadDesc) !Shader {
         const shader_res = try res.load(r, desc);
-        return try device.createShader(shader_res);
+        return try device.initShader(shader_res);
     }
 
-    pub fn createBuffer(device: *Device, desc: BufferDesc) !Buffer {
-        return Buffer{ .impl = try device.impl.createBuffer(desc) };
+    pub fn deinitShader(device: *Device, shader: *Shader) void {
+        device.impl.deinitShader(&shader.impl);
     }
 
-    pub fn createBufferFromSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
+    pub fn initBuffer(device: *Device, desc: BufferDesc) !Buffer {
+        return Buffer{ .impl = try device.impl.initBuffer(desc) };
+    }
+
+    pub fn initBufferWithSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
         const bytes = std.mem.sliceAsBytes(slice);
-        return try device.createBuffer(.{ .size = bytes.len, .usage = usage, .data = bytes });
+        return try device.initBuffer(.{ .size = bytes.len, .usage = usage, .data = bytes });
     }
 
-    pub fn createTexture(device: *Device, desc: TextureDesc) !Texture {
-        return Texture{ .impl = try device.impl.createTexture(desc) };
+    pub fn deinitBuffer(device: *Device, buffer: *Buffer) void {
+        device.impl.deinitBuffer(&buffer.impl);
     }
 
-    pub fn createSampler(device: *Device, desc: SamplerDesc) !Sampler {
-        return Sampler{ .impl = try device.impl.createSampler(desc) };
+    pub fn initTexture(device: *Device, desc: TextureDesc) !Texture {
+        return Texture{ .impl = try device.impl.initTexture(desc) };
     }
 
-    pub fn createBindGroupLayout(device: *Device, desc: BindGroupLayoutDesc) !BindGroupLayout {
-        return BindGroupLayout{ .impl = try device.impl.createBindGroupLayout(desc) };
+    pub fn deinitTexture(device: *Device, texture: *Texture) void {
+        device.impl.deinitTexture(&texture.impl);
     }
 
-    pub fn createBindGroup(device: *Device, desc: BindGroupDesc) !BindGroup {
-        return BindGroup{ .impl = try device.impl.createBindGroup(desc) };
+    pub fn initTextureView(device: *Device, desc: TextureViewDesc) !TextureView {
+        return TextureView{ .impl = try device.impl.initTextureView(desc) };
     }
 
-    pub fn createPipelineLayout(device: *Device, desc: PipelineLayoutDesc) !PipelineLayout {
-        return PipelineLayout{ .impl = try device.impl.createPipelineLayout(desc) };
+    pub fn deinitTextureView(device: *Device, texture_view: *TextureView) void {
+        device.impl.deinitTextureView(&texture_view.impl);
     }
 
-    pub fn createRenderPipeline(device: *Device, desc: RenderPipelineDesc) !RenderPipeline {
-        return RenderPipeline{ .impl = try device.impl.createRenderPipeline(desc) };
+    pub fn initSampler(device: *Device, desc: SamplerDesc) !Sampler {
+        return Sampler{ .impl = try device.impl.initSampler(desc) };
     }
 
-    pub fn createCommandEncoder(device: *Device) !CommandEncoder {
-        return CommandEncoder{ .impl = try device.impl.createCommandEncoder() };
+    pub fn deinitSampler(device: *Device, sampler: *Sampler) void {
+        device.impl.deinitSampler(&sampler.impl);
     }
 
-    pub fn getQueue(device: *Device) !Queue {
-        return Queue{ .impl = try device.impl.getQueue() };
+    pub fn initBindGroupLayout(device: *Device, desc: BindGroupLayoutDesc) !BindGroupLayout {
+        return BindGroupLayout{ .impl = try device.impl.initBindGroupLayout(desc) };
+    }
+
+    pub fn deinitBindGroupLayout(device: *Device, bind_group_layout: *BindGroupLayout) void {
+        device.impl.deinitBindGroupLayout(&bind_group_layout.impl);
+    }
+
+    pub fn initBindGroup(device: *Device, desc: BindGroupDesc) !BindGroup {
+        return BindGroup{ .impl = try device.impl.initBindGroup(desc) };
+    }
+
+    pub fn deinitBindGroup(device: *Device, bind_group: *BindGroup) void {
+        device.impl.deinitBindGroup(&bind_group.impl);
+    }
+
+    pub fn initPipelineLayout(device: *Device, desc: PipelineLayoutDesc) !PipelineLayout {
+        return PipelineLayout{ .impl = try device.impl.initPipelineLayout(desc) };
+    }
+
+    pub fn deinitPipelineLayout(device: *Device, pipeline_layout: *PipelineLayout) void {
+        device.impl.deinitPipelineLayout(&pipeline_layout.impl);
+    }
+
+    pub fn initRenderPipeline(device: *Device, desc: RenderPipelineDesc) !RenderPipeline {
+        return RenderPipeline{ .impl = try device.impl.initRenderPipeline(desc) };
+    }
+
+    pub fn deinitRenderPipeline(device: *Device, render_pipeline: *RenderPipeline) void {
+        device.impl.deinitRenderPipeline(&render_pipeline.impl);
+    }
+
+    pub fn initCommandEncoder(device: *Device) !CommandEncoder {
+        return CommandEncoder{ .impl = try device.impl.initCommandEncoder() };
+    }
+
+    pub fn getQueue(device: *Device) Queue {
+        return Queue{ .impl = device.impl.getQueue() };
     }
 };
 
@@ -317,10 +302,6 @@ pub const SwapchainDesc = struct {
 
 pub const Swapchain = struct {
     impl: api.Swapchain,
-
-    pub fn destroy(swapchain: *Swapchain) void {
-        swapchain.impl.destroy();
-    }
 
     pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
         return TextureView{ .impl = try swapchain.impl.getCurrentTextureView() };
@@ -339,10 +320,6 @@ pub const ShaderStage = packed struct {
 
 pub const Shader = struct {
     impl: api.Shader,
-
-    pub fn destroy(shader: *Shader) void {
-        shader.impl.destroy();
-    }
 };
 
 pub const BufferUsage = packed struct {
@@ -368,10 +345,6 @@ pub const BufferDesc = struct {
 
 pub const Buffer = struct {
     impl: api.Buffer,
-
-    pub fn destroy(buffer: *Buffer) void {
-        buffer.impl.destroy();
-    }
 };
 
 pub const TextureFormat = enum {
@@ -500,22 +473,27 @@ pub const TextureDesc = struct {
 
 pub const Texture = struct {
     impl: api.Texture,
+};
 
-    pub fn createView(texture: *Texture) !TextureView {
-        return TextureView{ .impl = try texture.impl.createView() };
-    }
+pub const TextureAspect = enum {
+    all,
+    stencil_only,
+    depth_only,
+};
 
-    pub fn destroy(texture: *Texture) void {
-        texture.impl.destroy();
-    }
+pub const TextureViewDesc = struct {
+    texture: *Texture,
+    format: TextureFormat,
+    dimension: TextureViewDimension = .@"2d",
+    aspect: TextureAspect = .all,
+    base_mip_level: u32 = 0,
+    mip_level_count: u32 = 1,
+    base_array_layer: u32 = 0,
+    array_layer_count: u32 = 1,
 };
 
 pub const TextureView = struct {
     impl: api.TextureView,
-
-    pub fn destroy(texture_view: *TextureView) void {
-        texture_view.impl.destroy();
-    }
 };
 
 pub const AddressMode = enum {
@@ -544,10 +522,6 @@ pub const SamplerDesc = struct {
 
 pub const Sampler = struct {
     impl: api.Sampler,
-
-    pub fn destroy(sampler: *Sampler) void {
-        sampler.impl.destroy();
-    }
 };
 
 pub const BufferBindingType = enum {
@@ -611,10 +585,6 @@ pub const BindGroupLayoutDesc = struct {
 
 pub const BindGroupLayout = struct {
     impl: api.BindGroupLayout,
-
-    pub fn destroy(bind_group_layout: *BindGroupLayout) void {
-        bind_group_layout.impl.destroy();
-    }
 };
 
 pub const BufferBinding = struct {
@@ -641,10 +611,6 @@ pub const BindGroupDesc = struct {
 
 pub const BindGroup = struct {
     impl: api.BindGroup,
-
-    pub fn destroy(bind_group: *BindGroup) void {
-        bind_group.impl.destroy();
-    }
 };
 
 pub const PipelineLayoutDesc = struct {
@@ -653,10 +619,6 @@ pub const PipelineLayoutDesc = struct {
 
 pub const PipelineLayout = struct {
     impl: api.PipelineLayout,
-
-    pub fn destroy(pipeline_layout: *PipelineLayout) void {
-        pipeline_layout.impl.destroy();
-    }
 };
 
 pub const VertexFormat = enum {
@@ -947,10 +909,6 @@ pub const RenderPipelineDesc = struct {
 
 pub const RenderPipeline = struct {
     impl: api.RenderPipeline,
-
-    pub fn destroy(render_pipeline: *RenderPipeline) void {
-        render_pipeline.impl.destroy();
-    }
 };
 
 pub const CommandEncoder = struct {

@@ -28,6 +28,10 @@ pub const Window = struct {
     pub fn getHeight(window: Window) u32 {
         return window.impl.getHeight();
     }
+
+    pub fn getAspectRatio(window: Window) f32 {
+        return @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());
+    }
 };
 
 pub const Timer = struct {

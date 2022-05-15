@@ -22,12 +22,12 @@ pub fn init() !void {
 pub fn loop() !void {
     try ex.uctx.debugText("Hello, world!", .{});
 
-    try ex.gctx.beginFrame();
-    var command_encoder = try ex.gctx.createCommandEncoder();
+    const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
+    var command_encoder = try ex.gctx.device.initCommandEncoder();
 
     var render_pass_desc = cc.gfx.RenderPassDesc{};
     render_pass_desc.setColorAttachments(&[_]cc.gfx.ColorAttachment{.{
-        .view = &ex.gctx.swapchain_view,
+        .view = &swapchain_view,
         .load_op = .clear,
         .clear_value = ex.gctx.clear_color,
         .store_op = .store,
@@ -36,8 +36,8 @@ pub fn loop() !void {
     try ex.uctx.render(&render_pass);
     try render_pass.end();
 
-    try ex.gctx.submit(&.{try command_encoder.finish()});
-    try ex.gctx.endFrame();
+    try ex.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
+    try ex.gctx.swapchain.present();
 }
 
 pub fn deinit() !void {

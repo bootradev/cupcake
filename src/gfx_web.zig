@@ -35,14 +35,8 @@ const js = struct {
     const invalid_id: ObjectId = 0;
     const default_desc_id: DescId = 0;
 
-    const BindType = enum(u32) {
-        buffer,
-        sampler,
-        texture_view,
-    };
-
-    extern fn createDesc() DescId;
-    extern fn destroyDesc(desc_id: DescId) void;
+    extern fn initDesc() DescId;
+    extern fn deinitDesc(desc_id: DescId) void;
     extern fn setDescField(
         wasm_id: main.WasmId,
         desc_id: DescId,
@@ -65,19 +59,10 @@ const js = struct {
     extern fn endDescChild(desc_id: DescId) void;
 
     extern fn createContext(canvas_id: ObjectId) ContextId;
-    extern fn destroyContext(contex_id: ContextId) void;
+    extern fn destroyContext(context_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
-    extern fn configure(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        context_id: ContextId,
-        desc_id: DescId,
-    ) void;
-    extern fn getPreferredFormat(
-        wasm_id: main.WasmId,
-        context_id: ContextId,
-        adapter_id: AdapterId,
-    ) usize;
+    extern fn configure(device_id: DeviceId, context_id: ContextId, desc_id: DescId) void;
+    extern fn getPreferredFormat(context_id: ContextId, adapter_id: AdapterId) usize;
 
     extern fn requestAdapter(wasm_id: main.WasmId, desc_id: DescId) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
@@ -94,44 +79,38 @@ const js = struct {
     extern fn destroyShader(shader_id: ShaderId) void;
     extern fn checkShaderCompile(wasm_id: main.WasmId, shader_id: ShaderId) void;
 
-    extern fn createBindGroupLayout(
+    extern fn createBuffer(
         wasm_id: main.WasmId,
         device_id: DeviceId,
         desc_id: DescId,
-    ) BindGroupLayoutId;
+        init_data_ptr: [*]const u8,
+        init_data_len: usize,
+    ) BufferId;
+    extern fn destroyBuffer(buffer_id: BufferId) void;
+
+    extern fn createTexture(device_id: DeviceId, desc_id: DescId) TextureId;
+    extern fn destroyTexture(texture_id: TextureId) void;
+    extern fn createTextureView(desc_id: DescId) TextureViewId;
+    extern fn destroyTextureView(texture_view_id: TextureViewId) void;
+
+    extern fn createSampler(device_id: DeviceId, desc_id: DescId) SamplerId;
+    extern fn destroySampler(sampler_id: SamplerId) void;
+
+    extern fn createBindGroupLayout(device_id: DeviceId, desc_id: DescId) BindGroupLayoutId;
     extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
-    extern fn createBindGroup(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-    ) BindGroupId;
+    extern fn createBindGroup(device_id: DeviceId, desc_id: DescId) BindGroupId;
     extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
 
-    extern fn createPipelineLayout(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-    ) PipelineLayoutId;
+    extern fn createPipelineLayout(device_id: DeviceId, desc_id: DescId) PipelineLayoutId;
     extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
-    extern fn createRenderPipeline(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-    ) RenderPipelineId;
+    extern fn createRenderPipeline(device_id: DeviceId, desc_id: DescId) RenderPipelineId;
     extern fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
 
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
     extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
 
-    extern fn beginRenderPass(
-        wasm_id: main.WasmId,
-        command_encoder_id: CommandEncoderId,
-        desc_id: DescId,
-    ) RenderPassId;
-    extern fn setPipeline(
-        render_pass_id: RenderPassId,
-        render_pipeline_id: RenderPipelineId,
-    ) void;
+    extern fn beginRenderPass(command_encoder_id: CommandEncoderId, desc_id: DescId) RenderPassId;
+    extern fn setPipeline(render_pass_id: RenderPassId, render_pipeline_id: RenderPipelineId) void;
     extern fn setBindGroup(
         wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
@@ -173,11 +152,7 @@ const js = struct {
     ) void;
     extern fn endRenderPass(render_pass_id: RenderPassId) void;
 
-    extern fn queueSubmit(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        command_buffer_id: CommandBufferId,
-    ) void;
+    extern fn queueSubmit(device_id: DeviceId, command_buffer_id: CommandBufferId) void;
     extern fn queueWriteBuffer(
         wasm_id: main.WasmId,
         device_id: DeviceId,
@@ -198,31 +173,6 @@ const js = struct {
         size_height: GPUIntegerCoordinate,
         size_depth_or_array_layers: GPUIntegerCoordinate,
     ) void;
-
-    extern fn createBuffer(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-        init_data_ptr: [*]const u8,
-        init_data_len: usize,
-    ) BufferId;
-    extern fn destroyBuffer(buffer_id: BufferId) void;
-
-    extern fn createTexture(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-    ) TextureId;
-    extern fn destroyTexture(texture_id: TextureId) void;
-    extern fn createTextureView(texture_id: TextureId) TextureViewId;
-    extern fn destroyTextureView(texture_view_id: TextureViewId) void;
-
-    extern fn createSampler(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        desc_id: DescId,
-    ) SamplerId;
-    extern fn destroySampler(sampler_id: SamplerId) void;
 };
 
 fn getEnumName(value: anytype) []const u8 {
@@ -364,22 +314,28 @@ pub const Instance = struct {
 
     pub fn deinit(_: *Instance) void {}
 
-    pub fn createSurface(_: *Instance, window: *const app.Window) !Surface {
+    pub fn initSurface(_: *Instance, window: *const app.Window) !Surface {
         return Surface{
             .canvas_id = window.impl.id,
             .context_id = js.createContext(window.impl.id),
         };
     }
 
-    var request_adapter_frame: anyframe = undefined;
-    var request_adapter_id: anyerror!js.AdapterId = undefined;
+    pub fn deinitSurface(_: *Instance, _: *Surface) void {}
 
-    pub fn requestAdapter(_: *Instance, desc: gfx.AdapterDesc) !Adapter {
+    pub fn initAdapter(_: *Instance, desc: gfx.AdapterDesc) !Adapter {
         return try await async requestAdapterAsync(desc);
     }
 
+    pub fn deinitAdapter(_: *Instance, adapter: *Adapter) void {
+        js.destroyAdapter(adapter.id);
+    }
+
+    var request_adapter_frame: anyframe = undefined;
+    var request_adapter_id: anyerror!js.AdapterId = undefined;
+
     fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
-        defer js.destroyDesc(desc.impl.id);
+        defer js.deinitDesc(desc.impl.id);
         js.requestAdapter(main.wasm_id, desc.impl.id);
         suspend {
             request_adapter_frame = @frame();
@@ -400,10 +356,8 @@ pub const Surface = struct {
     canvas_id: js.CanvasId,
     context_id: js.ContextId,
 
-    pub fn destroy(_: *Surface) void {}
-
     pub fn getPreferredFormat(surface: Surface, adapter: Adapter) !gfx.TextureFormat {
-        const format = js.getPreferredFormat(main.wasm_id, surface.context_id, adapter.id);
+        const format = js.getPreferredFormat(surface.context_id, adapter.id);
         return @intToEnum(gfx.TextureFormat, format);
     }
 };
@@ -413,14 +367,14 @@ pub const AdapterDesc = struct {
 
     pub fn setPowerPreference(desc: *AdapterDesc, power_preference: gfx.PowerPreference) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "powerPreference", power_preference);
     }
 
     pub fn setForceFallbackAdapter(desc: *AdapterDesc, force_fallback_adapter: bool) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "forceFallbackAdapter", force_fallback_adapter);
     }
@@ -429,19 +383,19 @@ pub const AdapterDesc = struct {
 pub const Adapter = struct {
     id: js.AdapterId,
 
-    pub fn destroy(adapter: *Adapter) void {
-        js.destroyAdapter(adapter.id);
+    pub fn initDevice(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
+        return try await async adapter.requestDeviceAsync(desc);
+    }
+
+    pub fn deinitDevice(_: *Adapter, device: *Device) void {
+        js.destroyDevice(device.id);
     }
 
     var request_device_frame: anyframe = undefined;
     var request_device_id: anyerror!js.DeviceId = undefined;
 
-    pub fn requestDevice(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
-        return try await async adapter.requestDeviceAsync(desc);
-    }
-
     fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
-        defer js.destroyDesc(desc.impl.id);
+        defer js.deinitDesc(desc.impl.id);
         js.requestDevice(main.wasm_id, adapter.id, desc.impl.id);
         suspend {
             request_device_frame = @frame();
@@ -466,14 +420,14 @@ pub const DeviceDesc = struct {
         required_features: []const gfx.FeatureName,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "requiredFeatures", required_features);
     }
 
     pub fn setRequiredLimits(desc: *DeviceDesc, required_limits: gfx.Limits) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "requiredLimits", required_limits);
     }
@@ -482,26 +436,27 @@ pub const DeviceDesc = struct {
 pub const Device = struct {
     id: js.AdapterId,
 
-    pub fn destroy(device: *Device) void {
-        js.destroyDevice(device.id);
-    }
-
-    pub fn createSwapchain(
+    pub fn initSwapchain(
         device: *Device,
         surface: *Surface,
         desc: gfx.SwapchainDesc,
     ) !Swapchain {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
         setDescFieldValue(js_desc, "compositingAlphaMode", @as([]const u8, "opaque"));
 
-        const swapchain = Swapchain{ .id = surface.context_id };
-        js.configure(main.wasm_id, device.id, swapchain.id, js_desc);
+        const swapchain = Swapchain{ .id = surface.context_id, .view_desc = js.initDesc() };
+        js.configure(device.id, swapchain.id, js_desc);
         return swapchain;
     }
 
-    pub fn createShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
+    pub fn deinitSwapchain(_: *Device, swapchain: *Swapchain) void {
+        js.deinitDesc(swapchain.view_desc);
+        js.destroyContext(swapchain.id);
+    }
+
+    pub fn initShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
         const shader = Shader{
             .id = js.createShader(
                 main.wasm_id,
@@ -513,9 +468,13 @@ pub const Device = struct {
         return shader;
     }
 
-    pub fn createBuffer(device: *Device, desc: gfx.BufferDesc) !Buffer {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
+    pub fn deinitShader(_: *Device, shader: *Shader) void {
+        js.destroyShader(shader.id);
+    }
+
+    pub fn initBuffer(device: *Device, desc: gfx.BufferDesc) !Buffer {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
 
         const data = desc.data orelse &[_]u8{};
@@ -524,78 +483,115 @@ pub const Device = struct {
         };
     }
 
-    pub fn createTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
-        setDesc(js_desc, desc);
-
-        return Texture{ .id = js.createTexture(main.wasm_id, device.id, js_desc) };
+    pub fn deinitBuffer(_: *Device, buffer: *Buffer) void {
+        js.destroyBuffer(buffer.id);
     }
 
-    pub fn createSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
+    pub fn initTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
 
-        return Sampler{ .id = js.createSampler(main.wasm_id, device.id, js_desc) };
+        return Texture{ .id = js.createTexture(device.id, js_desc) };
     }
 
-    pub fn createBindGroupLayout(
+    pub fn deinitTexture(_: *Device, texture: *Texture) void {
+        js.destroyTexture(texture.id);
+    }
+
+    pub fn initTextureView(_: *Device, desc: gfx.TextureViewDesc) !TextureView {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
+        setDesc(js_desc, desc);
+
+        return TextureView{ .id = js.createTextureView(js_desc) };
+    }
+
+    pub fn deinitTextureView(_: *Device, texture_view: *TextureView) void {
+        js.destroyTextureView(texture_view.id);
+    }
+
+    pub fn initSampler(device: *Device, desc: gfx.SamplerDesc) !Sampler {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
+        setDesc(js_desc, desc);
+
+        return Sampler{ .id = js.createSampler(device.id, js_desc) };
+    }
+
+    pub fn deinitSampler(_: *Device, sampler: *Sampler) void {
+        js.destroySampler(sampler.id);
+    }
+
+    pub fn initBindGroupLayout(
         device: *Device,
         desc: gfx.BindGroupLayoutDesc,
     ) !BindGroupLayout {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
 
         return BindGroupLayout{
-            .id = js.createBindGroupLayout(main.wasm_id, device.id, js_desc),
+            .id = js.createBindGroupLayout(device.id, js_desc),
         };
     }
 
-    pub fn createBindGroup(device: *Device, desc: gfx.BindGroupDesc) !BindGroup {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
-        setDesc(js_desc, desc);
-
-        return BindGroup{ .id = js.createBindGroup(main.wasm_id, device.id, js_desc) };
+    pub fn deinitBindGroupLayout(_: *Device, bind_group_layout: *BindGroupLayout) void {
+        js.destroyBindGroupLayout(bind_group_layout.id);
     }
 
-    pub fn createPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
-        var js_desc = js.createDesc();
-        defer js.destroyDesc(js_desc);
+    pub fn initBindGroup(device: *Device, desc: gfx.BindGroupDesc) !BindGroup {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
 
-        return PipelineLayout{ .id = js.createPipelineLayout(main.wasm_id, device.id, js_desc) };
+        return BindGroup{ .id = js.createBindGroup(device.id, js_desc) };
     }
 
-    pub fn createRenderPipeline(device: *Device, desc: gfx.RenderPipelineDesc) !RenderPipeline {
-        defer js.destroyDesc(desc.impl.id);
+    pub fn deinitBindGroup(_: *Device, bind_group: *BindGroup) void {
+        js.destroyBindGroup(bind_group.id);
+    }
+
+    pub fn initPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
+        var js_desc = js.initDesc();
+        defer js.deinitDesc(js_desc);
+        setDesc(js_desc, desc);
+
+        return PipelineLayout{ .id = js.createPipelineLayout(device.id, js_desc) };
+    }
+
+    pub fn deinitPipelineLayout(_: *Device, pipeline_layout: *PipelineLayout) void {
+        js.destroyPipelineLayout(pipeline_layout.id);
+    }
+
+    pub fn initRenderPipeline(device: *Device, desc: gfx.RenderPipelineDesc) !RenderPipeline {
+        defer js.deinitDesc(desc.impl.id);
         return RenderPipeline{
-            .id = js.createRenderPipeline(main.wasm_id, device.id, desc.impl.id),
+            .id = js.createRenderPipeline(device.id, desc.impl.id),
         };
     }
 
-    pub fn createCommandEncoder(device: *Device) !CommandEncoder {
+    pub fn deinitRenderPipeline(_: *Device, render_pipeline: *RenderPipeline) void {
+        js.destroyRenderPipeline(render_pipeline.id);
+    }
+
+    pub fn initCommandEncoder(device: *Device) !CommandEncoder {
         return CommandEncoder{ .id = js.createCommandEncoder(device.id) };
     }
 
-    pub fn getQueue(device: *Device) !Queue {
+    pub fn getQueue(device: *Device) Queue {
         return Queue{ .id = device.id };
     }
 };
 
 pub const Swapchain = struct {
     id: js.ContextId,
-
-    pub fn destroy(swapchain: *Swapchain) void {
-        js.destroyContext(swapchain.id);
-    }
+    view_desc: js.DescId,
 
     pub fn getCurrentTextureView(swapchain: *Swapchain) !TextureView {
         const tex_id = js.getContextCurrentTexture(swapchain.id);
-        const view_id = js.createTextureView(tex_id);
-        return TextureView{ .id = view_id };
+        setDescFieldValue(swapchain.view_desc, "texture", tex_id);
+        return TextureView{ .id = js.createTextureView(swapchain.view_desc) };
     }
 
     pub fn present(_: *Swapchain) !void {}
@@ -603,18 +599,10 @@ pub const Swapchain = struct {
 
 pub const Shader = struct {
     id: js.ShaderId,
-
-    pub fn destroy(shader: *Shader) void {
-        js.destroyShader(shader.id);
-    }
 };
 
 pub const Buffer = struct {
     id: js.BufferId,
-
-    pub fn destroy(buffer: *Buffer) void {
-        js.destroyBuffer(buffer.id);
-    }
 };
 
 pub const Texture = struct {
@@ -631,10 +619,6 @@ pub const Texture = struct {
 
 pub const TextureView = struct {
     id: js.TextureViewId,
-
-    pub fn destroy(texture_view: *TextureView) void {
-        js.destroyTextureView(texture_view.id);
-    }
 };
 
 pub const Sampler = struct {
@@ -677,14 +661,14 @@ pub const RenderPipelineDesc = struct {
         pipeline_layout: *const gfx.PipelineLayout,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "layout", pipeline_layout);
     }
 
     pub fn setVertexState(desc: *RenderPipelineDesc, vertex_state: gfx.VertexState) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "vertex", vertex_state);
     }
@@ -694,7 +678,7 @@ pub const RenderPipelineDesc = struct {
         primitive_state: gfx.PrimitiveState,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "primitive", primitive_state);
     }
@@ -704,7 +688,7 @@ pub const RenderPipelineDesc = struct {
         depth_stencil_state: gfx.DepthStencilState,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "depthStencil", depth_stencil_state);
     }
@@ -714,14 +698,14 @@ pub const RenderPipelineDesc = struct {
         multisample_state: gfx.MultisampleState,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "multisample", multisample_state);
     }
 
     pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: gfx.FragmentState) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "fragment", fragment_state);
     }
@@ -739,8 +723,8 @@ pub const CommandEncoder = struct {
     id: js.CommandEncoderId,
 
     pub fn beginRenderPass(encoder: *CommandEncoder, desc: gfx.RenderPassDesc) !RenderPass {
-        defer js.destroyDesc(desc.impl.id);
-        return RenderPass{ .id = js.beginRenderPass(main.wasm_id, encoder.id, desc.impl.id) };
+        defer js.deinitDesc(desc.impl.id);
+        return RenderPass{ .id = js.beginRenderPass(encoder.id, desc.impl.id) };
     }
 
     pub fn finish(encoder: *CommandEncoder) !CommandBuffer {
@@ -760,7 +744,7 @@ pub const RenderPassDesc = struct {
         color_attachments: []const gfx.ColorAttachment,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "colorAttachments", color_attachments);
     }
@@ -770,7 +754,7 @@ pub const RenderPassDesc = struct {
         depth_stencil_attachment: gfx.DepthStencilAttachment,
     ) void {
         if (desc.id == js.default_desc_id) {
-            desc.id = js.createDesc();
+            desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "depthStencilAttachment", depth_stencil_attachment);
     }
@@ -889,7 +873,7 @@ pub const Queue = struct {
 
     pub fn submit(queue: *Queue, command_buffers: []const gfx.CommandBuffer) !void {
         for (command_buffers) |command_buffer| {
-            js.queueSubmit(main.wasm_id, queue.id, command_buffer.impl.id);
+            js.queueSubmit(queue.id, command_buffer.impl.id);
         }
     }
 };

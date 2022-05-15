@@ -26,6 +26,11 @@ class _Objs {
         return this._objs[_objId];
     }
 
+    // useful for when an object has metadata and an underlying _obj field
+    _getObj(_objId) {
+        return this._get(_objId)._obj;
+    }
+
     _set(_obj, _objId) {
         this._objs[_objId] = _obj;
     }

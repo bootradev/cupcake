@@ -11,7 +11,7 @@ const _app = {
             {
                 const _canvas = _app._canvases._get(i);
                 if (_canvas._obj === _entry.target) {
-                    _main._wasms._get(_canvas._wasmId)._canUpdate = _entry.isIntersecting;
+                    _main._wasms._get(_canvas._wasmId)._canLoop = _entry.isIntersecting;
                 }
             }
         });
