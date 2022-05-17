@@ -43,15 +43,15 @@ pub const entry = struct {
     }
 
     pub export fn loopApp() void {
-        loop_frame = async loopAppAsync();
+        if (async_complete) {
+            loop_frame = async loopAppAsync();
+        }
     }
 
     fn loopAppAsync() void {
-        if (async_complete) {
-            async_complete = false;
-            main.loop() catch |err| handleError(err);
-            async_complete = true;
-        }
+        async_complete = false;
+        main.loop() catch |err| handleError(err);
+        async_complete = true;
     }
 
     pub export fn deinitApp() void {
