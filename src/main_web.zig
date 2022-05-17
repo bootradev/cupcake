@@ -1,5 +1,4 @@
-const app = @import("app");
-const cc = @import("cupcake");
+const main = @import("main.zig");
 const std = @import("std");
 
 const js = struct {
@@ -21,7 +20,7 @@ pub fn log(
     js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
 }
 
-pub const main = struct {
+pub const entry = struct {
     pub const WasmId = u32;
     pub var wasm_id: WasmId = undefined;
 
@@ -29,38 +28,38 @@ pub const main = struct {
 
     // store the async calls in these variables in order to prevent the stack from
     // reclaiming the frame memory once the export fn completes
-    var init_frame: @Frame(appInit) = undefined;
-    var loop_frame: @Frame(appLoop) = undefined;
-    var deinit_frame: @Frame(appDeinit) = undefined;
+    var init_frame: @Frame(initAppAsync) = undefined;
+    var loop_frame: @Frame(loopAppAsync) = undefined;
+    var deinit_frame: @Frame(deinitAppAsync) = undefined;
 
-    pub export fn init(id: WasmId) void {
+    pub export fn initApp(id: WasmId) void {
         wasm_id = id;
-        init_frame = async appInit();
+        init_frame = async initAppAsync();
     }
 
-    fn appInit() void {
-        app.init() catch |err| handleError(err);
+    fn initAppAsync() void {
+        main.init() catch |err| handleError(err);
         async_complete = true;
     }
 
-    pub export fn loop() void {
-        loop_frame = async appLoop();
+    pub export fn loopApp() void {
+        loop_frame = async loopAppAsync();
     }
 
-    fn appLoop() void {
+    fn loopAppAsync() void {
         if (async_complete) {
             async_complete = false;
-            app.loop() catch |err| handleError(err);
+            main.loop() catch |err| handleError(err);
             async_complete = true;
         }
     }
 
-    pub export fn deinit() void {
-        deinit_frame = async appDeinit();
+    pub export fn deinitApp() void {
+        deinit_frame = async deinitAppAsync();
     }
 
-    fn appDeinit() void {
-        app.deinit() catch |err| handleError(err);
+    fn deinitAppAsync() void {
+        main.deinit() catch |err| handleError(err);
     }
 
     fn handleError(err: anyerror) noreturn {

@@ -67,15 +67,15 @@ pub const Manifest = struct {
 
     fn init(builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
         var manifest: Manifest = undefined;
-        try manifest.setOptionFields(builder);
-        try manifest.setNonOptionFields(builder, desc);
+        try setOptionFields(&manifest, builder);
+        try setNonOptionFields(&manifest, builder, desc);
         return manifest;
     }
 
-    fn initDupe(manifest: Manifest, builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
+    fn dupe(manifest: Manifest, builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
         var dupe_manifest: Manifest = undefined;
-        try dupe_manifest.dupeOptionFields(manifest, builder);
-        try dupe_manifest.setNonOptionFields(builder, desc);
+        try dupeOptionFields(&dupe_manifest, manifest, builder);
+        try setNonOptionFields(&dupe_manifest, builder, desc);
         return dupe_manifest;
     }
 
@@ -226,7 +226,7 @@ pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
             .{ .path = "src/ui_frag.wgsl", .embed = true },
         },
     };
-    const cc_manifest = try manifest.initDupe(builder, cc_manifest_desc);
+    const cc_manifest = try manifest.dupe(builder, cc_manifest_desc);
 
     try buildExt(builder, manifest);
     try buildRes(builder, manifest, cc_manifest);
@@ -635,9 +635,8 @@ const HeaderOnlyStep = struct {
             .manifest = manifest,
             .step = std.build.Step.init(.custom, "header only libs", builder.allocator, make),
             .libs = libs,
-            .generated_file = undefined,
+            .generated_file = .{ .step = &header_only_step.step },
         };
-        header_only_step.generated_file = .{ .step = &header_only_step.step };
         return header_only_step;
     }
 

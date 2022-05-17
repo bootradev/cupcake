@@ -7,17 +7,15 @@ const Example = struct {
     render_pipeline: cc.gfx.RenderPipeline,
 };
 
-var ex: Example = undefined;
+pub fn init() !Example {
+    var window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
+    var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
-pub fn init() !void {
-    ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
-    ex.gctx = try cc.gfx.Context.init(.{ .window = &ex.window });
+    var vert_shader = try gctx.device.loadShader(res.triangle_vert_shader, .{});
+    defer gctx.device.deinitShader(&vert_shader);
 
-    var vert_shader = try ex.gctx.device.loadShader(res.triangle_vert_shader, .{});
-    defer ex.gctx.device.deinitShader(&vert_shader);
-
-    var frag_shader = try ex.gctx.device.loadShader(res.triangle_frag_shader, .{});
-    defer ex.gctx.device.deinitShader(&frag_shader);
+    var frag_shader = try gctx.device.loadShader(res.triangle_frag_shader, .{});
+    defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};
     render_pipeline_desc.setVertexState(.{
@@ -28,12 +26,18 @@ pub fn init() !void {
         .module = &frag_shader,
         .entry_point = "fs_main",
         // todo: zig #7607
-        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = ex.gctx.swapchain_format }},
+        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
     });
-    ex.render_pipeline = try ex.gctx.device.initRenderPipeline(render_pipeline_desc);
+    const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
+
+    return Example{
+        .window = window,
+        .gctx = gctx,
+        .render_pipeline = render_pipeline,
+    };
 }
 
-pub fn loop() !void {
+pub fn loop(ex: *Example) !void {
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try ex.gctx.device.initCommandEncoder();
 
@@ -55,7 +59,7 @@ pub fn loop() !void {
     try ex.gctx.swapchain.present();
 }
 
-pub fn deinit() !void {
+pub fn deinit(ex: *Example) !void {
     ex.gctx.device.deinitRenderPipeline(&ex.render_pipeline);
     ex.gctx.deinit();
     ex.window.deinit();

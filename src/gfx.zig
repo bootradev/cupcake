@@ -28,34 +28,40 @@ pub const Context = struct {
     depth_texture_view: TextureView,
 
     pub fn init(desc: ContextDesc) !Context {
-        var ctx: Context = undefined;
-
-        ctx.window = desc.window;
-        ctx.instance = try Instance.init();
-        ctx.surface = try ctx.instance.initSurface(desc.window);
-        ctx.adapter = try ctx.instance.initAdapter(desc.adapter_desc);
-        ctx.device = try ctx.adapter.initDevice(desc.device_desc);
-        ctx.swapchain_format = try ctx.surface.getPreferredFormat(ctx.adapter);
-        ctx.swapchain = try ctx.device.initSwapchain(
-            &ctx.surface,
-            .{
-                .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
-                .format = ctx.swapchain_format,
-            },
-        );
-        ctx.clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
-        ctx.depth_texture_format = .depth24plus;
-        ctx.depth_texture = try ctx.device.initTexture(.{
+        var instance = try Instance.init();
+        var surface = try instance.initSurface(desc.window);
+        var adapter = try instance.initAdapter(desc.adapter_desc);
+        var device = try adapter.initDevice(desc.device_desc);
+        const swapchain_format = try surface.getPreferredFormat(adapter);
+        const swapchain = try device.initSwapchain(&surface, .{
             .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
-            .format = ctx.depth_texture_format,
+            .format = swapchain_format,
+        });
+        const clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
+        const depth_texture_format = .depth24plus;
+        var depth_texture = try device.initTexture(.{
+            .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
+            .format = depth_texture_format,
             .usage = .{ .render_attachment = true },
         });
-        ctx.depth_texture_view = try ctx.device.initTextureView(.{
-            .texture = &ctx.depth_texture,
-            .format = ctx.depth_texture_format,
+        const depth_texture_view = try device.initTextureView(.{
+            .texture = &depth_texture,
+            .format = depth_texture_format,
         });
 
-        return ctx;
+        return Context{
+            .window = desc.window,
+            .instance = instance,
+            .surface = surface,
+            .adapter = adapter,
+            .device = device,
+            .swapchain = swapchain,
+            .swapchain_format = swapchain_format,
+            .clear_color = clear_color,
+            .depth_texture = depth_texture,
+            .depth_texture_format = depth_texture_format,
+            .depth_texture_view = depth_texture_view,
+        };
     }
 
     pub fn deinit(ctx: *Context) void {

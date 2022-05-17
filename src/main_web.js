@@ -20,7 +20,7 @@ const _main = {
                     _obj: _results.instance.exports,
                     _canLoop: false,
                 });
-                _results.instance.exports.init(_wasmId);
+                _results.instance.exports.initApp(_wasmId);
                 window.requestAnimationFrame(_main._loop);
             })
             .catch(_err => console.log(_err));
@@ -34,7 +34,7 @@ const _main = {
         {
             const _wasm = _main._wasms._get(i);
             if (_wasm._canLoop) {
-                _wasm._obj.loop();
+                _wasm._obj.loopApp();
             }
         }
         window.requestAnimationFrame(_main._loop);

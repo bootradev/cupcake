@@ -7,19 +7,23 @@ const Example = struct {
     uctx: cc.ui.Context,
 };
 
-var ex: Example = undefined;
-
-pub fn init() !void {
-    ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
-    ex.gctx = try cc.gfx.Context.init(.{ .window = &ex.window });
-    ex.uctx = try cc.ui.Context.init(.{
-        .window = &ex.window,
-        .device = &ex.gctx.device,
-        .format = ex.gctx.swapchain_format,
+pub fn init() !Example {
+    var window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
+    var gctx = try cc.gfx.Context.init(.{ .window = &window });
+    const uctx = try cc.ui.Context.init(.{
+        .window = &window,
+        .device = &gctx.device,
+        .format = gctx.swapchain_format,
     });
+
+    return Example{
+        .window = window,
+        .gctx = gctx,
+        .uctx = uctx,
+    };
 }
 
-pub fn loop() !void {
+pub fn loop(ex: *Example) !void {
     try ex.uctx.debugText("Hello, world!", .{});
 
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
@@ -40,7 +44,7 @@ pub fn loop() !void {
     try ex.gctx.swapchain.present();
 }
 
-pub fn deinit() !void {
+pub fn deinit(ex: *Example) !void {
     ex.uctx.deinit();
     ex.gctx.deinit();
     ex.window.deinit();

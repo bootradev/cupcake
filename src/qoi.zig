@@ -18,6 +18,11 @@ pub const Image = struct {
     colorspace: Colorspace = .srgb,
 };
 
+const Result = struct {
+    bytes: []u8,
+    len: usize,
+};
+
 const Color = packed struct {
     r: u8,
     g: u8,
@@ -55,7 +60,7 @@ const mask_luma_b: u8 = 0b00001111;
 const mask_run: u8 = 0b00111111;
 const max_bytes: usize = 4000000000;
 
-pub fn encode(image: Image, out_encode_len: *usize, allocator: std.mem.Allocator) ![]u8 {
+pub fn encode(image: Image, allocator: std.mem.Allocator) !Result {
     const max_size = image.width *
         image.height *
         (@enumToInt(image.format) + 1) +
@@ -172,8 +177,10 @@ pub fn encode(image: Image, out_encode_len: *usize, allocator: std.mem.Allocator
     // encode end marker
     try writeBytes(bytes, &bytes_index, &end_marker);
 
-    out_encode_len.* = bytes_index;
-    return bytes;
+    return Result{
+        .bytes = bytes,
+        .len = bytes_index,
+    };
 }
 
 fn writeBytes(bytes: []u8, bytes_index: *usize, data: []const u8) !void {

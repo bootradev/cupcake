@@ -23,9 +23,8 @@ pub const TextureRes = struct {
             .data = value.data,
         };
 
-        var qoi_encode_len: usize = undefined;
-        const qoi_bytes = try qoi.encode(qoi_image, &qoi_encode_len, allocator);
-        return allocator.resize(qoi_bytes, qoi_encode_len) orelse error.ResizeFailed;
+        const result = try qoi.encode(qoi_image, allocator);
+        return allocator.resize(result.bytes, result.len) orelse error.ResizeFailed;
     }
 
     pub fn deserialize(desc: serde.DeserializeDesc, bytes: []const u8) !TextureRes {

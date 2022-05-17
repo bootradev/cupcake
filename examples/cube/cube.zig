@@ -44,46 +44,45 @@ const Example = struct {
     game_clock: cc.app.Timer,
 };
 
-var ex: Example = undefined;
+pub fn init() !Example {
+    var window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
+    var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
-pub fn init() !void {
-    ex.window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
-    ex.gctx = try cc.gfx.Context.init(.{ .window = &ex.window });
-
-    ex.vertex_buffer = try ex.gctx.device.initBufferWithSlice(vertices, .{ .vertex = true });
-    ex.index_buffer = try ex.gctx.device.initBufferWithSlice(indices, .{ .index = true });
-    ex.uniform_buffer = try ex.gctx.device.initBuffer(.{
+    const vertex_buffer = try gctx.device.initBufferWithSlice(vertices, .{ .vertex = true });
+    const index_buffer = try gctx.device.initBufferWithSlice(indices, .{ .index = true });
+    const uniform_buffer = try gctx.device.initBuffer(.{
         .size = @sizeOf(Uniforms),
         .usage = .{ .uniform = true, .copy_dst = true },
     });
 
-    var bind_group_layout = try ex.gctx.device.initBindGroupLayout(.{
+    var bind_group_layout = try gctx.device.initBindGroupLayout(.{
         .entries = &.{.{
             .binding = 0,
             .visibility = .{ .vertex = true },
             .buffer = .{},
         }},
     });
-    defer ex.gctx.device.deinitBindGroupLayout(&bind_group_layout);
+    defer gctx.device.deinitBindGroupLayout(&bind_group_layout);
 
-    ex.bind_group = try ex.gctx.device.initBindGroup(.{
+    const bind_group = try gctx.device.initBindGroup(.{
         .layout = &bind_group_layout,
-        .entries = &.{.{
+        // todo: zig #7607
+        .entries = &[_]cc.gfx.BindGroupEntry{.{
             .binding = 0,
-            .resource = .{ .buffer_binding = .{ .buffer = &ex.uniform_buffer } },
+            .resource = .{ .buffer_binding = .{ .buffer = &uniform_buffer } },
         }},
     });
 
-    var pipeline_layout = try ex.gctx.device.initPipelineLayout(
+    var pipeline_layout = try gctx.device.initPipelineLayout(
         .{ .bind_group_layouts = &.{bind_group_layout} },
     );
-    defer ex.gctx.device.deinitPipelineLayout(&pipeline_layout);
+    defer gctx.device.deinitPipelineLayout(&pipeline_layout);
 
-    var vert_shader = try ex.gctx.device.loadShader(res.cube_vert_shader, .{});
-    defer ex.gctx.device.deinitShader(&vert_shader);
+    var vert_shader = try gctx.device.loadShader(res.cube_vert_shader, .{});
+    defer gctx.device.deinitShader(&vert_shader);
 
-    var frag_shader = try ex.gctx.device.loadShader(res.cube_frag_shader, .{});
-    defer ex.gctx.device.deinitShader(&frag_shader);
+    var frag_shader = try gctx.device.loadShader(res.cube_frag_shader, .{});
+    defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};
     render_pipeline_desc.setPipelineLayout(&pipeline_layout);
@@ -97,7 +96,7 @@ pub fn init() !void {
     });
     render_pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });
     render_pipeline_desc.setDepthStencilState(.{
-        .format = ex.gctx.depth_texture_format,
+        .format = gctx.depth_texture_format,
         .depth_write_enabled = true,
         .depth_compare = .less,
     });
@@ -105,15 +104,26 @@ pub fn init() !void {
         .module = &frag_shader,
         .entry_point = "fs_main",
         // todo: zig #7607
-        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = ex.gctx.swapchain_format }},
+        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
     });
 
-    ex.render_pipeline = try ex.gctx.device.initRenderPipeline(render_pipeline_desc);
+    const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
 
-    ex.game_clock = try cc.app.Timer.start();
+    const game_clock = try cc.app.Timer.start();
+
+    return Example{
+        .window = window,
+        .gctx = gctx,
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
+        .uniform_buffer = uniform_buffer,
+        .bind_group = bind_group,
+        .render_pipeline = render_pipeline,
+        .game_clock = game_clock,
+    };
 }
 
-pub fn loop() !void {
+pub fn loop(ex: *Example) !void {
     const time = ex.game_clock.readSeconds();
     const model_matrix = cc.math.matFromAxisAngle(
         cc.math.f32x4(cc.math.sin(time), cc.math.cos(time), 0.0, 0.0),
@@ -166,7 +176,7 @@ pub fn loop() !void {
     try ex.gctx.swapchain.present();
 }
 
-pub fn deinit() !void {
+pub fn deinit(ex: *Example) !void {
     ex.gctx.device.deinitRenderPipeline(&ex.render_pipeline);
     ex.gctx.device.deinitBindGroup(&ex.bind_group);
     ex.gctx.device.deinitBuffer(&ex.uniform_buffer);
