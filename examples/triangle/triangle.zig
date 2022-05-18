@@ -2,13 +2,13 @@ const cc = @import("cupcake");
 const res = @import("res");
 
 const Example = struct {
-    window: cc.app.Window,
+    window: cc.wnd.Window,
     gctx: cc.gfx.Context,
     render_pipeline: cc.gfx.RenderPipeline,
 };
 
 pub fn init() !Example {
-    var window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
+    var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
     var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
     var vert_shader = try gctx.device.loadShader(res.triangle_vert_shader, .{});

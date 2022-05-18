@@ -1,21 +1,21 @@
 const api = switch (cfg.platform) {
     .web => @import("gfx_web.zig"),
 };
-const app = @import("app.zig");
 const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
 const math = @import("math.zig");
 const res = @import("res.zig");
 const std = @import("std");
+const wnd = @import("wnd.zig");
 
 pub const ContextDesc = struct {
-    window: *const app.Window,
+    window: *const wnd.Window,
     adapter_desc: AdapterDesc = .{},
     device_desc: DeviceDesc = .{},
 };
 
 pub const Context = struct {
-    window: *const app.Window,
+    window: *const wnd.Window,
     instance: Instance,
     surface: Surface,
     adapter: Adapter,
@@ -86,7 +86,7 @@ pub const Instance = struct {
         instance.impl.deinit();
     }
 
-    pub fn initSurface(instance: *Instance, window: *const app.Window) !Surface {
+    pub fn initSurface(instance: *Instance, window: *const wnd.Window) !Surface {
         return Surface{ .impl = try instance.impl.initSurface(window) };
     }
 

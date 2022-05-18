@@ -105,7 +105,7 @@ const _webgpu = {
 
     createContext(_canvasId) {
         return _webgpu._contexts._insert({
-            _obj: _app._canvases._getObj(_canvasId).getContext("webgpu"),
+            _obj: _wnd._canvases._getObj(_canvasId).getContext("webgpu"),
             _texId: _webgpu._textures._insert({}),
         });
     },

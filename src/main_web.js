@@ -7,15 +7,16 @@ const _main = {
         _imports.env = {
             ..._main,
             ..._res,
-            ..._app,
+            ..._time,
             ..._webgpu,
+            ..._wnd,
         };
 
         fetch(_wasmPath)
             .then(_response => _response.arrayBuffer())
             .then(_arrayBuffer => WebAssembly.instantiate(_arrayBuffer, _imports))
             .then(_results => {
-                _app._setCanvasParent(_canvasParent);
+                _wnd._setCanvasParent(_canvasParent);
                 const _wasmId = _main._wasms._insert({
                     _obj: _results.instance.exports,
                     _canLoop: false,

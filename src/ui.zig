@@ -1,8 +1,8 @@
-const app = @import("app.zig");
 const cc_res = @import("cc_res");
 const gfx = @import("gfx.zig");
 const math = @import("math.zig");
 const std = @import("std");
+const wnd = @import("wnd.zig");
 
 pub const Quad = struct {
     pos_uv: math.F32x4,
@@ -21,7 +21,7 @@ pub const quad_vertices: []const Quad = &.{
 pub const quad_indices: []const u16 = &.{ 0, 1, 2, 2, 1, 3 };
 
 pub const ContextDesc = struct {
-    window: *const app.Window,
+    window: *const wnd.Window,
     device: *gfx.Device,
     format: gfx.TextureFormat,
 };
@@ -29,7 +29,7 @@ pub const ContextDesc = struct {
 pub const Context = struct {
     const max_instances: usize = 256;
 
-    window: *const app.Window,
+    window: *const wnd.Window,
     device: *gfx.Device,
     vertex_buffer: gfx.Buffer,
     index_buffer: gfx.Buffer,

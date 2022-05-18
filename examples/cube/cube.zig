@@ -34,18 +34,18 @@ const indices: []const u16 = &.{
 };
 
 const Example = struct {
-    window: cc.app.Window,
+    window: cc.wnd.Window,
     gctx: cc.gfx.Context,
     vertex_buffer: cc.gfx.Buffer,
     index_buffer: cc.gfx.Buffer,
     uniform_buffer: cc.gfx.Buffer,
     bind_group: cc.gfx.BindGroup,
     render_pipeline: cc.gfx.RenderPipeline,
-    game_clock: cc.app.Timer,
+    game_clock: cc.time.Timer,
 };
 
 pub fn init() !Example {
-    var window = try cc.app.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
+    var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
     var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
     const vertex_buffer = try gctx.device.initBufferWithSlice(vertices, .{ .vertex = true });
@@ -109,7 +109,7 @@ pub fn init() !Example {
 
     const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
 
-    const game_clock = try cc.app.Timer.start();
+    const game_clock = try cc.time.Timer.start();
 
     return Example{
         .window = window,

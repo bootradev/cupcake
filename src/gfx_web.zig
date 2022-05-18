@@ -1,9 +1,9 @@
-const app = @import("app.zig");
 const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
 const std = @import("std");
+const wnd = @import("wnd.zig");
 
 const js = struct {
     const GPUSize32 = u32;
@@ -314,7 +314,7 @@ pub const Instance = struct {
 
     pub fn deinit(_: *Instance) void {}
 
-    pub fn initSurface(_: *Instance, window: *const app.Window) !Surface {
+    pub fn initSurface(_: *Instance, window: *const wnd.Window) !Surface {
         return Surface{
             .canvas_id = window.impl.id,
             .context_id = js.createContext(window.impl.id),
