@@ -32,7 +32,7 @@ pub const Context = struct {
         var surface = try instance.initSurface(desc.window);
         var adapter = try instance.initAdapter(desc.adapter_desc);
         var device = try adapter.initDevice(desc.device_desc);
-        const swapchain_format = try surface.getPreferredFormat(adapter);
+        const swapchain_format = try surface.getPreferredFormat();
         const swapchain = try device.initSwapchain(&surface, .{
             .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
             .format = swapchain_format,
@@ -106,8 +106,8 @@ pub const Instance = struct {
 pub const Surface = struct {
     impl: api.Surface,
 
-    pub fn getPreferredFormat(surface: *Surface, adapter: Adapter) !TextureFormat {
-        return try surface.impl.getPreferredFormat(adapter.impl);
+    pub fn getPreferredFormat(surface: *Surface) !TextureFormat {
+        return try surface.impl.getPreferredFormat();
     }
 };
 

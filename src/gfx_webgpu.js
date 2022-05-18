@@ -130,10 +130,8 @@ const _webgpu = {
         _webgpu._contexts._getObj(_contextId).configure(_desc);
     },
 
-    getPreferredFormat(_contextId, _adapterId) {
-        const _format = _webgpu._contexts._getObj(_contextId).getPreferredFormat(
-            _webgpu._adapters._get(_adapterId)
-        );
+    getPreferredFormat() {
+        const _format = navigator.gpu.getPreferredCanvasFormat();
 
         // format must be one of the supported context formats:
         if (_format === "bgra8unorm") {
@@ -331,6 +329,8 @@ const _webgpu = {
         const _desc = _webgpu._getDescObj(_descId);
         if (_desc.layout !== undefined) {
             _desc.layout = _webgpu._pipelineLayouts._get(_desc.layout);
+        } else {
+            _desc.layout = "auto";
         }
         _desc.vertex.module = _webgpu._shaders._get(_desc.vertex.module);
         if (_desc.fragment !== undefined) {

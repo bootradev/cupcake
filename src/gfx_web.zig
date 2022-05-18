@@ -62,7 +62,7 @@ const js = struct {
     extern fn destroyContext(context_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern fn configure(device_id: DeviceId, context_id: ContextId, desc_id: DescId) void;
-    extern fn getPreferredFormat(context_id: ContextId, adapter_id: AdapterId) usize;
+    extern fn getPreferredFormat() usize;
 
     extern fn requestAdapter(wasm_id: main.WasmId, desc_id: DescId) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
@@ -356,8 +356,8 @@ pub const Surface = struct {
     canvas_id: js.CanvasId,
     context_id: js.ContextId,
 
-    pub fn getPreferredFormat(surface: Surface, adapter: Adapter) !gfx.TextureFormat {
-        const format = js.getPreferredFormat(surface.context_id, adapter.id);
+    pub fn getPreferredFormat(_: Surface) !gfx.TextureFormat {
+        const format = js.getPreferredFormat();
         return @intToEnum(gfx.TextureFormat, format);
     }
 };
