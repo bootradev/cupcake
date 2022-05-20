@@ -39,14 +39,8 @@ pub const Context = struct {
     instance_count: usize,
 
     pub fn init(desc: ContextDesc) !Context {
-        const vertex_buffer = try desc.device.initBufferWithSlice(
-            quad_vertices,
-            .{ .vertex = true },
-        );
-        const index_buffer = try desc.device.initBufferWithSlice(
-            quad_indices,
-            .{ .index = true },
-        );
+        const vertex_buffer = try desc.device.initBufferSlice(quad_vertices, .{ .vertex = true });
+        const index_buffer = try desc.device.initBufferSlice(quad_indices, .{ .index = true });
         const instance_buffer = try desc.device.initBuffer(.{
             .size = @sizeOf(Instance) * max_instances,
             .usage = .{ .vertex = true, .copy_dst = true },
@@ -62,14 +56,16 @@ pub const Context = struct {
         render_pipeline_desc.setVertexState(.{
             .module = &vert_shader,
             .entry_point = "vs_main",
+            // todo: zig #7607
             .buffers = &[_]gfx.VertexBufferLayout{
-                gfx.getVertexBufferLayout(Quad, .vertex, 0),
-                gfx.getVertexBufferLayout(Instance, .instance, 2),
+                gfx.getVertexBufferLayoutStruct(Quad, .vertex, 0),
+                gfx.getVertexBufferLayoutTypes(&[_]type{math.F32x4} ** 4, .instance, 2),
             },
         });
         render_pipeline_desc.setFragmentState(.{
             .module = &frag_shader,
             .entry_point = "fs_main",
+            // todo: zig #7607
             .targets = &[_]gfx.ColorTargetState{.{ .format = desc.format }},
         });
 

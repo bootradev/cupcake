@@ -48,8 +48,8 @@ pub fn init() !Example {
     var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
     var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
-    const vertex_buffer = try gctx.device.initBufferWithSlice(vertices, .{ .vertex = true });
-    const index_buffer = try gctx.device.initBufferWithSlice(indices, .{ .index = true });
+    const vertex_buffer = try gctx.device.initBufferSlice(vertices, .{ .vertex = true });
+    const index_buffer = try gctx.device.initBufferSlice(indices, .{ .index = true });
     const uniform_buffer = try gctx.device.initBuffer(.{
         .size = @sizeOf(Uniforms),
         .usage = .{ .uniform = true, .copy_dst = true },
@@ -91,7 +91,7 @@ pub fn init() !Example {
         .entry_point = "vs_main",
         // todo: zig #7607
         .buffers = &[_]cc.gfx.VertexBufferLayout{
-            cc.gfx.getVertexBufferLayout(Vertex, .vertex, 0),
+            cc.gfx.getVertexBufferLayoutStruct(Vertex, .vertex, 0),
         },
     });
     render_pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });

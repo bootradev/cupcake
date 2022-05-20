@@ -3,7 +3,6 @@ const api = switch (cfg.platform) {
 };
 const build_res = @import("build_res.zig");
 const cfg = @import("cfg");
-const math = @import("math.zig");
 const res = @import("res.zig");
 const std = @import("std");
 const wnd = @import("wnd.zig");
@@ -221,7 +220,7 @@ pub const Device = struct {
         return Buffer{ .impl = try device.impl.initBuffer(desc) };
     }
 
-    pub fn initBufferWithSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
+    pub fn initBufferSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
         const bytes = std.mem.sliceAsBytes(slice);
         return try device.initBuffer(.{ .size = bytes.len, .usage = usage, .data = bytes });
     }
@@ -683,36 +682,38 @@ pub const VertexState = struct {
     buffers: []const VertexBufferLayout = &.{},
 };
 
-pub fn getVertexBufferLayout(
+pub fn getVertexBufferLayoutStruct(
     comptime Type: type,
+    comptime step_mode: VertexStepMode,
+    comptime base_location: u32,
+) VertexBufferLayout {
+    comptime var types: []const type = &.{};
+    inline for (@typeInfo(Type).Struct.fields) |field| {
+        types = types ++ &[_]type{field.field_type};
+    }
+    return getVertexBufferLayoutTypes(types, step_mode, base_location);
+}
+
+pub fn getVertexBufferLayoutTypes(
+    comptime types: []const type,
     comptime step_mode: VertexStepMode,
     comptime base_location: u32,
 ) VertexBufferLayout {
     comptime var attributes: []const VertexAttribute = &.{};
     comptime var offset: usize = 0;
     comptime var location: u32 = base_location;
-    inline for (@typeInfo(Type).Struct.fields) |field| {
-        switch (field.field_type) {
-            math.F32x4 => {
-                attributes = attributes ++ &[_]VertexAttribute{comptime getVertexAttribute(
-                    field.field_type,
-                    &offset,
-                    &location,
-                )};
-            },
-            math.Mat => {
-                // a mat4x4 is sent using 4 vec4 attribute slots
-                comptime var row_index = 0;
-                inline while (row_index < 4) : (row_index += 1) {
-                    attributes = attributes ++ &[_]VertexAttribute{comptime getVertexAttribute(
-                        math.F32x4,
-                        &offset,
-                        &location,
-                    )};
-                }
-            },
-            else => @compileError("Invalid vertex attribute type " ++ @typeName(field.field_type) ++ "!"),
+
+    inline for (types) |Type| {
+        attributes = attributes ++ &[_]VertexAttribute{
+            .{ .format = getVertexFormat(Type), .offset = offset, .shader_location = location },
+        };
+
+        if (offset % @sizeOf(Type) != 0) {
+            @compileError("Invalid alignment for vertex buffer layout!");
         }
+
+        offset += @sizeOf(Type);
+        location += 1;
     }
 
     return VertexBufferLayout{
@@ -722,23 +723,91 @@ pub fn getVertexBufferLayout(
     };
 }
 
-pub fn getVertexAttribute(
-    comptime Type: type,
-    comptime offset: *usize,
-    comptime location: *u32,
-) VertexAttribute {
-    const attribute = VertexAttribute{
-        .format = switch (Type) {
-            math.F32x4 => .float32x4,
-            else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
+fn getVertexFormat(comptime Type: type) VertexFormat {
+    return switch (@typeInfo(Type)) {
+        .Int, .ComptimeInt, .Float, .ComptimeFloat => getVertexFormatWithLen(Type, 1),
+        .Array => |A| getVertexFormatWithLen(A.child, A.len),
+        .Vector => |V| getVertexFormatWithLen(V.child, V.len),
+        .Struct => |S| block: {
+            if (S.fields.len == 0 or S.fields.len > 4) {
+                @compileError("Invalid number of fields for vertex attribute!");
+            }
+            const field_type = S.fields[0].field_type;
+            if (@typeInfo(field_type) != .Int and @typeInfo(field_type) != .Float) {
+                @compileError("Vertex attribute structs must be composed of ints or floats!");
+            }
+            inline for (S.fields) |field| {
+                if (field.field_type != field_type) {
+                    @compileError("Vertex attribute fields must be homogenous!");
+                }
+            }
+            break :block getVertexFormatWithLen(field_type, S.fields.len);
         },
-        .offset = offset.*,
-        .shader_location = location.*,
+        else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
     };
-    // todo: alignment
-    offset.* += @sizeOf(Type);
-    location.* += 1;
-    return attribute;
+}
+
+fn getVertexFormatWithLen(comptime Type: type, len: comptime_int) VertexFormat {
+    return switch (@typeInfo(Type)) {
+        .Int => |I| switch (I.signedness) {
+            .signed => switch (I.bits) {
+                8 => switch (len) {
+                    2 => .sint8x2,
+                    4 => .sint8x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                16 => switch (len) {
+                    2 => .sint16x2,
+                    4 => .sint16x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                32 => switch (len) {
+                    1 => .sint32,
+                    2 => .sint32x2,
+                    3 => .sint32x3,
+                    4 => .sint32x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                else => @compileError("Invalid bit size for vertex attribute!"),
+            },
+            .unsigned => switch (I.bits) {
+                8 => switch (len) {
+                    2 => .uint8x2,
+                    4 => .uint8x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                16 => switch (len) {
+                    2 => .uint16x2,
+                    4 => .uint16x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                32 => switch (len) {
+                    1 => .uint32,
+                    2 => .uint32x2,
+                    3 => .uint32x3,
+                    4 => .uint32x4,
+                    else => @compileError("Invalid len for vertex attribute!"),
+                },
+                else => @compileError("Invalid bit size for vertex attribute!"),
+            },
+        },
+        .Float => |F| switch (F.bits) {
+            16 => switch (len) {
+                2 => .float16x2,
+                4 => .float16x4,
+                else => @compileError("Invalid len for vertex attribute"),
+            },
+            32 => switch (len) {
+                1 => .float32,
+                2 => .float32x2,
+                3 => .float32x3,
+                4 => .float32x4,
+                else => @compileError("Invalid len for vertex attribute"),
+            },
+            else => @compileError("Invalid bit size for vertex attribute!"),
+        },
+        else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
+    };
 }
 
 pub const PrimitiveTopology = enum {
