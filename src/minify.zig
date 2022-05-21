@@ -1,16 +1,18 @@
 const build_app = @import("build_app.zig");
 const std = @import("std");
 
+/// minifier that removes whitespace and replaces any words starting with _
+/// with smaller allocated identifiers
 const Minify = struct {
     const Language = enum {
         js,
         wgsl,
     };
 
-    const ParseChar = enum {
-        symbol, // a non-whitespace, non-identifier character. see symbols, below
-        ident, // a non-whitespce, non-symbol character (an identifier)
-        whitespace, // a whitespace character
+    const CharType = enum {
+        whitespace, // any whitespace character
+        symbol, // any character in the symbols string, see below
+        ident, // any non-whitespace, non-symbol character
     };
 
     const symbols = "{}()[]=<>;:.,|/-+*!&?";
@@ -23,8 +25,8 @@ const Minify = struct {
     out: std.ArrayList(u8),
     start_index: usize,
     end_index: usize,
-    cur_char: ParseChar,
-    cur_write_char: ParseChar,
+    prev_char_type: CharType,
+    prev_char_type_write: CharType,
     ident_map: std.StringHashMap([]const u8),
     next_ident: [max_ident_size]u8,
     next_ident_index: [max_ident_size]usize,
@@ -44,10 +46,10 @@ const Minify = struct {
             .out = std.ArrayList(u8).init(allocator),
             .start_index = 0,
             .end_index = 0,
-            .cur_char = .whitespace,
-            .cur_write_char = .whitespace,
+            .prev_char_type = .whitespace,
+            .prev_char_type_write = .whitespace,
             .ident_map = std.StringHashMap([]const u8).init(allocator),
-            .next_ident = [_]u8{'a'} ** max_ident_size,
+            .next_ident = [_]u8{next_ident_symbols[0]} ** max_ident_size,
             .next_ident_index = [_]usize{0} ** max_ident_size,
             .next_ident_size = 1,
             .language = language,
@@ -74,39 +76,45 @@ const Minify = struct {
             {
                 try ctx.handleComment();
             } else if (std.mem.indexOfScalar(u8, symbols, char) != null) {
-                try ctx.handleChar(.symbol);
+                try ctx.handleCharType(.symbol);
             } else if (std.mem.indexOfScalar(u8, str_symbols, char) != null) {
                 try ctx.handleString();
-            } else if (std.mem.indexOfScalar(u8, &std.ascii.spaces, char) == null) {
-                try ctx.handleChar(.ident);
+            } else if (std.mem.indexOfScalar(u8, &std.ascii.spaces, char) != null) {
+                try ctx.handleCharType(.whitespace);
             } else {
-                try ctx.handleChar(.whitespace);
+                try ctx.handleCharType(.ident);
             }
         }
 
-        if (ctx.cur_char == .symbol) {
-            try ctx.appendSymbol();
-        }
+        try ctx.flush();
 
         return ctx.out.toOwnedSlice();
     }
 
-    fn handleChar(ctx: *Minify, char: ParseChar) !void {
-        if (ctx.cur_char != char) {
-            if (ctx.cur_char == .symbol) {
+    fn flush(ctx: *Minify) !void {
+        try ctx.handleCharType(.whitespace);
+    }
+
+    fn handleCharType(ctx: *Minify, char_type: CharType) !void {
+        // check for the end of a char type run
+        if (char_type != ctx.prev_char_type) {
+            if (ctx.prev_char_type == .symbol) {
                 try ctx.appendSymbol();
-            } else if (ctx.cur_char == .ident) {
+            } else if (ctx.prev_char_type == .ident) {
                 try ctx.appendIdent();
             }
 
-            if (char != .whitespace) {
+            if (char_type != .whitespace) {
                 // append a space between two different identifiers
-                if (ctx.cur_write_char == .ident and char == .ident) {
+                if (ctx.prev_char_type_write == .ident and char_type == .ident) {
                     try ctx.out.append(' ');
                 }
 
                 // chrome wgsl parser is broken, this works around the issue...
-                if (ctx.language == .wgsl and ctx.cur_write_char == .symbol and char == .ident) {
+                if (ctx.language == .wgsl and
+                    ctx.prev_char_type_write == .symbol and
+                    char_type == .ident)
+                {
                     const wgsl_skip = "{([]<>=:;,.";
                     const last_write_char = ctx.out.items[ctx.out.items.len - 1];
                     if (std.mem.indexOfScalar(u8, wgsl_skip, last_write_char) == null) {
@@ -114,20 +122,23 @@ const Minify = struct {
                     }
                 }
 
-                ctx.cur_write_char = char;
+                // keep track of the last char type written
+                ctx.prev_char_type_write = char_type;
             }
-            ctx.cur_char = char;
+            ctx.prev_char_type = char_type;
             ctx.start_index = ctx.end_index;
         }
         ctx.end_index += 1;
     }
 
     fn handleString(ctx: *Minify) !void {
-        try ctx.handleChar(.whitespace);
+        try ctx.flush();
 
-        const char = ctx.src[ctx.end_index - 1];
+        const str_marker = ctx.src[ctx.end_index - 1];
         ctx.start_index = ctx.end_index - 1;
-        while (ctx.end_index < ctx.src.len and ctx.src[ctx.end_index] != char) {
+        while (ctx.end_index < ctx.src.len and
+            (ctx.src[ctx.end_index] != str_marker or ctx.src[ctx.end_index - 1] == '\\'))
+        {
             ctx.end_index += 1;
         }
         ctx.end_index += 1;
@@ -136,13 +147,15 @@ const Minify = struct {
     }
 
     fn handleComment(ctx: *Minify) !void {
-        try ctx.handleChar(.whitespace);
+        try ctx.flush();
         const char = ctx.src[ctx.end_index];
         if (char == '/') {
+            // line comment
             while (ctx.src[ctx.end_index] != '\n') {
                 ctx.end_index += 1;
             }
         } else {
+            // block comment
             while (ctx.end_index < ctx.src.len - 1 and
                 ctx.src[ctx.end_index] != '*' and
                 ctx.src[ctx.end_index + 1] != '/')
@@ -158,14 +171,19 @@ const Minify = struct {
 
     fn appendIdent(ctx: *Minify) !void {
         const ident = ctx.src[ctx.start_index..ctx.end_index];
+        // append the identifier as-is if in debug mode or if the identifier starts with _
+        // digits also cannot be converted into a different identifier
         if (ctx.opt_level == .debug or
-            std.ascii.isDigit(ident[0]) or
-            ctx.src[ctx.start_index] != '_')
+            ctx.src[ctx.start_index] != '_' or
+            std.ascii.isDigit(ident[0]))
         {
             try ctx.out.appendSlice(ident);
         } else if (ctx.ident_map.getEntry(ident)) |entry| {
+            // check if the identifier has already been parsed.
+            // reuse the replacement identifier in that case
             try ctx.out.appendSlice(entry.value_ptr.*);
         } else {
+            // otherwise, get a new replacement identifier
             const next_ident = try ctx.nextIdent();
             try ctx.ident_map.put(ident, next_ident);
             try ctx.out.appendSlice(next_ident);
@@ -173,10 +191,18 @@ const Minify = struct {
     }
 
     fn nextIdent(ctx: *Minify) ![]const u8 {
+        // identifiers are allocated from a string of characters.
+        // they start off as single character identifiers
         const next = ctx.allocator.dupe(u8, ctx.next_ident[0..ctx.next_ident_size]);
 
         var cur_index = ctx.next_ident_size - 1;
-        if (ctx.next_ident_index[cur_index] == next_ident_symbols.len - 1) {
+        if (ctx.next_ident_index[cur_index] != next_ident_symbols.len - 1) {
+            // each time an identifier is allocated, the character in the string is set to
+            // the next one in next_ident_symbols...
+            ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
+        } else {
+            // if the size is greater than 1, try to increment
+            // the identifier in a previous string index
             ctx.setNextIdent(cur_index, 0);
             var out_of_idents = true;
             while (cur_index != 0) {
@@ -190,14 +216,13 @@ const Minify = struct {
                 }
             }
 
+            // if that didn't work, we need to increase the size of the string
             if (out_of_idents) {
                 ctx.next_ident_size += 1;
                 if (ctx.next_ident_size > max_ident_size) {
                     return error.MaxIdentsExceeded;
                 }
             }
-        } else {
-            ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
         }
 
         return next;
