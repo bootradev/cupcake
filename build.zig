@@ -1,4 +1,4 @@
-const build_app = @import("src/build_app.zig");
+const make = @import("src/make.zig");
 const std = @import("std");
 
 const Example = enum {
@@ -10,7 +10,7 @@ const Example = enum {
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .triangle;
 
-    var manifest_desc: build_app.ManifestDesc = switch (example) {
+    var manifest_desc: make.ManifestDesc = switch (example) {
         .triangle => .{
             .name = "triangle",
             .root = "examples/triangle/triangle.zig",
@@ -35,5 +35,5 @@ pub fn build(builder: *std.build.Builder) !void {
         },
     };
 
-    try build_app.build(builder, manifest_desc);
+    try make.build(builder, manifest_desc);
 }

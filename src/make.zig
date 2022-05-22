@@ -416,26 +416,26 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
 }
 
 fn buildRes(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {
-    const build_res_exe = builder.addExecutable("build_res", "src/build_res.zig");
-    build_res_exe.setBuildMode(.ReleaseSafe);
-    build_res_exe.linkLibC();
-    build_res_exe.addIncludePath(manifest.ext_dir);
-    build_res_exe.addLibraryPath(manifest.gen_lib_dir);
-    build_res_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
+    const bake_exe = builder.addExecutable("bake", "src/bake.zig");
+    bake_exe.setBuildMode(.ReleaseSafe);
+    bake_exe.linkLibC();
+    bake_exe.addIncludePath(manifest.ext_dir);
+    bake_exe.addLibraryPath(manifest.gen_lib_dir);
+    bake_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
 
     const write_cc_manifest = try WriteManifestStep.init(builder, cc_manifest);
-    var build_cc_res = build_res_exe.run();
-    build_cc_res.step.dependOn(&write_cc_manifest.step);
-    build_cc_res.addArgs(&.{ cc_manifest.out_path, "false" });
+    var bake_cc = bake_exe.run();
+    bake_cc.step.dependOn(&write_cc_manifest.step);
+    bake_cc.addArgs(&.{ cc_manifest.out_path, "false" });
 
     const write_app_manifest = try WriteManifestStep.init(builder, manifest);
-    var build_app_res = build_res_exe.run();
-    build_app_res.step.dependOn(&write_app_manifest.step);
-    build_app_res.addArgs(&.{ manifest.out_path, "true" });
+    var bake_app = bake_exe.run();
+    bake_app.step.dependOn(&write_app_manifest.step);
+    bake_app.addArgs(&.{ manifest.out_path, "true" });
 
-    const build_res_step = builder.step("res", "Build resources");
-    build_res_step.dependOn(&build_cc_res.step);
-    build_res_step.dependOn(&build_app_res.step);
+    const bake_step = builder.step("res", "Build resources");
+    bake_step.dependOn(&bake_cc.step);
+    bake_step.dependOn(&bake_app.step);
 }
 
 fn buildApp(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {

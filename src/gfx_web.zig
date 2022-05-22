@@ -1,4 +1,4 @@
-const build_res = @import("build_res.zig");
+const bake = @import("bake.zig");
 const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
@@ -456,7 +456,7 @@ pub const Device = struct {
         js.destroyContext(swapchain.id);
     }
 
-    pub fn initShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
+    pub fn initShader(device: *Device, shader_res: bake.ShaderRes) !Shader {
         const shader = Shader{
             .id = js.createShader(
                 main.wasm_id,

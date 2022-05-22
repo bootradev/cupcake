@@ -1,4 +1,4 @@
-const build_app = @import("build_app.zig");
+const make = @import("make.zig");
 const minify = @import("minify.zig");
 const serde = @import("serde.zig");
 const stb = @cImport({
@@ -41,13 +41,13 @@ const BuildData = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        build_res: anytype,
-        manifest_res: build_app.ManifestRes,
+        bake_res: anytype,
+        manifest_res: make.ManifestRes,
     ) !BuildData {
         return BuildData{
-            .data = try serde.serialize(allocator, build_res),
-            .var_name = try getVarName(allocator, build_res, manifest_res),
-            .type_name = @typeName(@TypeOf(build_res)),
+            .data = try serde.serialize(allocator, bake_res),
+            .var_name = try getVarName(allocator, bake_res, manifest_res),
+            .type_name = @typeName(@TypeOf(bake_res)),
         };
     }
 
@@ -78,7 +78,7 @@ pub fn main() !void {
     defer allocator.free(manifest_bytes);
     const manifest = try serde.deserialize(
         .{ .allocator = allocator },
-        build_app.Manifest,
+        make.Manifest,
         manifest_bytes,
     );
     defer serde.deserializeFree(allocator, manifest);
@@ -114,12 +114,12 @@ pub fn main() !void {
         const res_bytes = try readFile(allocator, &res_dir, res.path);
         defer allocator.free(res_bytes);
 
-        const build_res_fn = switch (try extensionCode(std.fs.path.extension(res.path))) {
-            try extensionCode(".wgsl") => buildShader,
-            try extensionCode(".png") => buildTexture,
+        const bake_res_fn = switch (try extensionCode(std.fs.path.extension(res.path))) {
+            try extensionCode(".wgsl") => bakeShader,
+            try extensionCode(".png") => bakeTexture,
             else => return error.InvalidResPathExtension,
         };
-        const build_data = try build_res_fn(allocator, manifest, res, res_bytes);
+        const build_data = try bake_res_fn(allocator, manifest, res, res_bytes);
         defer build_data.deinit(allocator);
 
         try writer.print("pub const {s} = .{{ ", .{build_data.var_name});
@@ -158,21 +158,21 @@ pub fn main() !void {
     std.log.info("done building manifest\n", .{});
 
     if (install_enabled) {
-        const build_platform_fn = switch (manifest.platform) {
-            .web => buildWeb,
+        const bake_platform_fn = switch (manifest.platform) {
+            .web => bakeWeb,
         };
         std.log.info("building platform files for {s}:", .{@tagName(manifest.platform)});
-        try build_platform_fn(allocator, manifest);
+        try bake_platform_fn(allocator, manifest);
         std.log.info("done building platform files\n", .{});
     }
 
     std.log.info("build complete!\n", .{});
 }
 
-fn buildShader(
+fn bakeShader(
     allocator: std.mem.Allocator,
-    manifest: build_app.Manifest,
-    res: build_app.ManifestRes,
+    manifest: make.Manifest,
+    res: make.ManifestRes,
     res_bytes: []const u8,
 ) anyerror!BuildData {
     const shader_bytes = try minify.shader(
@@ -188,10 +188,10 @@ fn buildShader(
     return try BuildData.init(allocator, shader_resource, res);
 }
 
-fn buildTexture(
+fn bakeTexture(
     allocator: std.mem.Allocator,
-    _: build_app.Manifest,
-    res: build_app.ManifestRes,
+    _: make.Manifest,
+    res: make.ManifestRes,
     res_bytes: []const u8,
 ) anyerror!BuildData {
     var width: c_int = undefined;
@@ -216,9 +216,9 @@ fn buildTexture(
     return try BuildData.init(allocator, texture_resource, res);
 }
 
-fn buildWeb(
+fn bakeWeb(
     allocator: std.mem.Allocator,
-    manifest: build_app.Manifest,
+    manifest: make.Manifest,
 ) !void {
     var install_dir = try std.fs.cwd().makeOpenPath(manifest.install_dir, .{});
     defer install_dir.close();
@@ -308,8 +308,8 @@ fn buildWeb(
 
 fn getVarName(
     allocator: std.mem.Allocator,
-    build_res: anytype,
-    manifest_res: build_app.ManifestRes,
+    bake_res: anytype,
+    manifest_res: make.ManifestRes,
 ) ![]const u8 {
     const res_path_no_ext = block: {
         const index = std.mem.lastIndexOfScalar(u8, manifest_res.path, '.') orelse
@@ -318,7 +318,7 @@ fn getVarName(
         break :block manifest_res.path[0..index];
     };
 
-    const type_name = @typeName(@TypeOf(build_res));
+    const type_name = @typeName(@TypeOf(bake_res));
     const type_name_no_res = block: {
         const index = std.mem.lastIndexOf(u8, type_name, "Res") orelse
             break :block type_name;

@@ -1,7 +1,7 @@
 const api = switch (cfg.platform) {
     .web => @import("gfx_web.zig"),
 };
-const build_res = @import("build_res.zig");
+const bake = @import("bake.zig");
 const cfg = @import("cfg");
 const res = @import("res.zig");
 const std = @import("std");
@@ -203,7 +203,7 @@ pub const Device = struct {
         device.impl.deinitSwapchain(&swapchain.impl);
     }
 
-    pub fn initShader(device: *Device, shader_res: build_res.ShaderRes) !Shader {
+    pub fn initShader(device: *Device, shader_res: bake.ShaderRes) !Shader {
         return Shader{ .impl = try device.impl.initShader(shader_res) };
     }
 
