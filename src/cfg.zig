@@ -1,34 +1,29 @@
+const builtin = @import("builtin");
 const std = @import("std");
 
 pub const Platform = enum(u8) {
     web,
+    win,
 };
 
-pub const LogLevel = enum(u8) {
-    debug,
-    warn,
-    err,
-    disabled,
+pub const platform: Platform = block: {
+    if (builtin.target.cpu.arch.isWasm()) {
+        break :block .web;
+    } else {
+        switch (builtin.target.os.tag) {
+            .windows => break :block .win,
+            else => @compileError("Invalid platform!"),
+        }
+    }
 };
 
+// todo: add support for profile mode enabled by root
 pub const OptLevel = enum(u8) {
-    debug,
-    profile,
-    release,
+    dbg,
+    rel,
+};
 
-    pub fn getLogLevel(opt_level: OptLevel) LogLevel {
-        return switch (opt_level) {
-            .debug => .debug,
-            .profile => .err,
-            .release => .disabled,
-        };
-    }
-
-    pub fn getBuildMode(opt_level: OptLevel) std.builtin.Mode {
-        return switch (opt_level) {
-            .debug => .Debug,
-            .profile => .ReleaseSafe,
-            .release => .ReleaseFast,
-        };
-    }
+pub const opt_level: OptLevel = switch (builtin.mode) {
+    .Debug => .dbg,
+    else => .rel,
 };

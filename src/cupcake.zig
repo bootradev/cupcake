@@ -1,5 +1,4 @@
 pub const bake = @import("bake");
-pub const cfg = @import("cfg");
 pub const gfx = @import("gfx.zig");
 pub const math = @import("math.zig");
 pub const mem = @import("mem.zig");

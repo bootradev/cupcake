@@ -173,7 +173,7 @@ const Minify = struct {
         const ident = ctx.src[ctx.start_index..ctx.end_index];
         // append the identifier as-is if in debug mode or if the identifier starts with _
         // digits also cannot be converted into a different identifier
-        if (ctx.opt_level == .debug or
+        if (ctx.opt_level == .dbg or
             ctx.src[ctx.start_index] != '_' or
             std.ascii.isDigit(ident[0]))
         {
@@ -251,8 +251,9 @@ pub fn shader(
     platform: cfg.Platform,
     opt_level: cfg.OptLevel,
 ) ![]const u8 {
-    const lang = switch (platform) {
+    const lang: Minify.Language = switch (platform) {
         .web => .wgsl,
+        else => return error.InvalidPlatform,
     };
 
     var ctx = Minify.init(src, allocator, lang, opt_level);

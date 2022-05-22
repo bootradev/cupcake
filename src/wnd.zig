@@ -1,7 +1,8 @@
 const api = switch (cfg.platform) {
     .web => @import("wnd_web.zig"),
+    else => @compileError("Unsupported platform!"),
 };
-const cfg = @import("cfg");
+const cfg = @import("cfg.zig");
 
 pub const WindowDesc = struct {
     title: []const u8 = "",
@@ -32,4 +33,3 @@ pub const Window = struct {
         return @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());
     }
 };
-

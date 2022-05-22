@@ -1,7 +1,8 @@
 const api = switch (cfg.platform) {
     .web => @import("time_web.zig"),
+    else => @import("Unsupported platform!"),
 };
-const cfg = @import("cfg");
+const cfg = @import("cfg.zig");
 const std = @import("std");
 
 pub const Timer = struct {

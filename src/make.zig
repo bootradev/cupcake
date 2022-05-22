@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const cfg = @import("cfg.zig");
 const serde = @import("serde.zig");
 const std = @import("std");
@@ -22,7 +21,8 @@ pub const Recipe = struct {
     bake_items: []const BakeItem,
     platform: cfg.Platform,
     opt_level: cfg.OptLevel,
-    log_level: cfg.LogLevel,
+    log_level: std.log.Level,
+    log_enabled: bool,
     build_root_dir: []const u8,
     install_dir: []const u8,
     ext_dir: []const u8,
@@ -59,10 +59,18 @@ pub const Recipe = struct {
             "optimization level",
         ) orelse default_opt_level;
         recipe.log_level = builder.option(
-            cfg.LogLevel,
+            std.log.Level,
             "log_level",
             "threshold for logging to console",
-        ) orelse recipe.opt_level.getLogLevel();
+        ) orelse switch (recipe.opt_level) {
+            .dbg => std.log.Level.debug,
+            .rel => std.log.Level.err,
+        };
+        recipe.log_enabled = builder.option(
+            bool,
+            "log_enabled",
+            "set to false to disable all logging",
+        ) orelse true;
 
         const cache_gen_dir = try std.fs.path.join(
             builder.allocator,
@@ -180,7 +188,7 @@ pub const Recipe = struct {
 };
 
 const default_platform = .web;
-const default_opt_level = .debug;
+const default_opt_level = .dbg;
 
 pub fn build(builder: *std.build.Builder, desc: RecipeDesc) !void {
     var recipe = try Recipe.init(builder, desc);
@@ -283,8 +291,8 @@ fn buildExt(builder: *std.build.Builder, recipe: Recipe) !void {
         "freetype/src/type42/type42.c",
         "freetype/src/winfonts/winfnt.c",
     };
-    switch (builtin.target.os.tag) {
-        .windows => {
+    switch (cfg.platform) {
+        .win => {
             freetype_srcs = freetype_srcs ++ &[_][]const u8{
                 "freetype/builds/windows/ftsystem.c",
                 "freetype/builds/windows/ftdebug.c",
@@ -409,17 +417,16 @@ fn buildBake(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !vo
 fn buildApp(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !void {
     const app_lib_exe = switch (recipe.platform) {
         .web => try buildWeb(builder, recipe),
+        else => return error.InvalidPlatform,
     };
-    app_lib_exe.setBuildMode(recipe.opt_level.getBuildMode());
+    app_lib_exe.setBuildMode(if (recipe.opt_level == .dbg) .Debug else .ReleaseFast);
     app_lib_exe.override_dest_dir = .{ .custom = recipe.dest_dir };
 
-    const cfg_options = builder.addOptions();
-    cfg_options.addOption(cfg.Platform, "platform", recipe.platform);
-    cfg_options.addOption(cfg.OptLevel, "opt_level", recipe.opt_level);
-    cfg_options.addOption(cfg.LogLevel, "log_level", recipe.log_level);
-    app_lib_exe.step.dependOn(&cfg_options.step);
+    const build_options = builder.addOptions();
+    build_options.addOption(bool, "log_enabled", recipe.log_enabled);
+    build_options.addOption(std.log.Level, "log_level", recipe.log_level);
+    app_lib_exe.step.dependOn(&build_options.step);
 
-    const cfg_pkg = cfg_options.getPackage("cfg");
     const bake_pkg = std.build.Pkg{
         .name = "bake",
         .path = .{ .path = recipe.pkg_path },
@@ -437,7 +444,7 @@ fn buildApp(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !voi
     const cupcake_pkg = std.build.Pkg{
         .name = "cupcake",
         .path = .{ .path = "src/cupcake.zig" },
-        .dependencies = &.{ cfg_pkg, bake_pkg, cc_bake_pkg, zmath_pkg },
+        .dependencies = &.{ bake_pkg, cc_bake_pkg, zmath_pkg },
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
@@ -445,7 +452,7 @@ fn buildApp(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !voi
         .dependencies = &.{cupcake_pkg},
     };
 
-    app_lib_exe.addPackage(cfg_pkg);
+    app_lib_exe.addPackage(build_options.getPackage("build_options"));
     app_lib_exe.addPackage(app_pkg);
 
     app_lib_exe.install();

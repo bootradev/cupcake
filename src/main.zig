@@ -1,8 +1,10 @@
 const api = switch (cfg.platform) {
     .web => @import("main_web.zig"),
+    else => @compileError("Unsupported platform!"),
 };
 const app = @import("app");
-const cfg = @import("cfg");
+const ba = @import("build_options");
+const cfg = @import("cfg.zig");
 const std = @import("std");
 
 pub fn log(
@@ -11,16 +13,13 @@ pub fn log(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (cfg.log_level != .disabled) {
+    if (log_enabled) {
         api.log(message_level, scope, format, args);
     }
 }
 
-pub const log_level = switch (cfg.log_level) {
-    .debug => .debug,
-    .warn => .warn,
-    .err, .disabled => .err,
-};
+const log_enabled = ba.log_enabled;
+pub const log_level = @intToEnum(std.log.Level, @enumToInt(ba.log_level));
 
 const AppData = if (@hasDecl(app, "init"))
 block: {

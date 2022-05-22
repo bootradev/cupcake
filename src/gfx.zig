@@ -1,7 +1,8 @@
 const api = switch (cfg.platform) {
     .web => @import("gfx_web.zig"),
+    else => @compileError("Unsupported platform!"),
 };
-const cfg = @import("cfg");
+const cfg = @import("cfg.zig");
 const res = @import("res.zig");
 const std = @import("std");
 const wnd = @import("wnd.zig");

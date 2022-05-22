@@ -124,6 +124,7 @@ pub fn bakeItem(
 pub fn bakePlatform(allocator: std.mem.Allocator, recipe: make.Recipe) !void {
     const bake_platform_fn = switch (recipe.platform) {
         .web => bakeWeb,
+        else => return error.InvalidPlatform,
     };
     try bake_platform_fn(allocator, recipe);
 }
@@ -198,7 +199,9 @@ pub fn bakeWeb(allocator: std.mem.Allocator, recipe: make.Recipe) !void {
         try js_file_contents.appendSlice("\n");
     }
 
-    if (recipe.opt_level == .release) {
+    if (recipe.opt_level == .dbg) {
+        try install_dir.writeFile(js_name, js_file_contents.items);
+    } else {
         const js_src_bytes_min = try minify.js(
             js_file_contents.items,
             allocator,
@@ -206,8 +209,6 @@ pub fn bakeWeb(allocator: std.mem.Allocator, recipe: make.Recipe) !void {
         );
         defer allocator.free(js_src_bytes_min);
         try install_dir.writeFile(js_name, js_src_bytes_min);
-    } else {
-        try install_dir.writeFile(js_name, js_file_contents.items);
     }
 
     const js_path = try install_dir.realpathAlloc(allocator, js_name);

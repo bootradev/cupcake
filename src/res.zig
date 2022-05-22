@@ -1,8 +1,9 @@
 const api = switch (cfg.platform) {
     .web => @import("res_web.zig"),
+    else => @compileError("Unsupported platform!"),
 };
 const bake = @import("bake.zig");
-const cfg = @import("cfg");
+const cfg = @import("cfg.zig");
 const serde = @import("serde.zig");
 const std = @import("std");
 

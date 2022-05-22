@@ -1,4 +1,4 @@
-const cfg = @import("cfg");
+const cfg = @import("cfg.zig");
 const std = @import("std");
 
 pub const BumpAllocator = struct {
