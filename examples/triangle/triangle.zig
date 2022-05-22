@@ -1,5 +1,4 @@
 const cc = @import("cupcake");
-const res = @import("res");
 
 const Example = struct {
     window: cc.wnd.Window,
@@ -11,10 +10,10 @@ pub fn init() !Example {
     var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
     var gctx = try cc.gfx.Context.init(.{ .window = &window });
 
-    var vert_shader = try gctx.device.loadShader(res.triangle_vert_shader, .{});
+    var vert_shader = try gctx.device.loadShader(cc.bake.triangle_vert_shader, .{});
     defer gctx.device.deinitShader(&vert_shader);
 
-    var frag_shader = try gctx.device.loadShader(res.triangle_frag_shader, .{});
+    var frag_shader = try gctx.device.loadShader(cc.bake.triangle_frag_shader, .{});
     defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};

@@ -10,12 +10,12 @@ const Example = enum {
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "example", "example project") orelse .triangle;
 
-    var manifest_desc: make.ManifestDesc = switch (example) {
+    var recipe_desc: make.RecipeDesc = switch (example) {
         .triangle => .{
             .name = "triangle",
             .root = "examples/triangle/triangle.zig",
-            .res_dir = "examples/triangle",
-            .res = &.{
+            .bake_dir = "examples/triangle",
+            .bake_items = &.{
                 .{ .path = "triangle_vert.wgsl", .embed = true },
                 .{ .path = "triangle_frag.wgsl", .embed = true },
             },
@@ -23,8 +23,8 @@ pub fn build(builder: *std.build.Builder) !void {
         .cube => .{
             .name = "cube",
             .root = "examples/cube/cube.zig",
-            .res_dir = "examples/cube",
-            .res = &.{
+            .bake_dir = "examples/cube",
+            .bake_items = &.{
                 .{ .path = "cube_vert.wgsl", .embed = true },
                 .{ .path = "cube_frag.wgsl", .embed = true },
             },
@@ -35,5 +35,5 @@ pub fn build(builder: *std.build.Builder) !void {
         },
     };
 
-    try make.build(builder, manifest_desc);
+    try make.build(builder, recipe_desc);
 }

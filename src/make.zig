@@ -1,60 +1,28 @@
 const builtin = @import("builtin");
+const cfg = @import("cfg.zig");
 const serde = @import("serde.zig");
 const std = @import("std");
 
-pub const Platform = enum(u8) {
-    web,
-};
-
-pub const LogLevel = enum(u8) {
-    debug,
-    warn,
-    err,
-    disabled,
-};
-
-pub const OptLevel = enum(u8) {
-    debug,
-    profile,
-    release,
-
-    pub fn getLogLevel(opt_level: OptLevel) LogLevel {
-        return switch (opt_level) {
-            .debug => .debug,
-            .profile => .err,
-            .release => .disabled,
-        };
-    }
-
-    pub fn getBuildMode(opt_level: OptLevel) std.builtin.Mode {
-        return switch (opt_level) {
-            .debug => .Debug,
-            .profile => .ReleaseSafe,
-            .release => .ReleaseFast,
-        };
-    }
-};
-
-pub const ManifestRes = struct {
+pub const BakeItem = struct {
     path: []const u8,
     embed: bool = false,
 };
 
-pub const ManifestDesc = struct {
+pub const RecipeDesc = struct {
     name: []const u8,
     root: []const u8,
-    res_dir: []const u8 = "",
-    res: []const ManifestRes = &.{},
+    bake_dir: []const u8 = "",
+    bake_items: []const BakeItem = &.{},
 };
 
-pub const Manifest = struct {
+pub const Recipe = struct {
     name: []const u8,
     root: []const u8,
-    res_dir: []const u8,
-    res: []const ManifestRes,
-    platform: Platform,
-    opt_level: OptLevel,
-    log_level: LogLevel,
+    bake_dir: []const u8,
+    bake_items: []const BakeItem,
+    platform: cfg.Platform,
+    opt_level: cfg.OptLevel,
+    log_level: cfg.LogLevel,
     build_root_dir: []const u8,
     install_dir: []const u8,
     ext_dir: []const u8,
@@ -65,36 +33,36 @@ pub const Manifest = struct {
     out_path: []const u8,
     pkg_path: []const u8,
 
-    fn init(builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
-        var manifest: Manifest = undefined;
-        try setOptionFields(&manifest, builder);
-        try setNonOptionFields(&manifest, builder, desc);
-        return manifest;
+    fn init(builder: *std.build.Builder, desc: RecipeDesc) !Recipe {
+        var recipe: Recipe = undefined;
+        try setOptionFields(&recipe, builder);
+        try setNonOptionFields(&recipe, builder, desc);
+        return recipe;
     }
 
-    fn dupe(manifest: Manifest, builder: *std.build.Builder, desc: ManifestDesc) !Manifest {
-        var dupe_manifest: Manifest = undefined;
-        try dupeOptionFields(&dupe_manifest, manifest, builder);
-        try setNonOptionFields(&dupe_manifest, builder, desc);
-        return dupe_manifest;
+    fn dupe(recipe: Recipe, builder: *std.build.Builder, desc: RecipeDesc) !Recipe {
+        var dupe_recipe: Recipe = undefined;
+        try dupeOptionFields(&dupe_recipe, recipe, builder);
+        try setNonOptionFields(&dupe_recipe, builder, desc);
+        return dupe_recipe;
     }
 
-    fn setOptionFields(manifest: *Manifest, builder: *std.build.Builder) !void {
-        manifest.platform = builder.option(
-            Platform,
+    fn setOptionFields(recipe: *Recipe, builder: *std.build.Builder) !void {
+        recipe.platform = builder.option(
+            cfg.Platform,
             "platform",
             "target platform",
         ) orelse default_platform;
-        manifest.opt_level = builder.option(
-            OptLevel,
+        recipe.opt_level = builder.option(
+            cfg.OptLevel,
             "opt",
             "optimization level",
         ) orelse default_opt_level;
-        manifest.log_level = builder.option(
-            LogLevel,
+        recipe.log_level = builder.option(
+            cfg.LogLevel,
             "log_level",
             "threshold for logging to console",
-        ) orelse manifest.opt_level.getLogLevel();
+        ) orelse recipe.opt_level.getLogLevel();
 
         const cache_gen_dir = try std.fs.path.join(
             builder.allocator,
@@ -120,69 +88,69 @@ pub const Manifest = struct {
             "dir for external repositories, relative to the build root",
         ) orelse cache_ext_dir;
 
-        manifest.ext_dir = try std.fs.path.join(
+        recipe.ext_dir = try std.fs.path.join(
             builder.allocator,
             &.{ builder.build_root, ext_dir_rel },
         );
 
-        manifest.gen_dir = try std.fs.path.join(
+        recipe.gen_dir = try std.fs.path.join(
             builder.allocator,
             &.{ builder.build_root, gen_dir_rel },
         );
-        manifest.gen_lib_dir = try std.fs.path.join(
+        recipe.gen_lib_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ manifest.gen_dir, "lib" },
+            &.{ recipe.gen_dir, "lib" },
         );
-        manifest.gen_tools_dir = try std.fs.path.join(
+        recipe.gen_tools_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ manifest.gen_dir, "tools" },
+            &.{ recipe.gen_dir, "tools" },
         );
     }
 
     fn dupeOptionFields(
-        dupe_manifest: *Manifest,
-        manifest: Manifest,
+        dupe_recipe: *Recipe,
+        recipe: Recipe,
         builder: *std.build.Builder,
     ) !void {
-        dupe_manifest.platform = manifest.platform;
-        dupe_manifest.opt_level = manifest.opt_level;
-        dupe_manifest.log_level = manifest.log_level;
-        dupe_manifest.ext_dir = try builder.allocator.dupe(u8, manifest.ext_dir);
-        dupe_manifest.gen_dir = try builder.allocator.dupe(u8, manifest.gen_dir);
-        dupe_manifest.gen_lib_dir = try builder.allocator.dupe(u8, manifest.gen_lib_dir);
-        dupe_manifest.gen_tools_dir = try builder.allocator.dupe(u8, manifest.gen_tools_dir);
+        dupe_recipe.platform = recipe.platform;
+        dupe_recipe.opt_level = recipe.opt_level;
+        dupe_recipe.log_level = recipe.log_level;
+        dupe_recipe.ext_dir = try builder.allocator.dupe(u8, recipe.ext_dir);
+        dupe_recipe.gen_dir = try builder.allocator.dupe(u8, recipe.gen_dir);
+        dupe_recipe.gen_lib_dir = try builder.allocator.dupe(u8, recipe.gen_lib_dir);
+        dupe_recipe.gen_tools_dir = try builder.allocator.dupe(u8, recipe.gen_tools_dir);
     }
 
     fn setNonOptionFields(
-        manifest: *Manifest,
+        recipe: *Recipe,
         builder: *std.build.Builder,
-        desc: ManifestDesc,
+        desc: RecipeDesc,
     ) !void {
-        manifest.name = desc.name;
-        manifest.root = desc.root;
-        manifest.res_dir = desc.res_dir;
-        manifest.res = desc.res;
+        recipe.name = desc.name;
+        recipe.root = desc.root;
+        recipe.bake_dir = desc.bake_dir;
+        recipe.bake_items = desc.bake_items;
 
-        manifest.build_root_dir = builder.build_root;
-        manifest.dest_dir = try std.fs.path.join(
+        recipe.build_root_dir = builder.build_root;
+        recipe.dest_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ manifest.name, @tagName(manifest.platform) },
+            &.{ recipe.name, @tagName(recipe.platform) },
         );
-        manifest.install_dir = try std.fs.path.join(
+        recipe.install_dir = try std.fs.path.join(
             builder.allocator,
-            &.{ builder.install_prefix, manifest.dest_dir },
+            &.{ builder.install_prefix, recipe.dest_dir },
         );
 
         const manifest_dir_path = try std.fs.path.join(
             builder.allocator,
-            &.{ manifest.gen_dir, "res", manifest.name },
+            &.{ recipe.gen_dir, "bake", recipe.name },
         );
         defer builder.allocator.free(manifest_dir_path);
 
         const manifest_name = try std.mem.concat(
             builder.allocator,
             u8,
-            &.{ manifest.name, "_", @tagName(manifest.platform) },
+            &.{ recipe.name, "_", @tagName(recipe.platform) },
         );
         defer builder.allocator.free(manifest_name);
 
@@ -196,15 +164,15 @@ pub const Manifest = struct {
         const pkg_name = try std.mem.concat(
             builder.allocator,
             u8,
-            &.{ manifest_name, "_res.zig" },
+            &.{ manifest_name, "_bake.zig" },
         );
         defer builder.allocator.free(pkg_name);
 
-        manifest.out_path = try std.fs.path.join(
+        recipe.out_path = try std.fs.path.join(
             builder.allocator,
             &.{ manifest_dir_path, out_name },
         );
-        manifest.pkg_path = try std.fs.path.join(
+        recipe.pkg_path = try std.fs.path.join(
             builder.allocator,
             &.{ manifest_dir_path, pkg_name },
         );
@@ -214,29 +182,29 @@ pub const Manifest = struct {
 const default_platform = .web;
 const default_opt_level = .debug;
 
-pub fn build(builder: *std.build.Builder, desc: ManifestDesc) !void {
-    var manifest = try Manifest.init(builder, desc);
+pub fn build(builder: *std.build.Builder, desc: RecipeDesc) !void {
+    var recipe = try Recipe.init(builder, desc);
 
-    const cc_manifest_desc: ManifestDesc = .{
+    const recipe_cc_desc: RecipeDesc = .{
         .name = "cc",
         .root = "",
-        .res_dir = ".",
-        .res = &.{
+        .bake_dir = ".",
+        .bake_items = &.{
             .{ .path = "src/ui_vert.wgsl", .embed = true },
             .{ .path = "src/ui_frag.wgsl", .embed = true },
         },
     };
-    const cc_manifest = try manifest.dupe(builder, cc_manifest_desc);
+    const recipe_cc = try recipe.dupe(builder, recipe_cc_desc);
 
-    try buildExt(builder, manifest);
-    try buildRes(builder, manifest, cc_manifest);
-    try buildApp(builder, manifest, cc_manifest);
+    try buildExt(builder, recipe);
+    try buildBake(builder, recipe, recipe_cc);
+    try buildApp(builder, recipe, recipe_cc);
 }
 
-fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
-    try std.fs.cwd().makePath(manifest.ext_dir);
-    try std.fs.cwd().makePath(manifest.gen_lib_dir);
-    try std.fs.cwd().makePath(manifest.gen_tools_dir);
+fn buildExt(builder: *std.build.Builder, recipe: Recipe) !void {
+    try std.fs.cwd().makePath(recipe.ext_dir);
+    try std.fs.cwd().makePath(recipe.gen_lib_dir);
+    try std.fs.cwd().makePath(recipe.gen_tools_dir);
 
     const ext_repos = [_]ExtRepo{
         .{
@@ -257,20 +225,20 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
             .commit = "4ae28cf3e4b822f0dc4fab70557b165d73ec3c97",
         },
     };
-    const clone_ext_repos = try CloneExtReposStep.init(builder, manifest, &ext_repos);
+    const clone_ext_repos = try CloneExtReposStep.init(builder, recipe, &ext_repos);
 
     const header_only_libs = [_]HeaderOnlyLib{
         .{ .path = "stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
     };
-    const header_only_step = try HeaderOnlyStep.init(builder, manifest, &header_only_libs);
+    const header_only_step = try HeaderOnlyStep.init(builder, recipe, &header_only_libs);
     header_only_step.step.dependOn(&clone_ext_repos.step);
 
     const header_only = builder.addStaticLibrary(HeaderOnlyStep.lib_name, null);
     header_only.setBuildMode(.ReleaseFast);
     header_only.linkLibC();
-    header_only.addIncludePath(manifest.ext_dir);
+    header_only.addIncludePath(recipe.ext_dir);
     header_only.addCSourceFileSource(header_only_step.getCSourceFile());
-    header_only.setOutputDir(manifest.gen_lib_dir);
+    header_only.setOutputDir(recipe.gen_lib_dir);
     header_only.step.dependOn(&header_only_step.step);
 
     comptime var freetype_srcs: []const []const u8 = &.{
@@ -329,8 +297,8 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     const freetype = builder.addStaticLibrary("freetype", null);
     freetype.setBuildMode(.ReleaseFast);
     freetype.linkLibC();
-    try addIncludePathExt(builder, manifest, freetype, "freetype/include");
-    try addCSourceFilesExt(builder, manifest, freetype, freetype_srcs, freetype_flags);
+    try addIncludePathExt(builder, recipe, freetype, "freetype/include");
+    try addCSourceFilesExt(builder, recipe, freetype, freetype_srcs, freetype_flags);
     freetype.step.dependOn(&clone_ext_repos.step);
 
     const msdfgen_srcs: []const []const u8 = &.{
@@ -367,9 +335,9 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     const msdfgen = builder.addStaticLibrary("msdfgen", null);
     msdfgen.setBuildMode(.ReleaseFast);
     msdfgen.linkLibCpp();
-    try addIncludePathExt(builder, manifest, msdfgen, "freetype/include");
-    try addIncludePathExt(builder, manifest, msdfgen, "msdf-atlas-gen/msdfgen/include");
-    try addCSourceFilesExt(builder, manifest, msdfgen, msdfgen_srcs, msdfgen_flags);
+    try addIncludePathExt(builder, recipe, msdfgen, "freetype/include");
+    try addIncludePathExt(builder, recipe, msdfgen, "msdf-atlas-gen/msdfgen/include");
+    try addCSourceFilesExt(builder, recipe, msdfgen, msdfgen_srcs, msdfgen_flags);
     msdfgen.step.dependOn(&clone_ext_repos.step);
 
     const msdf_atlas_gen_srcs: []const []const u8 = &.{
@@ -395,12 +363,12 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
 
     const msdf_atlas_gen = builder.addExecutable("msdf-atlas-gen", null);
     msdf_atlas_gen.setBuildMode(.ReleaseFast);
-    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/msdfgen");
-    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/msdfgen/include");
-    try addIncludePathExt(builder, manifest, msdf_atlas_gen, "msdf-atlas-gen/artery-font-format");
+    try addIncludePathExt(builder, recipe, msdf_atlas_gen, "msdf-atlas-gen/msdfgen");
+    try addIncludePathExt(builder, recipe, msdf_atlas_gen, "msdf-atlas-gen/msdfgen/include");
+    try addIncludePathExt(builder, recipe, msdf_atlas_gen, "msdf-atlas-gen/artery-font-format");
     try addCSourceFilesExt(
         builder,
-        manifest,
+        recipe,
         msdf_atlas_gen,
         msdf_atlas_gen_srcs,
         msdf_atlas_gen_flags,
@@ -408,77 +376,76 @@ fn buildExt(builder: *std.build.Builder, manifest: Manifest) !void {
     msdf_atlas_gen.linkLibCpp();
     msdf_atlas_gen.linkLibrary(msdfgen);
     msdf_atlas_gen.linkLibrary(freetype);
-    msdf_atlas_gen.setOutputDir(manifest.gen_tools_dir);
+    msdf_atlas_gen.setOutputDir(recipe.gen_tools_dir);
 
     const build_ext_step = builder.step("ext", "Build external dependencies");
     build_ext_step.dependOn(&header_only.step);
     build_ext_step.dependOn(&msdf_atlas_gen.step);
 }
 
-fn buildRes(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {
-    const bake_exe = builder.addExecutable("bake", "src/bake.zig");
+fn buildBake(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !void {
+    const bake_exe = builder.addExecutable("bake", "src/bake_app.zig");
     bake_exe.setBuildMode(.ReleaseSafe);
     bake_exe.linkLibC();
-    bake_exe.addIncludePath(manifest.ext_dir);
-    bake_exe.addLibraryPath(manifest.gen_lib_dir);
+    bake_exe.addIncludePath(recipe.ext_dir);
+    bake_exe.addLibraryPath(recipe.gen_lib_dir);
     bake_exe.linkSystemLibrary(HeaderOnlyStep.lib_name);
 
-    const write_cc_manifest = try WriteManifestStep.init(builder, cc_manifest);
+    const write_cc_recipe = try WriteRecipeStep.init(builder, recipe_cc);
     var bake_cc = bake_exe.run();
-    bake_cc.step.dependOn(&write_cc_manifest.step);
-    bake_cc.addArgs(&.{ cc_manifest.out_path, "false" });
+    bake_cc.step.dependOn(&write_cc_recipe.step);
+    bake_cc.addArgs(&.{recipe_cc.out_path});
 
-    const write_app_manifest = try WriteManifestStep.init(builder, manifest);
+    const write_app_recipe = try WriteRecipeStep.init(builder, recipe);
     var bake_app = bake_exe.run();
-    bake_app.step.dependOn(&write_app_manifest.step);
-    bake_app.addArgs(&.{ manifest.out_path, "true" });
+    bake_app.step.dependOn(&write_app_recipe.step);
+    bake_app.addArgs(&.{ recipe.out_path, "install" });
 
-    const bake_step = builder.step("res", "Build resources");
+    const bake_step = builder.step("bake", "bake items in the recipe");
     bake_step.dependOn(&bake_cc.step);
     bake_step.dependOn(&bake_app.step);
 }
 
-fn buildApp(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manifest) !void {
-    const app_lib_exe = switch (manifest.platform) {
-        .web => try buildWeb(builder, manifest),
+fn buildApp(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !void {
+    const app_lib_exe = switch (recipe.platform) {
+        .web => try buildWeb(builder, recipe),
     };
-    app_lib_exe.setBuildMode(manifest.opt_level.getBuildMode());
-    app_lib_exe.override_dest_dir = .{ .custom = manifest.dest_dir };
+    app_lib_exe.setBuildMode(recipe.opt_level.getBuildMode());
+    app_lib_exe.override_dest_dir = .{ .custom = recipe.dest_dir };
 
-    const cfg = builder.addOptions();
-    cfg.addOption(Platform, "platform", manifest.platform);
-    cfg.addOption(OptLevel, "opt_level", manifest.opt_level);
-    cfg.addOption(LogLevel, "log_level", manifest.log_level);
-    app_lib_exe.step.dependOn(&cfg.step);
+    const cfg_options = builder.addOptions();
+    cfg_options.addOption(cfg.Platform, "platform", recipe.platform);
+    cfg_options.addOption(cfg.OptLevel, "opt_level", recipe.opt_level);
+    cfg_options.addOption(cfg.LogLevel, "log_level", recipe.log_level);
+    app_lib_exe.step.dependOn(&cfg_options.step);
 
-    const cfg_pkg = cfg.getPackage("cfg");
-    const cc_res_pkg = std.build.Pkg{
-        .name = "cc_res",
-        .path = .{ .path = cc_manifest.pkg_path },
+    const cfg_pkg = cfg_options.getPackage("cfg");
+    const bake_pkg = std.build.Pkg{
+        .name = "bake",
+        .path = .{ .path = recipe.pkg_path },
+    };
+    const cc_bake_pkg = std.build.Pkg{
+        .name = "cc_bake",
+        .path = .{ .path = recipe_cc.pkg_path },
     };
     const zmath_pkg = try getPackageExt(
         builder,
-        manifest,
+        recipe,
         "zmath",
         "zig-gamedev/libs/zmath/src/zmath.zig",
     );
     const cupcake_pkg = std.build.Pkg{
         .name = "cupcake",
         .path = .{ .path = "src/cupcake.zig" },
-        .dependencies = &.{ cfg_pkg, cc_res_pkg, zmath_pkg },
-    };
-    const res_pkg = std.build.Pkg{
-        .name = "res",
-        .path = .{ .path = manifest.pkg_path },
+        .dependencies = &.{ cfg_pkg, bake_pkg, cc_bake_pkg, zmath_pkg },
     };
     const app_pkg = std.build.Pkg{
         .name = "app",
-        .path = .{ .path = manifest.root },
-        .dependencies = &.{ cfg_pkg, cupcake_pkg, res_pkg },
+        .path = .{ .path = recipe.root },
+        .dependencies = &.{cupcake_pkg},
     };
 
     app_lib_exe.addPackage(cfg_pkg);
-    app_lib_exe.addPackage(cupcake_pkg);
     app_lib_exe.addPackage(app_pkg);
 
     app_lib_exe.install();
@@ -486,10 +453,10 @@ fn buildApp(builder: *std.build.Builder, manifest: Manifest, cc_manifest: Manife
 
 fn buildWeb(
     builder: *std.build.Builder,
-    manifest: Manifest,
+    recipe: Recipe,
 ) !*std.build.LibExeObjStep {
     const app_lib_exe = builder.addSharedLibrary(
-        manifest.name,
+        recipe.name,
         "src/main.zig",
         .unversioned,
     );
@@ -500,33 +467,33 @@ fn buildWeb(
     return app_lib_exe;
 }
 
-const WriteManifestStep = struct {
+const WriteRecipeStep = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
-    manifest: Manifest,
+    recipe: Recipe,
 
-    pub fn init(builder: *std.build.Builder, manifest: Manifest) !*WriteManifestStep {
-        const write_manifest = try builder.allocator.create(WriteManifestStep);
-        write_manifest.* = .{
+    pub fn init(builder: *std.build.Builder, recipe: Recipe) !*WriteRecipeStep {
+        const write_recipe = try builder.allocator.create(WriteRecipeStep);
+        write_recipe.* = .{
             .builder = builder,
-            .step = std.build.Step.init(.custom, "write manifest", builder.allocator, make),
-            .manifest = manifest,
+            .step = std.build.Step.init(.custom, "write recipe", builder.allocator, make),
+            .recipe = recipe,
         };
-        return write_manifest;
+        return write_recipe;
     }
 
     fn make(step: *std.build.Step) !void {
-        const write_manifest = @fieldParentPtr(WriteManifestStep, "step", step);
+        const write_recipe = @fieldParentPtr(WriteRecipeStep, "step", step);
 
-        const manifest_bytes = try serde.serialize(
-            write_manifest.builder.allocator,
-            write_manifest.manifest,
+        const recipe_bytes = try serde.serialize(
+            write_recipe.builder.allocator,
+            write_recipe.recipe,
         );
 
-        if (std.fs.path.dirname(write_manifest.manifest.out_path)) |dir| {
+        if (std.fs.path.dirname(write_recipe.recipe.out_path)) |dir| {
             try std.fs.cwd().makePath(dir);
         }
-        try std.fs.cwd().writeFile(write_manifest.manifest.out_path, manifest_bytes);
+        try std.fs.cwd().writeFile(write_recipe.recipe.out_path, recipe_bytes);
     }
 };
 
@@ -541,7 +508,7 @@ const CloneExtReposStep = struct {
 
     fn init(
         builder: *std.build.Builder,
-        manifest: Manifest,
+        recipe: Recipe,
         repos: []const ExtRepo,
     ) !*CloneExtReposStep {
         const clone_ext_repos = try builder.allocator.create(CloneExtReposStep);
@@ -556,7 +523,7 @@ const CloneExtReposStep = struct {
             }
             const ext_repo_path = try std.fs.path.join(
                 builder.allocator,
-                &.{ manifest.ext_dir, ext_repo_name[0 .. ext_repo_name.len - 4] },
+                &.{ recipe.ext_dir, ext_repo_name[0 .. ext_repo_name.len - 4] },
             );
             defer builder.allocator.free(ext_repo_path);
             var repo_exists = true;
@@ -586,7 +553,7 @@ const CloneExtReposStep = struct {
             try clone_args.append(repo.url);
 
             const clone = builder.addSystemCommand(clone_args.items);
-            clone.cwd = manifest.ext_dir;
+            clone.cwd = recipe.ext_dir;
 
             var checkout_args = std.ArrayList([]const u8).init(builder.allocator);
             defer checkout_args.deinit();
@@ -619,20 +586,20 @@ const HeaderOnlyStep = struct {
     const lib_name = "header_only";
 
     builder: *std.build.Builder,
-    manifest: Manifest,
+    recipe: Recipe,
     step: std.build.Step,
     libs: []const HeaderOnlyLib,
     generated_file: std.build.GeneratedFile,
 
     fn init(
         builder: *std.build.Builder,
-        manifest: Manifest,
+        recipe: Recipe,
         libs: []const HeaderOnlyLib,
     ) !*HeaderOnlyStep {
         const header_only_step = try builder.allocator.create(HeaderOnlyStep);
         header_only_step.* = .{
             .builder = builder,
-            .manifest = manifest,
+            .recipe = recipe,
             .step = std.build.Step.init(.custom, "header only libs", builder.allocator, make),
             .libs = libs,
             .generated_file = .{ .step = &header_only_step.step },
@@ -655,7 +622,7 @@ const HeaderOnlyStep = struct {
         const out_name = try std.mem.concat(header.builder.allocator, u8, &.{ lib_name, ".c" });
         defer header.builder.allocator.free(out_name);
         const out_path = try std.fs.path.join(header.builder.allocator, &.{
-            header.manifest.gen_lib_dir, out_name,
+            header.recipe.gen_lib_dir, out_name,
         });
         defer header.builder.allocator.free(out_path);
 
@@ -673,18 +640,18 @@ const HeaderOnlyStep = struct {
 
 fn addIncludePathExt(
     builder: *std.build.Builder,
-    manifest: Manifest,
+    recipe: Recipe,
     lib: *std.build.LibExeObjStep,
     path: []const u8,
 ) !void {
-    const ext_path = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, path });
+    const ext_path = try std.fs.path.join(builder.allocator, &.{ recipe.ext_dir, path });
     defer builder.allocator.free(ext_path);
     lib.addIncludePath(ext_path);
 }
 
 fn addCSourceFilesExt(
     builder: *std.build.Builder,
-    manifest: Manifest,
+    recipe: Recipe,
     lib: *std.build.LibExeObjStep,
     files: []const []const u8,
     flags: []const []const u8,
@@ -695,7 +662,7 @@ fn addCSourceFilesExt(
         builder.allocator.free(ext_file);
     };
     for (files) |file| {
-        const ext_file = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, file });
+        const ext_file = try std.fs.path.join(builder.allocator, &.{ recipe.ext_dir, file });
         try ext_files.append(ext_file);
     }
     lib.addCSourceFiles(ext_files.items, flags);
@@ -703,10 +670,10 @@ fn addCSourceFilesExt(
 
 fn getPackageExt(
     builder: *std.build.Builder,
-    manifest: Manifest,
+    recipe: Recipe,
     name: []const u8,
     path: []const u8,
 ) !std.build.Pkg {
-    const pkg_path = try std.fs.path.join(builder.allocator, &.{ manifest.ext_dir, path });
+    const pkg_path = try std.fs.path.join(builder.allocator, &.{ recipe.ext_dir, path });
     return std.build.Pkg{ .name = name, .path = .{ .path = pkg_path } };
 }

@@ -1,5 +1,4 @@
 const cc = @import("cupcake");
-const res = @import("res");
 const std = @import("std");
 
 const Vertex = struct {
@@ -78,10 +77,10 @@ pub fn init() !Example {
     );
     defer gctx.device.deinitPipelineLayout(&pipeline_layout);
 
-    var vert_shader = try gctx.device.loadShader(res.cube_vert_shader, .{});
+    var vert_shader = try gctx.device.loadShader(cc.bake.cube_vert_shader, .{});
     defer gctx.device.deinitShader(&vert_shader);
 
-    var frag_shader = try gctx.device.loadShader(res.cube_frag_shader, .{});
+    var frag_shader = try gctx.device.loadShader(cc.bake.cube_frag_shader, .{});
     defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};

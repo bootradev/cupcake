@@ -1,4 +1,4 @@
-const make = @import("make.zig");
+const cfg = @import("cfg.zig");
 const std = @import("std");
 
 /// minifier that removes whitespace and replaces any words starting with _
@@ -32,13 +32,13 @@ const Minify = struct {
     next_ident_index: [max_ident_size]usize,
     next_ident_size: usize,
     language: Language,
-    opt_level: make.OptLevel,
+    opt_level: cfg.OptLevel,
 
     fn init(
         src: []const u8,
         allocator: std.mem.Allocator,
         language: Language,
-        opt_level: make.OptLevel,
+        opt_level: cfg.OptLevel,
     ) Minify {
         var ctx = Minify{
             .allocator = allocator,
@@ -237,7 +237,7 @@ const Minify = struct {
 pub fn js(
     src: []const u8,
     allocator: std.mem.Allocator,
-    opt_level: make.OptLevel,
+    opt_level: cfg.OptLevel,
 ) ![]const u8 {
     var ctx = Minify.init(src, allocator, .js, opt_level);
     defer ctx.deinit();
@@ -248,8 +248,8 @@ pub fn js(
 pub fn shader(
     src: []const u8,
     allocator: std.mem.Allocator,
-    platform: make.Platform,
-    opt_level: make.OptLevel,
+    platform: cfg.Platform,
+    opt_level: cfg.OptLevel,
 ) ![]const u8 {
     const lang = switch (platform) {
         .web => .wgsl,

@@ -1,5 +1,3 @@
-const bake = @import("bake.zig");
-const cfg = @import("cfg");
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
 const std = @import("std");
@@ -456,14 +454,9 @@ pub const Device = struct {
         js.destroyContext(swapchain.id);
     }
 
-    pub fn initShader(device: *Device, shader_res: bake.ShaderRes) !Shader {
+    pub fn initShader(device: *Device, data: []const u8) !Shader {
         const shader = Shader{
-            .id = js.createShader(
-                main.wasm_id,
-                device.id,
-                shader_res.data.ptr,
-                shader_res.data.len,
-            ),
+            .id = js.createShader(main.wasm_id, device.id, data.ptr, data.len),
         };
         return shader;
     }
