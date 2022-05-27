@@ -8,7 +8,7 @@ const Example = struct {
 
 pub fn init() !Example {
     var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
-    var gctx = try cc.gfx.Context.init(.{ .window = &window });
+    var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
 
     const vert_shader_res = try cc.res.load(cc.bake.triangle_vert_shader, .{});
     var vert_shader = try gctx.device.initShader(vert_shader_res.data);

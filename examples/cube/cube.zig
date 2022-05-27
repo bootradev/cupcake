@@ -45,7 +45,7 @@ const Example = struct {
 
 pub fn init() !Example {
     var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
-    var gctx = try cc.gfx.Context.init(.{ .window = &window });
+    var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
 
     const vertex_buffer = try gctx.device.initBufferSlice(vertices, .{ .vertex = true });
     const index_buffer = try gctx.device.initBufferSlice(indices, .{ .index = true });

@@ -1,5 +1,5 @@
-const wnd = @import("wnd.zig");
 const main = @import("main.zig");
+const wnd = @import("wnd.zig");
 
 const js = struct {
     const CanvasId = u32;
@@ -10,7 +10,10 @@ const js = struct {
 };
 
 pub const Window = struct {
+    const max_window_id_digits = 10; // max 32 bit number is 4294967295
     id: js.CanvasId,
+    id_str: [max_window_id_digits]u8,
+    id_index: usize,
     width: u32,
     height: u32,
 
@@ -18,11 +21,21 @@ pub const Window = struct {
         if (desc.title.len > 0) {
             js.setWindowTitle(main.wasm_id, desc.title.ptr, desc.title.len);
         }
-        return Window{
+        var window = Window{
             .id = js.createCanvas(main.wasm_id, desc.width, desc.height),
+            .id_str = [_]u8{0} ** max_window_id_digits,
+            .id_index = max_window_id_digits,
             .width = desc.width,
             .height = desc.height,
         };
+
+        var value = window.id;
+        while (value > 0) : (value /= 10) {
+            window.id_index -= 1;
+            window.id_str[window.id_index] = @truncate(u8, value % 10) + '0';
+        }
+
+        return window;
     }
 
     pub fn deinit(window: *Window) void {
@@ -38,5 +51,8 @@ pub const Window = struct {
     pub fn getHeight(window: Window) u32 {
         return window.height;
     }
-};
 
+    pub fn getCanvasId(window: Window) []const u8 {
+        return window.id_str[window.id_index..];
+    }
+};

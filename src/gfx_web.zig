@@ -1,7 +1,6 @@
 const gfx = @import("gfx.zig");
 const main = @import("main.zig");
 const std = @import("std");
-const wnd = @import("wnd.zig");
 
 const js = struct {
     const GPUSize32 = u32;
@@ -12,7 +11,6 @@ const js = struct {
 
     const ObjectId = u32;
     const DescId = ObjectId;
-    const CanvasId = ObjectId;
     const ContextId = ObjectId;
     const AdapterId = ObjectId;
     const DeviceId = ObjectId;
@@ -56,7 +54,7 @@ const js = struct {
     extern fn beginDescChild(desc_id: DescId) void;
     extern fn endDescChild(desc_id: DescId) void;
 
-    extern fn createContext(canvas_id: ObjectId) ContextId;
+    extern fn createContext(wasm_id: main.WasmId, canvas_id_ptr: [*]const u8, canvas_id_len: usize) ContextId;
     extern fn destroyContext(context_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern fn configure(device_id: DeviceId, context_id: ContextId, desc_id: DescId) void;
@@ -312,10 +310,13 @@ pub const Instance = struct {
 
     pub fn deinit(_: *Instance) void {}
 
-    pub fn initSurface(_: *Instance, window: *const wnd.Window) !Surface {
+    pub fn initSurface(_: *Instance, desc: gfx.SurfaceDesc) !Surface {
         return Surface{
-            .canvas_id = window.impl.id,
-            .context_id = js.createContext(window.impl.id),
+            .context_id = js.createContext(
+                main.wasm_id,
+                desc.window_info.canvas_id.ptr,
+                desc.window_info.canvas_id.len,
+            ),
         };
     }
 
@@ -351,7 +352,6 @@ pub const Instance = struct {
 };
 
 pub const Surface = struct {
-    canvas_id: js.CanvasId,
     context_id: js.ContextId,
 
     pub fn getPreferredFormat(_: Surface) !gfx.TextureFormat {

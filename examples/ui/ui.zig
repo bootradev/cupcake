@@ -9,7 +9,7 @@ const Example = struct {
 
 pub fn init() !Example {
     var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
-    var gctx = try cc.gfx.Context.init(.{ .window = &window });
+    var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
     const uctx = try cc.ui.Context.init(.{
         .window = &window,
         .device = &gctx.device,

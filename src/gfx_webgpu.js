@@ -103,9 +103,10 @@ const _webgpu = {
         return _webgpu._getDesc(_descId)._obj;
     },
 
-    createContext(_canvasId) {
+    createContext(_wasmId, _canvasIdPtr, _canvasIdLen) {
+        const _canvasId = _main._getString(_wasmId, _canvasIdPtr, _canvasIdLen);
         return _webgpu._contexts._insert({
-            _obj: _wnd._canvases._getObj(_canvasId).getContext("webgpu"),
+            _obj: document.getElementById(_canvasId).getContext("webgpu"),
             _texId: _webgpu._textures._insert({}),
         });
     },

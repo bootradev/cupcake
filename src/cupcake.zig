@@ -6,3 +6,4 @@ pub const res = @import("res.zig");
 pub const time = @import("time.zig");
 pub const ui = @import("ui.zig");
 pub const wnd = @import("wnd.zig");
+pub const wnd_gfx = @import("wnd_gfx.zig");

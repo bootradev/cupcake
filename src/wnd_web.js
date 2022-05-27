@@ -29,11 +29,13 @@ const _wnd = {
         _canvas.height = _height;
         _wnd._canvasParent.appendChild(_canvas);
         _wnd._observer.observe(_canvas);
-        return _wnd._canvases._insert({
+        const _canvasId = _wnd._canvases._insert({
             _obj: _canvas,
             _wasmId: _wasmId,
             _parent: _wnd._canvasParent
         });
+        _canvas.id = _canvasId;
+        return _canvasId;
     },
     
     destroyCanvas(_canvasId) {

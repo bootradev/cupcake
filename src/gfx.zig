@@ -4,16 +4,15 @@ const api = switch (cfg.platform) {
 };
 const cfg = @import("cfg.zig");
 const std = @import("std");
-const wnd = @import("wnd.zig");
 
 pub const ContextDesc = struct {
-    window: *const wnd.Window,
+    surface_desc: SurfaceDesc,
     adapter_desc: AdapterDesc = .{},
     device_desc: DeviceDesc = .{},
+    swapchain_size: Extent3d,
 };
 
 pub const Context = struct {
-    window: *const wnd.Window,
     instance: Instance,
     surface: Surface,
     adapter: Adapter,
@@ -27,18 +26,18 @@ pub const Context = struct {
 
     pub fn init(desc: ContextDesc) !Context {
         var instance = try Instance.init();
-        var surface = try instance.initSurface(desc.window);
+        var surface = try instance.initSurface(desc.surface_desc);
         var adapter = try instance.initAdapter(desc.adapter_desc);
         var device = try adapter.initDevice(desc.device_desc);
         const swapchain_format = try surface.getPreferredFormat();
         const swapchain = try device.initSwapchain(&surface, .{
-            .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
+            .size = desc.swapchain_size,
             .format = swapchain_format,
         });
         const clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
         const depth_texture_format = .depth24plus;
         var depth_texture = try device.initTexture(.{
-            .size = .{ .width = desc.window.getWidth(), .height = desc.window.getHeight() },
+            .size = desc.swapchain_size,
             .format = depth_texture_format,
             .usage = .{ .render_attachment = true },
         });
@@ -48,7 +47,6 @@ pub const Context = struct {
         });
 
         return Context{
-            .window = desc.window,
             .instance = instance,
             .surface = surface,
             .adapter = adapter,
@@ -84,8 +82,8 @@ pub const Instance = struct {
         instance.impl.deinit();
     }
 
-    pub fn initSurface(instance: *Instance, window: *const wnd.Window) !Surface {
-        return Surface{ .impl = try instance.impl.initSurface(window) };
+    pub fn initSurface(instance: *Instance, desc: SurfaceDesc) !Surface {
+        return Surface{ .impl = try instance.impl.initSurface(desc) };
     }
 
     pub fn deinitSurface(instance: *Instance, surface: *Surface) void {
@@ -99,6 +97,19 @@ pub const Instance = struct {
     pub fn deinitAdapter(instance: *Instance, adapter: *Adapter) void {
         instance.impl.deinitAdapter(&adapter.impl);
     }
+};
+
+const CanvasWindowInfo = struct {
+    canvas_id: []const u8,
+};
+
+const SurfaceWindowInfo: type = switch (cfg.platform) {
+    .web => CanvasWindowInfo,
+    else => @compileError("Unsupported platform!"),
+};
+
+pub const SurfaceDesc = struct {
+    window_info: SurfaceWindowInfo,
 };
 
 pub const Surface = struct {
