@@ -2,7 +2,7 @@ const main = @import("main.zig");
 const std = @import("std");
 
 const js = struct {
-    extern fn logConsole(wasm_id: main.WasmId, msg_ptr: [*]const u8, msg_len: usize) void;
+    extern fn logConsole(msg_ptr: [*]const u8, msg_len: usize) void;
 };
 
 pub fn log(
@@ -17,23 +17,20 @@ pub fn log(
 
     var log_buf: [2048]u8 = undefined;
     const msg_buf = std.fmt.bufPrint(&log_buf, msg, args) catch return;
-    js.logConsole(main.wasm_id, msg_buf.ptr, msg_buf.len);
+    js.logConsole(msg_buf.ptr, msg_buf.len);
 }
 
 pub const entry = struct {
-    pub const WasmId = u32;
-    pub var wasm_id: WasmId = undefined;
-
-    var async_complete = false;
-
     // store the async calls in these variables in order to prevent the stack from
     // reclaiming the frame memory once the export fn completes
     var init_frame: @Frame(initAppAsync) = undefined;
     var loop_frame: @Frame(loopAppAsync) = undefined;
     var deinit_frame: @Frame(deinitAppAsync) = undefined;
 
-    pub export fn initApp(id: WasmId) void {
-        wasm_id = id;
+    // set to true when the current async function is complete
+    var async_complete = false;
+
+    pub export fn initApp() void {
         init_frame = async initAppAsync();
     }
 

@@ -1,11 +1,10 @@
-const main = @import("main.zig");
 const wnd = @import("wnd.zig");
 
 const js = struct {
     const CanvasId = u32;
 
-    extern fn setWindowTitle(wasm_id: main.WasmId, title_ptr: [*]const u8, title_len: usize) void;
-    extern fn createCanvas(wasm_id: main.WasmId, width: u32, height: u32) CanvasId;
+    extern fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
+    extern fn createCanvas(width: u32, height: u32) CanvasId;
     extern fn destroyCanvas(canvas_id: CanvasId) void;
 };
 
@@ -19,10 +18,10 @@ pub const Window = struct {
 
     pub fn init(desc: wnd.WindowDesc) !Window {
         if (desc.title.len > 0) {
-            js.setWindowTitle(main.wasm_id, desc.title.ptr, desc.title.len);
+            js.setWindowTitle(desc.title.ptr, desc.title.len);
         }
         var window = Window{
-            .id = js.createCanvas(main.wasm_id, desc.width, desc.height),
+            .id = js.createCanvas(desc.width, desc.height),
             .id_str = [_]u8{0} ** max_window_id_digits,
             .id_index = max_window_id_digits,
             .width = desc.width,
@@ -40,7 +39,7 @@ pub const Window = struct {
 
     pub fn deinit(window: *Window) void {
         const empty: []const u8 = &.{};
-        js.setWindowTitle(main.wasm_id, empty.ptr, empty.len);
+        js.setWindowTitle(empty.ptr, empty.len);
         js.destroyCanvas(window.id);
     }
 

@@ -1,5 +1,4 @@
 const gfx = @import("gfx.zig");
-const main = @import("main.zig");
 const std = @import("std");
 
 const js = struct {
@@ -33,18 +32,8 @@ const js = struct {
 
     extern fn initDesc() DescId;
     extern fn deinitDesc(desc_id: DescId) void;
-    extern fn setDescField(
-        wasm_id: main.WasmId,
-        desc_id: DescId,
-        field_ptr: [*]const u8,
-        field_len: usize,
-    ) void;
-    extern fn setDescString(
-        wasm_id: main.WasmId,
-        desc_id: DescId,
-        value_ptr: [*]const u8,
-        value_len: usize,
-    ) void;
+    extern fn setDescField(desc_id: DescId, field_ptr: [*]const u8, field_len: usize) void;
+    extern fn setDescString(desc_id: DescId, value_ptr: [*]const u8, value_len: usize) void;
     extern fn setDescBool(desc_id: DescId, value: bool) void;
     extern fn setDescU32(desc_id: DescId, value: u32) void;
     extern fn setDescI32(desc_id: DescId, value: i32) void;
@@ -54,29 +43,23 @@ const js = struct {
     extern fn beginDescChild(desc_id: DescId) void;
     extern fn endDescChild(desc_id: DescId) void;
 
-    extern fn createContext(wasm_id: main.WasmId, canvas_id_ptr: [*]const u8, canvas_id_len: usize) ContextId;
+    extern fn createContext(canvas_id_ptr: [*]const u8, canvas_id_len: usize) ContextId;
     extern fn destroyContext(context_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
     extern fn configure(device_id: DeviceId, context_id: ContextId, desc_id: DescId) void;
     extern fn getPreferredFormat() usize;
 
-    extern fn requestAdapter(wasm_id: main.WasmId, desc_id: DescId) void;
+    extern fn requestAdapter(desc_id: DescId) void;
     extern fn destroyAdapter(adapter_id: AdapterId) void;
 
-    extern fn requestDevice(wasm_id: main.WasmId, adapter_id: AdapterId, desc_id: DescId) void;
+    extern fn requestDevice(adapter_id: AdapterId, desc_id: DescId) void;
     extern fn destroyDevice(device_id: DeviceId) void;
 
-    extern fn createShader(
-        wasm_id: main.WasmId,
-        device_id: DeviceId,
-        code_ptr: [*]const u8,
-        code_len: usize,
-    ) ShaderId;
+    extern fn createShader(device_id: DeviceId, code_ptr: [*]const u8, code_len: usize) ShaderId;
     extern fn destroyShader(shader_id: ShaderId) void;
-    extern fn checkShaderCompile(wasm_id: main.WasmId, shader_id: ShaderId) void;
+    extern fn checkShaderCompile(shader_id: ShaderId) void;
 
     extern fn createBuffer(
-        wasm_id: main.WasmId,
         device_id: DeviceId,
         desc_id: DescId,
         init_data_ptr: [*]const u8,
@@ -108,7 +91,6 @@ const js = struct {
     extern fn beginRenderPass(command_encoder_id: CommandEncoderId, desc_id: DescId) RenderPassId;
     extern fn setPipeline(render_pass_id: RenderPassId, render_pipeline_id: RenderPipelineId) void;
     extern fn setBindGroup(
-        wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         group_index: GPUIndex32,
         bind_group_id: BindGroupId,
@@ -123,7 +105,6 @@ const js = struct {
         size: GPUSize64,
     ) void;
     extern fn setIndexBuffer(
-        wasm_id: main.WasmId,
         render_pass_id: RenderPassId,
         buffer_id: BufferId,
         index_format_ptr: [*]const u8,
@@ -150,7 +131,6 @@ const js = struct {
 
     extern fn queueSubmit(device_id: DeviceId, command_buffer_id: CommandBufferId) void;
     extern fn queueWriteBuffer(
-        wasm_id: main.WasmId,
         device_id: DeviceId,
         buffer_id: BufferId,
         buffer_offset: GPUSize64,
@@ -159,7 +139,6 @@ const js = struct {
         data_offset: GPUSize64,
     ) void;
     extern fn queueWriteTexture(
-        wasm_id: main.WasmId,
         device_id: DeviceId,
         destination_id: DescId,
         data_ptr: [*]const u8,
@@ -199,7 +178,7 @@ fn getFieldName(comptime name: []const u8) []const u8 {
 }
 
 fn setDescField(desc_id: js.DescId, field: []const u8) void {
-    js.setDescField(main.wasm_id, desc_id, field.ptr, field.len);
+    js.setDescField(desc_id, field.ptr, field.len);
 }
 
 fn setDescValue(desc_id: js.DescId, value: anytype) void {
@@ -222,7 +201,7 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
         },
         .Enum => {
             const enum_name = getEnumName(value);
-            js.setDescString(main.wasm_id, desc_id, enum_name.ptr, enum_name.len);
+            js.setDescString(desc_id, enum_name.ptr, enum_name.len);
         },
         .Optional => {
             if (value) |v| {
@@ -236,7 +215,7 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
                 },
                 .Slice => {
                     if (P.child == u8) {
-                        js.setDescString(main.wasm_id, desc_id, value.ptr, value.len);
+                        js.setDescString(desc_id, value.ptr, value.len);
                     } else {
                         js.beginDescArray(desc_id);
                         for (value) |v| {
@@ -313,7 +292,6 @@ pub const Instance = struct {
     pub fn initSurface(_: *Instance, desc: gfx.SurfaceDesc) !Surface {
         return Surface{
             .context_id = js.createContext(
-                main.wasm_id,
                 desc.window_info.canvas_id.ptr,
                 desc.window_info.canvas_id.len,
             ),
@@ -335,7 +313,7 @@ pub const Instance = struct {
 
     fn requestAdapterAsync(desc: gfx.AdapterDesc) !Adapter {
         defer js.deinitDesc(desc.impl.id);
-        js.requestAdapter(main.wasm_id, desc.impl.id);
+        js.requestAdapter(desc.impl.id);
         suspend {
             request_adapter_frame = @frame();
         }
@@ -394,7 +372,7 @@ pub const Adapter = struct {
 
     fn requestDeviceAsync(adapter: *Adapter, desc: gfx.DeviceDesc) !Device {
         defer js.deinitDesc(desc.impl.id);
-        js.requestDevice(main.wasm_id, adapter.id, desc.impl.id);
+        js.requestDevice(adapter.id, desc.impl.id);
         suspend {
             request_device_frame = @frame();
         }
@@ -456,7 +434,7 @@ pub const Device = struct {
 
     pub fn initShader(device: *Device, data: []const u8) !Shader {
         const shader = Shader{
-            .id = js.createShader(main.wasm_id, device.id, data.ptr, data.len),
+            .id = js.createShader(device.id, data.ptr, data.len),
         };
         return shader;
     }
@@ -472,7 +450,7 @@ pub const Device = struct {
 
         const data = desc.data orelse &[_]u8{};
         return Buffer{
-            .id = js.createBuffer(main.wasm_id, device.id, js_desc, data.ptr, data.len),
+            .id = js.createBuffer(device.id, js_desc, data.ptr, data.len),
         };
     }
 
@@ -771,14 +749,7 @@ pub const RenderPass = struct {
         else
             &[_]u8{};
 
-        js.setBindGroup(
-            main.wasm_id,
-            render_pass.id,
-            group_index,
-            group.id,
-            offsets.ptr,
-            offsets.len,
-        );
+        js.setBindGroup(render_pass.id, group_index, group.id, offsets.ptr, offsets.len);
     }
 
     pub fn setVertexBuffer(
@@ -798,16 +769,8 @@ pub const RenderPass = struct {
         offset: u32,
         size: usize,
     ) !void {
-        const index_format_name = getEnumName(index_format);
-        js.setIndexBuffer(
-            main.wasm_id,
-            render_pass.id,
-            buffer.id,
-            index_format_name.ptr,
-            index_format_name.len,
-            offset,
-            size,
-        );
+        const fmt_name = getEnumName(index_format);
+        js.setIndexBuffer(render_pass.id, buffer.id, fmt_name.ptr, fmt_name.len, offset, size);
     }
 
     pub fn draw(
@@ -853,15 +816,7 @@ pub const Queue = struct {
         data: []const u8,
         data_offset: usize,
     ) !void {
-        js.queueWriteBuffer(
-            main.wasm_id,
-            queue.id,
-            buffer.id,
-            buffer_offset,
-            data.ptr,
-            data.len,
-            data_offset,
-        );
+        js.queueWriteBuffer(queue.id, buffer.id, buffer_offset, data.ptr, data.len, data_offset);
     }
 
     pub fn submit(queue: *Queue, command_buffers: []const gfx.CommandBuffer) !void {

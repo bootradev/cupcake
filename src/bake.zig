@@ -156,7 +156,7 @@ pub fn bakeWeb(allocator: std.mem.Allocator, recipe: make.Recipe) !void {
         \\    <body>
         \\        <script src="cupcake.js"></script>
         \\        <script>
-        \\            run("{s}", null);
+        \\            ccRun("{s}");
         \\        </script>
         \\    </body>
         \\</html>

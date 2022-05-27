@@ -51,3 +51,23 @@ class _Objs {
         return _objId;
     }
 };
+
+const _utils = {
+    _textDecoder: new TextDecoder(),
+
+    _getWasm() {
+        return ccGetWasmModule();
+    },
+
+    _u8Array(_ptr, _len) {
+        return new Uint8Array(_utils._getWasm().memory.buffer, _ptr, _len);
+    },
+
+    _u32Array(_ptr, _len) {
+        return new Uint32Array(_utils._getWasm().memory.buffer, _ptr, _len / 4);
+    },
+
+    _getString(_ptr, _len) {
+        return _utils._textDecoder.decode(_utils._u8Array(_ptr, _len));
+    }
+};
