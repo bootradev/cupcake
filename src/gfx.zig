@@ -3,7 +3,6 @@ const api = switch (cfg.platform) {
     else => @compileError("Unsupported platform!"),
 };
 const cfg = @import("cfg.zig");
-const res = @import("res.zig");
 const std = @import("std");
 const wnd = @import("wnd.zig");
 
@@ -205,11 +204,6 @@ pub const Device = struct {
 
     pub fn initShader(device: *Device, data: []const u8) !Shader {
         return Shader{ .impl = try device.impl.initShader(data) };
-    }
-
-    pub fn loadShader(device: *Device, comptime r: res.Res, desc: res.LoadDesc) !Shader {
-        const shader_res = try res.load(r, desc);
-        return try device.initShader(shader_res.data);
     }
 
     pub fn deinitShader(device: *Device, shader: *Shader) void {

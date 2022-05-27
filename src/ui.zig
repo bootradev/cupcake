@@ -1,6 +1,7 @@
 const cc_bake = @import("cc_bake");
 const gfx = @import("gfx.zig");
 const math = @import("math.zig");
+const res = @import("res.zig");
 const std = @import("std");
 const wnd = @import("wnd.zig");
 
@@ -46,10 +47,12 @@ pub const Context = struct {
             .usage = .{ .vertex = true, .copy_dst = true },
         });
 
-        var vert_shader = try desc.device.loadShader(cc_bake.src_ui_vert_shader, .{});
+        const vert_shader_res = try res.load(cc_bake.src_ui_vert_shader, .{});
+        var vert_shader = try desc.device.initShader(vert_shader_res.data);
         defer desc.device.deinitShader(&vert_shader);
 
-        var frag_shader = try desc.device.loadShader(cc_bake.src_ui_frag_shader, .{});
+        const frag_shader_res = try res.load(cc_bake.src_ui_frag_shader, .{});
+        var frag_shader = try desc.device.initShader(frag_shader_res.data);
         defer desc.device.deinitShader(&frag_shader);
 
         var render_pipeline_desc = gfx.RenderPipelineDesc{};
