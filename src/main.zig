@@ -3,7 +3,7 @@ const api = switch (cfg.platform) {
     else => @compileError("Unsupported platform!"),
 };
 const app = @import("app");
-const ba = @import("build_options");
+const bo = @import("build_options");
 const cfg = @import("cfg.zig");
 const std = @import("std");
 
@@ -18,8 +18,8 @@ pub fn log(
     }
 }
 
-const log_enabled = ba.log_enabled;
-pub const log_level = @intToEnum(std.log.Level, @enumToInt(ba.log_level));
+const log_enabled = bo.log_enabled;
+pub const log_level = @intToEnum(std.log.Level, @enumToInt(bo.log_level));
 
 const AppData = if (@hasDecl(app, "init"))
 block: {
