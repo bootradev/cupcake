@@ -1,6 +1,6 @@
 const js = struct {
     const DomHighResTimeStamp = f64;
-    
+
     extern fn now() DomHighResTimeStamp;
 };
 
