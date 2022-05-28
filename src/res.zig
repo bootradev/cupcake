@@ -2,13 +2,12 @@ const api = switch (cfg.platform) {
     .web => @import("res_web.zig"),
     else => @compileError("Unsupported platform!"),
 };
-const bake = @import("bake.zig");
 const cfg = @import("cfg.zig");
 const serde = @import("serde.zig");
 const std = @import("std");
 
 pub const Res = struct {
-    type_name: []const u8,
+    Type: type,
     data: Data,
 
     pub const Data = union(enum) {
@@ -25,7 +24,7 @@ pub const LoadDesc = struct {
     res_allocator: ?std.mem.Allocator = null,
 };
 
-pub fn load(comptime res: Res, desc: LoadDesc) !@field(bake, res.type_name) {
+pub fn load(comptime res: Res, desc: LoadDesc) !res.Type {
     const bytes_are_embedded = comptime std.meta.activeTag(res.data) == .embed;
     const file_bytes = switch (res.data) {
         .embed => |e| e,
@@ -43,7 +42,7 @@ pub fn load(comptime res: Res, desc: LoadDesc) !@field(bake, res.type_name) {
 
     return try serde.deserialize(
         .{ .allocator = desc.res_allocator, .bytes_are_embedded = bytes_are_embedded },
-        @field(bake, res.type_name),
+        res.Type,
         file_bytes,
     );
 }

@@ -77,12 +77,12 @@ pub fn init() !Example {
     );
     defer gctx.device.deinitPipelineLayout(&pipeline_layout);
 
-    const vert_shader_res = try cc.res.load(cc.bake.cube_vert_shader, .{});
-    var vert_shader = try gctx.device.initShader(vert_shader_res.data);
+    const vert_shader_bake = try cc.res.load(cc.bake.cube_vert_shader, .{});
+    var vert_shader = try gctx.device.initShader(vert_shader_bake.data);
     defer gctx.device.deinitShader(&vert_shader);
 
-    const frag_shader_res = try cc.res.load(cc.bake.cube_frag_shader, .{});
-    var frag_shader = try gctx.device.initShader(frag_shader_res.data);
+    const frag_shader_bake = try cc.res.load(cc.bake.cube_frag_shader, .{});
+    var frag_shader = try gctx.device.initShader(frag_shader_bake.data);
     defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};

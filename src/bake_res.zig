@@ -54,6 +54,8 @@ pub fn main() !void {
     defer pkg_contents.deinit();
     const writer = pkg_contents.writer();
 
+    try writer.print("const bake = @import(\"bake\");\n", .{});
+
     for (recipe.bake_items) |bake_item| {
         const bake_item_bytes = try utils.readFile(allocator, &bake_dir, bake_item.path);
         defer allocator.free(bake_item_bytes);
@@ -62,7 +64,7 @@ pub fn main() !void {
         defer bake_result.deinit();
 
         try writer.print("pub const {s} = .{{ ", .{bake_result.var_name});
-        try writer.print(".type_name = \"{s}\", ", .{bake_result.type_name});
+        try writer.print(".Type = bake.{s}, ", .{bake_result.type_name});
         if (bake_item.embed) {
             try writer.print(
                 ".data = .{{ .embed = @embedFile(\"{s}\") }} ",

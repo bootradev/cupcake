@@ -392,7 +392,7 @@ fn buildExt(builder: *std.build.Builder, recipe: Recipe) !void {
 }
 
 fn buildBake(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !void {
-    const bake_exe = builder.addExecutable("bake", "src/bake_app.zig");
+    const bake_exe = builder.addExecutable("bake", "src/bake_res.zig");
     bake_exe.setBuildMode(.ReleaseSafe);
     bake_exe.linkLibC();
     bake_exe.addIncludePath(recipe.ext_dir);
@@ -427,13 +427,19 @@ fn buildApp(builder: *std.build.Builder, recipe: Recipe, recipe_cc: Recipe) !voi
     build_options.addOption(std.log.Level, "log_level", recipe.log_level);
     app_lib_exe.step.dependOn(&build_options.step);
 
+    const bake_src_pkg = std.build.Pkg{
+        .name = "bake",
+        .path = .{ .path = "src/bake.zig" },
+    };
     const bake_pkg = std.build.Pkg{
         .name = "bake",
         .path = .{ .path = recipe.pkg_path },
+        .dependencies = &.{bake_src_pkg},
     };
     const cc_bake_pkg = std.build.Pkg{
         .name = "cc_bake",
         .path = .{ .path = recipe_cc.pkg_path },
+        .dependencies = &.{bake_src_pkg},
     };
     const zmath_pkg = try getPackageExt(
         builder,

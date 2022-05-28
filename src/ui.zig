@@ -47,12 +47,12 @@ pub const Context = struct {
             .usage = .{ .vertex = true, .copy_dst = true },
         });
 
-        const vert_shader_res = try res.load(cc_bake.src_ui_vert_shader, .{});
-        var vert_shader = try desc.device.initShader(vert_shader_res.data);
+        const vert_shader_bake = try res.load(cc_bake.src_ui_vert_shader, .{});
+        var vert_shader = try desc.device.initShader(vert_shader_bake.data);
         defer desc.device.deinitShader(&vert_shader);
 
-        const frag_shader_res = try res.load(cc_bake.src_ui_frag_shader, .{});
-        var frag_shader = try desc.device.initShader(frag_shader_res.data);
+        const frag_shader_bake = try res.load(cc_bake.src_ui_frag_shader, .{});
+        var frag_shader = try desc.device.initShader(frag_shader_bake.data);
         defer desc.device.deinitShader(&frag_shader);
 
         var render_pipeline_desc = gfx.RenderPipelineDesc{};
