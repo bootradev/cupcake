@@ -9,7 +9,7 @@ const qoi = @import("qoi.zig");
 const utils = @import("utils.zig");
 
 pub const BakeShader = struct {
-    data: []const u8,
+    bytes: []const u8,
 
     pub fn bake(
         allocator: std.mem.Allocator,
@@ -25,7 +25,7 @@ pub const BakeShader = struct {
         );
         defer allocator.free(shader_bytes);
 
-        const bake_shader = BakeShader{ .data = shader_bytes };
+        const bake_shader = BakeShader{ .bytes = shader_bytes };
 
         return try BakeResult.init(allocator, bake_shader, bake_item);
     }

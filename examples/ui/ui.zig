@@ -1,19 +1,17 @@
 const cc = @import("cupcake");
-const res = @import("res");
 
 const Example = struct {
     window: cc.wnd.Window,
     gctx: cc.gfx.Context,
-    uctx: cc.ui.Context,
+    uctx: cc.ui.Context(cc.ui_gfx, cc.ui_res, .{}),
 };
 
 pub fn init() !Example {
-    var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
+    const window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
     var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
-    const uctx = try cc.ui.Context.init(.{
-        .window = &window,
-        .device = &gctx.device,
-        .format = gctx.swapchain_format,
+    const uctx = try cc.ui.Context(cc.ui_gfx, cc.ui_res, .{}).init(.{
+        .gfx_desc = .{ .device = &gctx.device, .format = gctx.swapchain_format },
+        .res_desc = .{},
     });
 
     return Example{

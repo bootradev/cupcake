@@ -11,11 +11,11 @@ pub fn init() !Example {
     var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
 
     const vert_shader_bake = try cc.res.load(cc.bake.triangle_vert_shader, .{});
-    var vert_shader = try gctx.device.initShader(vert_shader_bake.data);
+    var vert_shader = try gctx.device.initShader(vert_shader_bake.bytes);
     defer gctx.device.deinitShader(&vert_shader);
 
     const frag_shader_bake = try cc.res.load(cc.bake.triangle_frag_shader, .{});
-    var frag_shader = try gctx.device.initShader(frag_shader_bake.data);
+    var frag_shader = try gctx.device.initShader(frag_shader_bake.bytes);
     defer gctx.device.deinitShader(&frag_shader);
 
     var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};
