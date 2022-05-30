@@ -16,6 +16,7 @@ pub const BumpAllocator = struct {
                 }
                 break :block @intToPtr([*]u8, page_idx * std.mem.page_size)[0..size];
             },
+            .win => @compileError("Unsupported platform!"),
         };
 
         return BumpAllocator{
@@ -27,6 +28,7 @@ pub const BumpAllocator = struct {
     pub fn deinit(_: *BumpAllocator) void {
         switch (cfg.platform) {
             .web => {},
+            .win => @compileError("Unsupported platform!"),
         }
     }
 

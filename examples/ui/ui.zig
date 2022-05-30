@@ -1,24 +1,33 @@
 const cc = @import("cupcake");
 
 const Example = struct {
+    ba: cc.mem.BumpAllocator,
     window: cc.wnd.Window,
     gctx: cc.gfx.Context,
-    uctx: cc.ui.Context(cc.ui_gfx, cc.ui_res, .{}),
+    uctx: cc.ui.Context,
+    ugctx: cc.ui_gfx.Context,
 };
 
+const max_instances = 256;
+
 pub fn init() !Example {
+    var ba = try cc.mem.BumpAllocator.init(cc.ui.Context.instance_size * max_instances);
     const window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
     var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
-    const uctx = try cc.ui.Context(cc.ui_gfx, cc.ui_res, .{}).init(.{
-        .gfx_desc = .{ .device = &gctx.device, .format = gctx.swapchain_format },
-        .res_desc = .{},
+    const uctx = try cc.ui.Context.init(.{
+        .allocator = ba.allocator(),
+        .max_instances = max_instances,
+    });
+    const ugctx = try cc.ui_gfx.Context.init(.{
+        .device = &gctx.device,
+        .format = gctx.swapchain_format,
+        .vert_shader_bytes = try cc.ui_res.loadVertShaderBytes(),
+        .frag_shader_bytes = try cc.ui_res.loadFragShaderBytes(),
+        .instance_size = cc.ui.Context.instance_size,
+        .max_instances = max_instances,
     });
 
-    return Example{
-        .window = window,
-        .gctx = gctx,
-        .uctx = uctx,
-    };
+    return Example{ .ba = ba, .window = window, .gctx = gctx, .uctx = uctx, .ugctx = ugctx };
 }
 
 pub fn loop(ex: *Example) !void {
@@ -35,7 +44,7 @@ pub fn loop(ex: *Example) !void {
         .store_op = .store,
     }});
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try ex.uctx.render(&render_pass);
+    try ex.ugctx.render(&render_pass, ex.uctx.getInstanceBytes());
     try render_pass.end();
 
     try ex.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
@@ -43,7 +52,9 @@ pub fn loop(ex: *Example) !void {
 }
 
 pub fn deinit(ex: *Example) !void {
+    ex.ugctx.deinit();
     ex.uctx.deinit();
     ex.gctx.deinit();
     ex.window.deinit();
+    ex.ba.deinit();
 }

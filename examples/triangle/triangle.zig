@@ -31,11 +31,7 @@ pub fn init() !Example {
     });
     const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
 
-    return Example{
-        .window = window,
-        .gctx = gctx,
-        .render_pipeline = render_pipeline,
-    };
+    return Example{ .window = window, .gctx = gctx, .render_pipeline = render_pipeline };
 }
 
 pub fn loop(ex: *Example) !void {
