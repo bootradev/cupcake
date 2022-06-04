@@ -198,8 +198,8 @@ const Example = enum {
 };
 
 pub fn build(builder: *std.build.Builder) !void {
-    const example = builder.option(Example, "ex", "example project") orelse .tri;
-    switch (example) {
+    const ex = builder.option(Example, "ex", "example project") orelse .tri;
+    switch (ex) {
         .tri => try buildTri(builder),
         .cube => try buildCube(builder),
         .ui => try buildUi(builder),
@@ -210,7 +210,7 @@ fn buildTri(builder: *std.build.Builder) !void {
     const options = Options.init(builder);
     const dest_dir = try getDestDir(builder, options, "tri");
     const recipe = Recipe{
-        .dir = "examples/tri",
+        .dir = "ex/tri",
         .items = &.{
             .{ .bake_type = bake.Shader, .path = "tri_vert.wgsl", .embed = true },
             .{ .bake_type = bake.Shader, .path = "tri_frag.wgsl", .embed = true },
@@ -218,7 +218,7 @@ fn buildTri(builder: *std.build.Builder) !void {
     };
     const tri_pkg = std.build.Pkg{
         .name = "tri",
-        .path = .{ .path = "examples/tri/tri.zig" },
+        .path = .{ .path = "ex/tri/tri.zig" },
         .dependencies = &.{
             getBakePkg(builder, options, "tri", dest_dir, recipe),
             getGfxPkg(),
@@ -234,7 +234,7 @@ fn buildCube(builder: *std.build.Builder) !void {
     const options = Options.init(builder);
     const dest_dir = try getDestDir(builder, options, "cube");
     const recipe = Recipe{
-        .dir = "examples/cube",
+        .dir = "ex/cube",
         .items = &.{
             .{ .bake_type = bake.Shader, .path = "cube_vert.wgsl", .embed = true },
             .{ .bake_type = bake.Shader, .path = "cube_frag.wgsl", .embed = true },
@@ -242,7 +242,7 @@ fn buildCube(builder: *std.build.Builder) !void {
     };
     const cube_pkg = std.build.Pkg{
         .name = "cube",
-        .path = .{ .path = "examples/cube/cube.zig" },
+        .path = .{ .path = "ex/cube/cube.zig" },
         .dependencies = &.{
             getBakePkg(builder, options, "cube", dest_dir, recipe),
             getGfxPkg(),
@@ -260,7 +260,7 @@ fn buildUi(builder: *std.build.Builder) !void {
     const options = Options.init(builder);
     const ui_pkg = std.build.Pkg{
         .name = "ui",
-        .path = .{ .path = "examples/ui/ui.zig" },
+        .path = .{ .path = "ex/ui/ui.zig" },
         .dependencies = &.{
             getGfxPkg(),
             getMemPkg(),
