@@ -7,7 +7,7 @@ const SerdeError = error{
     AllocatorRequired,
 };
 
-pub fn serialize(allocator: std.mem.Allocator, value: anytype) ![]const u8 {
+pub fn serialize(allocator: std.mem.Allocator, value: anytype) ![]u8 {
     const Type = @TypeOf(value);
     if (@hasDecl(Type, "serialize")) {
         return try Type.serialize(allocator, value);

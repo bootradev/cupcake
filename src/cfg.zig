@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const Platform = enum(u8) {
+pub const Platform = enum {
     web,
     win,
 };
@@ -18,7 +18,7 @@ pub const platform: Platform = block: {
 };
 
 // todo: add support for profile mode enabled by root
-pub const OptLevel = enum(u8) {
+pub const OptLevel = enum {
     dbg,
     rel,
 };

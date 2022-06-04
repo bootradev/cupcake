@@ -1,4 +1,4 @@
-const math = @import("math.zig");
+const math = @import("cc_math");
 const std = @import("std");
 
 const Instance = struct {

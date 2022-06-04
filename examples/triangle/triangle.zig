@@ -1,24 +1,28 @@
-const cc = @import("cupcake");
+const cc_bake = @import("cc_bake");
+const cc_gfx = @import("cc_gfx");
+const cc_res = @import("cc_res");
+const cc_wnd = @import("cc_wnd");
+const cc_wnd_gfx = @import("cc_wnd_gfx");
 
 const Example = struct {
-    window: cc.wnd.Window,
-    gctx: cc.gfx.Context,
-    render_pipeline: cc.gfx.RenderPipeline,
+    window: cc_wnd.Window,
+    gctx: cc_gfx.Context,
+    render_pipeline: cc_gfx.RenderPipeline,
 };
 
 pub fn init() !Example {
-    var window = try cc.wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
-    var gctx = try cc.gfx.Context.init(cc.wnd_gfx.getContextDesc(window));
+    var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
+    var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
-    const vert_shader_bake = try cc.res.load(cc.bake.triangle_vert_shader, .{});
+    const vert_shader_bake = try cc_res.load(cc_bake.triangle_vert_shader, .{});
     var vert_shader = try gctx.device.initShader(vert_shader_bake.bytes);
     defer gctx.device.deinitShader(&vert_shader);
 
-    const frag_shader_bake = try cc.res.load(cc.bake.triangle_frag_shader, .{});
+    const frag_shader_bake = try cc_res.load(cc_bake.triangle_frag_shader, .{});
     var frag_shader = try gctx.device.initShader(frag_shader_bake.bytes);
     defer gctx.device.deinitShader(&frag_shader);
 
-    var render_pipeline_desc = cc.gfx.RenderPipelineDesc{};
+    var render_pipeline_desc = cc_gfx.RenderPipelineDesc{};
     render_pipeline_desc.setVertexState(.{
         .module = &vert_shader,
         .entry_point = "vs_main",
@@ -27,7 +31,7 @@ pub fn init() !Example {
         .module = &frag_shader,
         .entry_point = "fs_main",
         // todo: zig #7607
-        .targets = &[_]cc.gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
+        .targets = &[_]cc_gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
     });
     const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
 
@@ -38,9 +42,9 @@ pub fn loop(ex: *Example) !void {
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try ex.gctx.device.initCommandEncoder();
 
-    var render_pass_desc = cc.gfx.RenderPassDesc{};
+    var render_pass_desc = cc_gfx.RenderPassDesc{};
     // todo: zig #7607
-    render_pass_desc.setColorAttachments(&[_]cc.gfx.ColorAttachment{.{
+    render_pass_desc.setColorAttachments(&[_]cc_gfx.ColorAttachment{.{
         .view = &swapchain_view,
         .load_op = .clear,
         .clear_value = ex.gctx.clear_color,
