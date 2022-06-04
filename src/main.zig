@@ -1,6 +1,6 @@
 const api = switch (cfg.platform) {
     .web => @import("main_web.zig"),
-    else => @compileError("Unsupported platform!"),
+    .win => @compileError("Not yet implemented!"),
 };
 const app = @import("app");
 const bo = @import("build_options");

@@ -1,6 +1,6 @@
 const api = switch (cfg.platform) {
     .web => @import("time_web.zig"),
-    else => @import("Unsupported platform!"),
+    .win => @compileError("Not yet implemented!"),
 };
 const cfg = @import("cfg.zig");
 const std = @import("std");

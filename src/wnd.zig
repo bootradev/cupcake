@@ -1,6 +1,6 @@
 const api = switch (cfg.platform) {
     .web => @import("wnd_web.zig"),
-    else => @compileError("Unsupported platform!"),
+    .win => @compileError("Not yet implemented!"),
 };
 const cfg = @import("cfg.zig");
 

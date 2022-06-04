@@ -1,3 +1,7 @@
+const api = switch (cfg.platform) {
+    .web => @import("mem_web.zig"),
+    .win => @compileError("Not yet implemented!"),
+};
 const cfg = @import("cfg.zig");
 const std = @import("std");
 
@@ -6,30 +10,15 @@ pub const BumpAllocator = struct {
     index: usize,
 
     pub fn init(size: usize) !BumpAllocator {
-        const size_aligned = std.mem.alignForward(size, std.mem.page_size);
-        const buffer = switch (cfg.platform) {
-            .web => block: {
-                const page_idx = @wasmMemorySize(0);
-                const result = @wasmMemoryGrow(0, size_aligned / std.mem.page_size);
-                if (page_idx != result) {
-                    return error.OutOfMemory;
-                }
-                break :block @intToPtr([*]u8, page_idx * std.mem.page_size)[0..size];
-            },
-            .win => @compileError("Unsupported platform!"),
-        };
-
+        const buffer = try api.alloc(size);
         return BumpAllocator{
             .buffer = buffer,
             .index = buffer.len,
         };
     }
 
-    pub fn deinit(_: *BumpAllocator) void {
-        switch (cfg.platform) {
-            .web => {},
-            .win => @compileError("Unsupported platform!"),
-        }
+    pub fn deinit(ba: *BumpAllocator) void {
+        api.free(ba.buffer);
     }
 
     pub fn reset(ba: *BumpAllocator) void {
