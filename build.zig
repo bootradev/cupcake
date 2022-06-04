@@ -200,34 +200,34 @@ const Example = enum {
 pub fn build(builder: *std.build.Builder) !void {
     const example = builder.option(Example, "ex", "example project") orelse .tri;
     switch (example) {
-        .tri => try buildTriangle(builder),
+        .tri => try buildTri(builder),
         .cube => try buildCube(builder),
         .ui => try buildUi(builder),
     }
 }
 
-fn buildTriangle(builder: *std.build.Builder) !void {
+fn buildTri(builder: *std.build.Builder) !void {
     const options = Options.init(builder);
-    const dest_dir = try getDestDir(builder, options, "triangle");
+    const dest_dir = try getDestDir(builder, options, "tri");
     const recipe = Recipe{
-        .dir = "examples/triangle",
+        .dir = "examples/tri",
         .items = &.{
-            .{ .bake_type = bake.Shader, .path = "triangle_vert.wgsl", .embed = true },
-            .{ .bake_type = bake.Shader, .path = "triangle_frag.wgsl", .embed = true },
+            .{ .bake_type = bake.Shader, .path = "tri_vert.wgsl", .embed = true },
+            .{ .bake_type = bake.Shader, .path = "tri_frag.wgsl", .embed = true },
         },
     };
-    const triangle_pkg = std.build.Pkg{
-        .name = "triangle",
-        .path = .{ .path = "examples/triangle/triangle.zig" },
+    const tri_pkg = std.build.Pkg{
+        .name = "tri",
+        .path = .{ .path = "examples/tri/tri.zig" },
         .dependencies = &.{
-            getBakePkg(builder, options, "triangle", dest_dir, recipe),
+            getBakePkg(builder, options, "tri", dest_dir, recipe),
             getGfxPkg(),
             getResPkg(),
             getWndPkg(),
             getWndGfxPkg(),
         },
     };
-    _ = try initMainLibExe(builder, options, triangle_pkg);
+    _ = try initMainLibExe(builder, options, tri_pkg);
 }
 
 fn buildCube(builder: *std.build.Builder) !void {

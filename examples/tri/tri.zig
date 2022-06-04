@@ -11,14 +11,14 @@ const Example = struct {
 };
 
 pub fn init() !Example {
-    var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "triangle" });
+    var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "tri" });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
-    const vert_shader_bake = try cc_res.load(cc_bake.triangle_vert_shader, .{});
+    const vert_shader_bake = try cc_res.load(cc_bake.tri_vert_shader, .{});
     var vert_shader = try gctx.device.initShader(vert_shader_bake.bytes);
     defer gctx.device.deinitShader(&vert_shader);
 
-    const frag_shader_bake = try cc_res.load(cc_bake.triangle_frag_shader, .{});
+    const frag_shader_bake = try cc_res.load(cc_bake.tri_frag_shader, .{});
     var frag_shader = try gctx.device.initShader(frag_shader_bake.bytes);
     defer gctx.device.deinitShader(&frag_shader);
 
