@@ -49,6 +49,10 @@ const _wnd = {
             document.body :
             document.getElementById(_canvasParentId);
     },
+
+    isVisible(_canvasId) {
+        return _wnd._canvases._get(_canvasId)._isVisible;
+    }
 };
 
 function ccSetCanvasParent(_canvasParent) {

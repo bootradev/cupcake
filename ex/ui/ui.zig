@@ -37,6 +37,10 @@ pub fn init() !Example {
 }
 
 pub fn loop(ex: *Example) !void {
+    if (!ex.window.isVisible()) {
+        return;
+    }
+
     try ex.uctx.debugText("Hello, world!", .{});
 
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();

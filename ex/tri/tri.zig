@@ -39,6 +39,10 @@ pub fn init() !Example {
 }
 
 pub fn loop(ex: *Example) !void {
+    if (!ex.window.isVisible()) {
+        return;
+    }
+
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try ex.gctx.device.initCommandEncoder();
 

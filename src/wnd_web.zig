@@ -6,6 +6,7 @@ const js = struct {
     extern fn setWindowTitle(title_ptr: [*]const u8, title_len: usize) void;
     extern fn createCanvas(width: u32, height: u32) CanvasId;
     extern fn destroyCanvas(canvas_id: CanvasId) void;
+    extern fn isVisible(canvas_id: CanvasId) bool;
 };
 
 pub const Window = struct {
@@ -53,5 +54,9 @@ pub const Window = struct {
 
     pub fn getCanvasId(window: Window) []const u8 {
         return window.id_str[window.id_index..];
+    }
+
+    pub fn isVisible(window: Window) bool {
+        return js.isVisible(window.id);
     }
 };

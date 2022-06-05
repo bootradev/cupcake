@@ -131,6 +131,10 @@ pub fn init() !Example {
 }
 
 pub fn loop(ex: *Example) !void {
+    if (!ex.window.isVisible()) {
+        return;
+    }
+
     const time = ex.game_clock.readSeconds();
     const model_matrix = cc_math.matFromAxisAngle(
         cc_math.f32x4(cc_math.sin(time), cc_math.cos(time), 0.0, 0.0),
