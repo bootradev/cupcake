@@ -76,13 +76,18 @@ pub const Context = struct {
         };
     }
 
-    pub fn render(ctx: *Context, render_pass: *gfx.RenderPass, instance_bytes: []const u8) !void {
+    pub fn render(
+        ctx: *Context,
+        render_pass: *gfx.RenderPass,
+        instance_count: usize,
+        instance_bytes: []const u8,
+    ) !void {
         try ctx.device.getQueue().writeBuffer(&ctx.instance_buffer, 0, instance_bytes, 0);
         try render_pass.setPipeline(&ctx.render_pipeline);
         try render_pass.setVertexBuffer(0, &ctx.vertex_buffer, 0, gfx.whole_size);
         try render_pass.setVertexBuffer(1, &ctx.instance_buffer, 0, instance_bytes.len);
         try render_pass.setIndexBuffer(&ctx.index_buffer, .uint16, 0, gfx.whole_size);
-        try render_pass.drawIndexed(quad_indices.len, 1, 0, 0, 0);
+        try render_pass.drawIndexed(quad_indices.len, instance_count, 0, 0, 0);
     }
 
     pub fn deinit(ctx: *Context) void {

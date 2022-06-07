@@ -41,7 +41,12 @@ pub fn loop(ex: *Example) !void {
         return;
     }
 
-    try ex.uctx.debugText("Hello, world!", .{});
+    ex.uctx.clear();
+    ex.uctx.setViewport(.{
+        .width = @intToFloat(f32, ex.window.getWidth()),
+        .height = @intToFloat(f32, ex.window.getHeight()),
+    });
+    try ex.uctx.debugText(.{}, "Hello, world!", .{});
 
     const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try ex.gctx.device.initCommandEncoder();
@@ -54,7 +59,7 @@ pub fn loop(ex: *Example) !void {
         .store_op = .store,
     }});
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try ex.ugctx.render(&render_pass, ex.uctx.getInstanceBytes());
+    try ex.ugctx.render(&render_pass, ex.uctx.getInstanceCount(), ex.uctx.getInstanceBytes());
     try render_pass.end();
 
     try ex.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
