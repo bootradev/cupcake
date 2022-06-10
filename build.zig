@@ -1,8 +1,26 @@
 const bake = @import("src/bake.zig");
 const cfg = @import("src/cfg.zig");
+const demo_cube = @import("demo/cube/build.zig");
+const demo_tri = @import("demo/tri/build.zig");
+const demo_ui = @import("demo/ui/build.zig");
 const minify = @import("src/minify.zig");
 const std = @import("std");
 const zmath = @import("ext/zig-gamedev/libs/zmath/build.zig");
+
+const Demo = enum {
+    tri,
+    cube,
+    ui,
+};
+
+pub fn build(builder: *std.build.Builder) !void {
+    const demo = builder.option(Demo, "demo", "demo project") orelse .tri;
+    switch (demo) {
+        .tri => try demo_tri.build(builder),
+        .cube => try demo_cube.build(builder),
+        .ui => try demo_ui.build(builder),
+    }
+}
 
 // package for "baking" resources into runtime-ready format
 pub fn getBakePkg(
@@ -29,7 +47,7 @@ pub fn getMathPkg() std.build.Pkg {
     return std.build.Pkg{
         .name = "cc_math",
         .path = .{ .path = "src/math.zig" },
-        .dependencies = &.{ zmath.pkg },
+        .dependencies = &.{zmath.pkg},
     };
 }
 
@@ -166,92 +184,10 @@ pub const Options = struct {
     }
 };
 
-const Demo = enum {
-    tri,
-    cube,
-    ui,
-};
-
-pub fn build(builder: *std.build.Builder) !void {
-    const demo = builder.option(Demo, "demo", "demo project") orelse .tri;
-    switch (demo) {
-        .tri => try buildTri(builder),
-        .cube => try buildCube(builder),
-        .ui => try buildUi(builder),
-    }
-}
-
-fn buildTri(builder: *std.build.Builder) !void {
-    const options = Options.init(builder);
-    const dest_dir = try getDestDir(builder, options, "tri");
-    const recipe = Recipe{
-        .dir = "demo/tri",
-        .items = &.{
-            .{ .bake_type = bake.Shader, .path = "tri_vert.wgsl", .embed = true },
-            .{ .bake_type = bake.Shader, .path = "tri_frag.wgsl", .embed = true },
-        },
-    };
-    const tri_pkg = std.build.Pkg{
-        .name = "tri",
-        .path = .{ .path = "demo/tri/tri.zig" },
-        .dependencies = &.{
-            getBakePkg(builder, options, "tri", dest_dir, recipe),
-            getGfxPkg(),
-            getResPkg(),
-            getWndPkg(),
-            getWndGfxPkg(),
-        },
-    };
-    _ = try initMainLibExe(builder, options, tri_pkg);
-}
-
-fn buildCube(builder: *std.build.Builder) !void {
-    const options = Options.init(builder);
-    const dest_dir = try getDestDir(builder, options, "cube");
-    const recipe = Recipe{
-        .dir = "demo/cube",
-        .items = &.{
-            .{ .bake_type = bake.Shader, .path = "cube_vert.wgsl", .embed = true },
-            .{ .bake_type = bake.Shader, .path = "cube_frag.wgsl", .embed = true },
-        },
-    };
-    const cube_pkg = std.build.Pkg{
-        .name = "cube",
-        .path = .{ .path = "demo/cube/cube.zig" },
-        .dependencies = &.{
-            getBakePkg(builder, options, "cube", dest_dir, recipe),
-            getGfxPkg(),
-            getMathPkg(),
-            getResPkg(),
-            getTimePkg(),
-            getWndPkg(),
-            getWndGfxPkg(),
-        },
-    };
-    _ = try initMainLibExe(builder, options, cube_pkg);
-}
-
-fn buildUi(builder: *std.build.Builder) !void {
-    const options = Options.init(builder);
-    const ui_pkg = std.build.Pkg{
-        .name = "ui",
-        .path = .{ .path = "demo/ui/ui.zig" },
-        .dependencies = &.{
-            getGfxPkg(),
-            getMemPkg(),
-            getUiPkg(),
-            getUiGfxPkg(),
-            getUiResPkg(builder, options),
-            getWndPkg(),
-            getWndGfxPkg(),
-        },
-    };
-    _ = try initMainLibExe(builder, options, ui_pkg);
-}
-
 pub fn initMainLibExe(
     builder: *std.build.Builder,
     options: Options,
+    dest_dir: []const u8,
     pkg: std.build.Pkg,
 ) !*std.build.LibExeObjStep {
     const app_name = pkg.name;
@@ -261,8 +197,6 @@ pub fn initMainLibExe(
     const build_options = builder.addOptions();
     build_options.addOption(bool, "log_enabled", options.log_enabled);
     build_options.addOption(std.log.Level, "log_level", options.log_level);
-
-    const dest_dir = try getDestDir(builder, options, app_name);
 
     const main_lib_exe = switch (options.platform) {
         .web => try initWebLibExe(builder, app_name),
@@ -353,7 +287,7 @@ fn getBakeCacheDir(builder: *std.build.Builder, options: Options, name: []const 
     );
 }
 
-fn getDestDir(builder: *std.build.Builder, options: Options, name: []const u8) ![]u8 {
+pub fn getDestDir(builder: *std.build.Builder, options: Options, name: []const u8) ![]u8 {
     return try std.fs.path.join(
         builder.allocator,
         &.{ name, @tagName(options.platform) },
