@@ -6,7 +6,7 @@ const cc_ui_res = @import("cc_ui_res");
 const cc_wnd = @import("cc_wnd");
 const cc_wnd_gfx = @import("cc_wnd_gfx");
 
-const Example = struct {
+const Demo = struct {
     ba: cc_mem.BumpAllocator,
     window: cc_wnd.Window,
     gctx: cc_gfx.Context,
@@ -16,7 +16,7 @@ const Example = struct {
 
 const max_instances = 256;
 
-pub fn init() !Example {
+pub fn init() !Demo {
     var ba = try cc_mem.BumpAllocator.init(cc_ui.Context.instance_size * max_instances);
     const window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
@@ -33,43 +33,43 @@ pub fn init() !Example {
         .max_instances = max_instances,
     });
 
-    return Example{ .ba = ba, .window = window, .gctx = gctx, .uctx = uctx, .ugctx = ugctx };
+    return Demo{ .ba = ba, .window = window, .gctx = gctx, .uctx = uctx, .ugctx = ugctx };
 }
 
-pub fn loop(ex: *Example) !void {
-    if (!ex.window.isVisible()) {
+pub fn loop(demo: *Demo) !void {
+    if (!demo.window.isVisible()) {
         return;
     }
 
-    ex.uctx.clear();
-    ex.uctx.setViewport(.{
-        .width = @intToFloat(f32, ex.window.getWidth()),
-        .height = @intToFloat(f32, ex.window.getHeight()),
+    demo.uctx.clear();
+    demo.uctx.setViewport(.{
+        .width = @intToFloat(f32, demo.window.getWidth()),
+        .height = @intToFloat(f32, demo.window.getHeight()),
     });
-    try ex.uctx.debugText(.{}, "Hello, world!", .{});
+    try demo.uctx.debugText(.{}, "Hello, world!", .{});
 
-    const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
-    var command_encoder = try ex.gctx.device.initCommandEncoder();
+    const swapchain_view = try demo.gctx.swapchain.getCurrentTextureView();
+    var command_encoder = try demo.gctx.device.initCommandEncoder();
 
     var render_pass_desc = cc_gfx.RenderPassDesc{};
     render_pass_desc.setColorAttachments(&[_]cc_gfx.ColorAttachment{.{
         .view = &swapchain_view,
         .load_op = .clear,
-        .clear_value = ex.gctx.clear_color,
+        .clear_value = demo.gctx.clear_color,
         .store_op = .store,
     }});
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try ex.ugctx.render(&render_pass, ex.uctx.getInstanceCount(), ex.uctx.getInstanceBytes());
+    try demo.ugctx.render(&render_pass, demo.uctx.getInstanceCount(), demo.uctx.getInstanceBytes());
     try render_pass.end();
 
-    try ex.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
-    try ex.gctx.swapchain.present();
+    try demo.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
+    try demo.gctx.swapchain.present();
 }
 
-pub fn deinit(ex: *Example) !void {
-    ex.ugctx.deinit();
-    ex.uctx.deinit();
-    ex.gctx.deinit();
-    ex.window.deinit();
-    ex.ba.deinit();
+pub fn deinit(demo: *Demo) !void {
+    demo.ugctx.deinit();
+    demo.uctx.deinit();
+    demo.gctx.deinit();
+    demo.window.deinit();
+    demo.ba.deinit();
 }

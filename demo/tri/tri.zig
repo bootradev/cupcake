@@ -4,13 +4,13 @@ const cc_res = @import("cc_res");
 const cc_wnd = @import("cc_wnd");
 const cc_wnd_gfx = @import("cc_wnd_gfx");
 
-const Example = struct {
+const Demo = struct {
     window: cc_wnd.Window,
     gctx: cc_gfx.Context,
     render_pipeline: cc_gfx.RenderPipeline,
 };
 
-pub fn init() !Example {
+pub fn init() !Demo {
     var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "tri" });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
@@ -35,37 +35,37 @@ pub fn init() !Example {
     });
     const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
 
-    return Example{ .window = window, .gctx = gctx, .render_pipeline = render_pipeline };
+    return Demo{ .window = window, .gctx = gctx, .render_pipeline = render_pipeline };
 }
 
-pub fn loop(ex: *Example) !void {
-    if (!ex.window.isVisible()) {
+pub fn loop(demo: *Demo) !void {
+    if (!demo.window.isVisible()) {
         return;
     }
 
-    const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
-    var command_encoder = try ex.gctx.device.initCommandEncoder();
+    const swapchain_view = try demo.gctx.swapchain.getCurrentTextureView();
+    var command_encoder = try demo.gctx.device.initCommandEncoder();
 
     var render_pass_desc = cc_gfx.RenderPassDesc{};
     // todo: zig #7607
     render_pass_desc.setColorAttachments(&[_]cc_gfx.ColorAttachment{.{
         .view = &swapchain_view,
         .load_op = .clear,
-        .clear_value = ex.gctx.clear_color,
+        .clear_value = demo.gctx.clear_color,
         .store_op = .store,
     }});
 
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try render_pass.setPipeline(&ex.render_pipeline);
+    try render_pass.setPipeline(&demo.render_pipeline);
     try render_pass.draw(3, 1, 0, 0);
     try render_pass.end();
 
-    try ex.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
-    try ex.gctx.swapchain.present();
+    try demo.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
+    try demo.gctx.swapchain.present();
 }
 
-pub fn deinit(ex: *Example) !void {
-    ex.gctx.device.deinitRenderPipeline(&ex.render_pipeline);
-    ex.gctx.deinit();
-    ex.window.deinit();
+pub fn deinit(demo: *Demo) !void {
+    demo.gctx.device.deinitRenderPipeline(&demo.render_pipeline);
+    demo.gctx.deinit();
+    demo.window.deinit();
 }

@@ -38,7 +38,7 @@ const indices: []const u16 = &.{
     5, 4, 7, 7, 4, 6, // back
 };
 
-const Example = struct {
+const Demo = struct {
     window: cc_wnd.Window,
     gctx: cc_gfx.Context,
     vertex_buffer: cc_gfx.Buffer,
@@ -49,7 +49,7 @@ const Example = struct {
     game_clock: cc_time.Timer,
 };
 
-pub fn init() !Example {
+pub fn init() !Demo {
     var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
@@ -118,7 +118,7 @@ pub fn init() !Example {
 
     const game_clock = try cc_time.Timer.start();
 
-    return Example{
+    return Demo{
         .window = window,
         .gctx = gctx,
         .vertex_buffer = vertex_buffer,
@@ -130,12 +130,12 @@ pub fn init() !Example {
     };
 }
 
-pub fn loop(ex: *Example) !void {
-    if (!ex.window.isVisible()) {
+pub fn loop(demo: *Demo) !void {
+    if (!demo.window.isVisible()) {
         return;
     }
 
-    const time = ex.game_clock.readSeconds();
+    const time = demo.game_clock.readSeconds();
     const model_matrix = cc_math.matFromAxisAngle(
         cc_math.f32x4(cc_math.sin(time), cc_math.cos(time), 0.0, 0.0),
         1.0,
@@ -147,52 +147,52 @@ pub fn loop(ex: *Example) !void {
     );
     const proj_matrix = cc_math.perspectiveFovLh(
         2.0 * std.math.pi / 5.0,
-        ex.window.getAspectRatio(),
+        demo.window.getAspectRatio(),
         1,
         100,
     );
     const mvp_matrix = cc_math.mul(cc_math.mul(model_matrix, view_matrix), proj_matrix);
     const uniforms = Uniforms{ .mvp = cc_math.transpose(mvp_matrix) };
 
-    var queue = ex.gctx.device.getQueue();
-    try queue.writeBuffer(&ex.uniform_buffer, 0, std.mem.asBytes(&uniforms), 0);
+    var queue = demo.gctx.device.getQueue();
+    try queue.writeBuffer(&demo.uniform_buffer, 0, std.mem.asBytes(&uniforms), 0);
 
-    const swapchain_view = try ex.gctx.swapchain.getCurrentTextureView();
-    var command_encoder = try ex.gctx.device.initCommandEncoder();
+    const swapchain_view = try demo.gctx.swapchain.getCurrentTextureView();
+    var command_encoder = try demo.gctx.device.initCommandEncoder();
 
     var render_pass_desc = cc_gfx.RenderPassDesc{};
     // todo: zig #7607
     render_pass_desc.setColorAttachments(&[_]cc_gfx.ColorAttachment{.{
         .view = &swapchain_view,
         .load_op = .clear,
-        .clear_value = ex.gctx.clear_color,
+        .clear_value = demo.gctx.clear_color,
         .store_op = .store,
     }});
     render_pass_desc.setDepthStencilAttachment(.{
-        .view = &ex.gctx.depth_texture_view,
+        .view = &demo.gctx.depth_texture_view,
         .depth_clear_value = 1.0,
         .depth_load_op = .clear,
         .depth_store_op = .store,
     });
 
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try render_pass.setPipeline(&ex.render_pipeline);
-    try render_pass.setBindGroup(0, &ex.bind_group, null);
-    try render_pass.setVertexBuffer(0, &ex.vertex_buffer, 0, cc_gfx.whole_size);
-    try render_pass.setIndexBuffer(&ex.index_buffer, .uint16, 0, cc_gfx.whole_size);
+    try render_pass.setPipeline(&demo.render_pipeline);
+    try render_pass.setBindGroup(0, &demo.bind_group, null);
+    try render_pass.setVertexBuffer(0, &demo.vertex_buffer, 0, cc_gfx.whole_size);
+    try render_pass.setIndexBuffer(&demo.index_buffer, .uint16, 0, cc_gfx.whole_size);
     try render_pass.drawIndexed(indices.len, 1, 0, 0, 0);
     try render_pass.end();
 
     try queue.submit(&.{try command_encoder.finish()});
-    try ex.gctx.swapchain.present();
+    try demo.gctx.swapchain.present();
 }
 
-pub fn deinit(ex: *Example) !void {
-    ex.gctx.device.deinitRenderPipeline(&ex.render_pipeline);
-    ex.gctx.device.deinitBindGroup(&ex.bind_group);
-    ex.gctx.device.deinitBuffer(&ex.uniform_buffer);
-    ex.gctx.device.deinitBuffer(&ex.index_buffer);
-    ex.gctx.device.deinitBuffer(&ex.vertex_buffer);
-    ex.gctx.deinit();
-    ex.window.deinit();
+pub fn deinit(demo: *Demo) !void {
+    demo.gctx.device.deinitRenderPipeline(&demo.render_pipeline);
+    demo.gctx.device.deinitBindGroup(&demo.bind_group);
+    demo.gctx.device.deinitBuffer(&demo.uniform_buffer);
+    demo.gctx.device.deinitBuffer(&demo.index_buffer);
+    demo.gctx.device.deinitBuffer(&demo.vertex_buffer);
+    demo.gctx.deinit();
+    demo.window.deinit();
 }
