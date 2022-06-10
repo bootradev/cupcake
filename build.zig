@@ -2,6 +2,7 @@ const bake = @import("src/bake.zig");
 const cfg = @import("src/cfg.zig");
 const minify = @import("src/minify.zig");
 const std = @import("std");
+const zmath = @import("ext/zig-gamedev/libs/zmath/build.zig");
 
 // package for "baking" resources into runtime-ready format
 pub fn getBakePkg(
@@ -24,37 +25,11 @@ pub fn getGfxPkg() std.build.Pkg {
 }
 
 // cross platform math (exports zmath)
-pub fn getMathPkg(builder: *std.build.Builder) std.build.Pkg {
-    const ext_dir = getExtDir(builder) catch unreachable;
-    const zmath_clone = GitClone.init(
-        builder,
-        ext_dir,
-        "https://github.com/michal-z/zig-gamedev.git",
-        "6e0a0ba9a9d4d087215928345208094ae9806ab3",
-        false,
-    ) catch unreachable;
-
-    const zmath_path = std.fs.path.join(
-        builder.allocator,
-        &.{ ext_dir, "zig-gamedev", "libs", "zmath", "src", "zmath.zig" },
-    ) catch unreachable;
-
-    const zmath_gen = builder.allocator.create(std.build.GeneratedFile) catch unreachable;
-    zmath_gen.* = .{
-        .step = &zmath_clone.step,
-        .path = zmath_path,
-    };
-
-    const dependencies = builder.allocator.alloc(std.build.Pkg, 1) catch unreachable;
-    dependencies[0] = .{
-        .name = "zmath",
-        .path = .{ .generated = zmath_gen },
-    };
-
+pub fn getMathPkg() std.build.Pkg {
     return std.build.Pkg{
         .name = "cc_math",
         .path = .{ .path = "src/math.zig" },
-        .dependencies = dependencies,
+        .dependencies = &.{ zmath.pkg },
     };
 }
 
@@ -83,11 +58,11 @@ pub fn getTimePkg() std.build.Pkg {
 }
 
 // user interface
-pub fn getUiPkg(builder: *std.build.Builder) std.build.Pkg {
+pub fn getUiPkg() std.build.Pkg {
     return std.build.Pkg{
         .name = "cc_ui",
         .path = .{ .path = "src/ui.zig" },
-        .dependencies = &.{getMathPkg(builder)},
+        .dependencies = &.{getMathPkg()},
     };
 }
 
@@ -246,7 +221,7 @@ fn buildCube(builder: *std.build.Builder) !void {
         .dependencies = &.{
             getBakePkg(builder, options, "cube", dest_dir, recipe),
             getGfxPkg(),
-            getMathPkg(builder),
+            getMathPkg(),
             getResPkg(),
             getTimePkg(),
             getWndPkg(),
@@ -264,7 +239,7 @@ fn buildUi(builder: *std.build.Builder) !void {
         .dependencies = &.{
             getGfxPkg(),
             getMemPkg(),
-            getUiPkg(builder),
+            getUiPkg(),
             getUiGfxPkg(),
             getUiResPkg(builder, options),
             getWndPkg(),
@@ -382,13 +357,6 @@ fn getDestDir(builder: *std.build.Builder, options: Options, name: []const u8) !
     return try std.fs.path.join(
         builder.allocator,
         &.{ name, @tagName(options.platform) },
-    );
-}
-
-fn getExtDir(builder: *std.build.Builder) ![]u8 {
-    return try std.fs.path.join(
-        builder.allocator,
-        &.{ try getCacheDir(builder), "ext" },
     );
 }
 
@@ -710,80 +678,5 @@ const GenerateWebFiles = struct {
             defer gen_web_files.builder.allocator.free(js_src_bytes_min);
             try std.fs.cwd().writeFile(gen_web_files.js_file.getPath(), js_src_bytes_min);
         }
-    }
-};
-
-const GitClone = struct {
-    step: std.build.Step,
-
-    pub fn init(
-        builder: *std.build.Builder,
-        dir: []const u8,
-        repo: []const u8,
-        commit: []const u8,
-        recursive: bool,
-    ) !*GitClone {
-        const git_clone = try builder.allocator.create(GitClone);
-        git_clone.* = .{
-            .step = std.build.Step.initNoOp(.custom, "git pull", builder.allocator),
-        };
-        const repo_name = std.fs.path.basename(repo);
-        if (!std.mem.endsWith(u8, repo_name, ".git")) {
-            return error.InvalidRepoName;
-        }
-        const repo_path = try std.fs.path.join(
-            builder.allocator,
-            &.{ dir, repo_name[0 .. repo_name.len - 4] },
-        );
-        defer builder.allocator.free(repo_path);
-        var repo_exists = true;
-        var repo_dir: ?std.fs.Dir = std.fs.cwd().openDir(repo_path, .{}) catch |e| block: {
-            switch (e) {
-                error.FileNotFound => {
-                    repo_exists = false;
-                    break :block null;
-                },
-                else => return e,
-            }
-        };
-        // todo: check if commit is same as well
-        if (repo_exists) {
-            repo_dir.?.close();
-            return git_clone;
-        }
-
-        try std.fs.cwd().makePath(dir);
-
-        var clone_args = std.ArrayList([]const u8).init(builder.allocator);
-        defer clone_args.deinit();
-
-        try clone_args.append("git");
-        try clone_args.append("clone");
-        if (recursive) {
-            try clone_args.append("--recurse-submodules");
-            try clone_args.append("-j8");
-        }
-        try clone_args.append(try builder.allocator.dupe(u8, repo));
-
-        const clone = builder.addSystemCommand(clone_args.items);
-        clone.cwd = try builder.allocator.dupe(u8, dir);
-
-        var checkout_args = std.ArrayList([]const u8).init(builder.allocator);
-        defer checkout_args.deinit();
-
-        try checkout_args.append("git");
-        try checkout_args.append("checkout");
-        if (recursive) {
-            try checkout_args.append("--recurse-submodules");
-        }
-        try checkout_args.append(try builder.allocator.dupe(u8, commit));
-        try checkout_args.append(".");
-
-        const checkout = builder.addSystemCommand(checkout_args.items);
-        checkout.cwd = try builder.allocator.dupe(u8, repo_path);
-        checkout.step.dependOn(&clone.step);
-
-        git_clone.step.dependOn(&checkout.step);
-        return git_clone;
     }
 };
