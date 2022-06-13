@@ -1,83 +1,5 @@
-const cfg = @import("cfg.zig");
-const minify = @import("minify.zig");
-const serde = @import("serde.zig");
-const stb = @cImport({
-    @cInclude("stb/stb_image.h");
-});
-const std = @import("std");
-const qoi = @import("qoi.zig");
-
-pub const Shader = struct {
-    bytes: []const u8,
-
-    pub fn bake(
-        allocator: std.mem.Allocator,
-        bytes: []const u8,
-        platform: cfg.Platform,
-        opt_level: cfg.OptLevel,
-    ) ![]u8 {
-        const shader_bytes = try minify.shader(
-            bytes,
-            allocator,
-            platform,
-            opt_level,
-        );
-        defer allocator.free(shader_bytes);
-
-        return try serde.serialize(allocator, Shader{ .bytes = shader_bytes });
-    }
-};
-
-pub const Texture = struct {
-    width: u32,
-    height: u32,
-    data: []const u8,
-
-    pub fn serialize(allocator: std.mem.Allocator, value: Texture) ![]const u8 {
-        const qoi_image = qoi.Image{
-            .width = value.width,
-            .height = value.height,
-            .data = value.data,
-        };
-
-        const result = try qoi.encode(qoi_image, allocator);
-        return allocator.resize(result.bytes, result.len) orelse error.ResizeFailed;
-    }
-
-    pub fn deserialize(desc: serde.DeserializeDesc, bytes: []const u8) !Texture {
-        const allocator = desc.allocator orelse return error.AllocatorRequired;
-        const image = try qoi.decode(bytes, allocator);
-        return Texture{ .width = image.width, .height = image.height, .data = image.data };
-    }
-
-    pub fn bake(
-        allocator: std.mem.Allocator,
-        bytes: []const u8,
-        _: cfg.Platform,
-        _: cfg.OptLevel,
-    ) ![]u8 {
-        var width: c_int = undefined;
-        var height: c_int = undefined;
-        var channels: c_int = undefined;
-        const texture_bytes = stb.stbi_load_from_memory(
-            bytes.ptr,
-            @intCast(c_int, bytes.len),
-            &width,
-            &height,
-            &channels,
-            0,
-        );
-        defer stb.stbi_image_free(texture_bytes);
-
-        return try serde.serialize(allocator, Texture{
-            .width = @intCast(u32, width),
-            .height = @intCast(u32, height),
-            .data = texture_bytes[0..@intCast(usize, width * height * channels)],
-        });
-    }
-};
-
 const bake_list = @import("bake_list");
+const std = @import("std");
 
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
@@ -96,48 +18,65 @@ pub fn main() !void {
     std.log.info("input dir: {s}", .{bake_list.in_dir});
     std.log.info("output dir: {s}", .{bake_list.out_dir});
 
-    inline for (@typeInfo(bake_list).Struct.decls) |decl| {
-        const Type = @field(bake_list, decl.name);
-        if (@TypeOf(Type) == type and @hasDecl(Type, "bake")) {
-            const var_name = comptime getVarName(decl.name, Type);
-            std.log.info("{s} {s} -> {s}", .{ Type, decl.name, var_name });
+    var deps = std.ArrayList([]u8).init(allocator);
+    defer deps.deinit();
 
-            const file = try in_dir.openFile(decl.name, .{});
+    var pkg_contents = std.ArrayList(u8).init(allocator);
+    defer pkg_contents.deinit();
+    const writer = pkg_contents.writer();
+    inline for (@typeInfo(bake_list.pkgs).Struct.decls) |decl| {
+        try writer.print("pub const {s} = @import(\"{s}\");\n", .{ decl.name, decl.name });
+    }
+
+    inline for (@typeInfo(bake_list.items).Struct.decls) |decl| {
+        const item = @field(bake_list.items, decl.name);
+
+        std.log.info("{s} {s}", .{ item.bake_type, decl.name });
+
+        inline for (item.deps) |dep| {
+            const is_id = comptime std.mem.indexOfScalar(u8, dep, '.') == null;
+            const dir = if (is_id) out_dir else in_dir;
+            const file = try dir.openFile(dep, .{});
             defer file.close();
             const file_stat = try file.stat();
             const file_bytes = try file.readToEndAlloc(allocator, file_stat.size);
-            defer allocator.free(file_bytes);
-
-            const bake_bytes = try Type.bake(
-                allocator,
-                file_bytes,
-                bake_list.platform,
-                bake_list.opt_level,
-            );
-            defer allocator.free(bake_bytes);
-            try out_dir.writeFile(var_name, bake_bytes);
+            try deps.append(file_bytes);
         }
+
+        const BakeType = @field(bake_list.pkgs, item.bake_pkg).BakeType(item.bake_type);
+        const bake_bytes = try BakeType.bake(
+            allocator,
+            deps.items,
+            bake_list.platform,
+            bake_list.opt_level,
+        );
+        defer allocator.free(bake_bytes);
+        try out_dir.writeFile(decl.name, bake_bytes);
+
+        if (item.output != .cache) {
+            try writer.print("pub const {s} = .{{\n", .{decl.name});
+            try writer.print("    .Type = {s}.{s},\n", .{ item.bake_pkg, @typeName(BakeType) });
+            if (item.output == .pkg_embed) {
+                try writer.print(
+                    "    .data = .{{ .embed = @embedFile(\"{s}\") }},\n",
+                    .{decl.name},
+                );
+            } else {
+                try writer.print(
+                    "    .data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }},\n",
+                    .{ decl.name, bake_bytes.len },
+                );
+            }
+            try writer.print("}};\n", .{});
+        }
+
+        for (deps.items) |dep| {
+            allocator.free(dep);
+        }
+        deps.clearRetainingCapacity();
     }
+
+    try out_dir.writeFile("bake_pkg.zig", pkg_contents.items);
 
     std.log.info("bake complete!", .{});
-}
-
-pub fn getVarName(comptime path: []const u8, comptime bake_type: type) []const u8 {
-    comptime var var_name: []const u8 = &[_]u8{};
-    inline for (path) |char| {
-        if (char == '.') {
-            break;
-        }
-
-        if (std.fs.path.isSep(char)) {
-            var_name = var_name ++ &[_]u8{'_'};
-        } else {
-            var_name = var_name ++ &[_]u8{std.ascii.toLower(char)};
-        }
-    }
-    var_name = var_name ++ &[_]u8{'_'};
-    inline for (@typeName(bake_type)) |char| {
-        var_name = var_name ++ &[_]u8{std.ascii.toLower(char)};
-    }
-    return var_name;
 }

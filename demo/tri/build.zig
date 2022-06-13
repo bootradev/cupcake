@@ -1,4 +1,3 @@
-const bake = @import("../../src/bake.zig");
 const build_cc = @import("../../build.zig");
 const std = @import("std");
 
@@ -8,8 +7,18 @@ pub fn build(builder: *std.build.Builder) !void {
     const recipe = build_cc.Recipe{
         .dir = "demo/tri",
         .items = &.{
-            .{ .bake_type = bake.Shader, .path = "tri_vert.wgsl", .embed = true },
-            .{ .bake_type = bake.Shader, .path = "tri_frag.wgsl", .embed = true },
+            .{
+                .id = "tri_vert_shader",
+                .output = .pkg_embed,
+                .bake_type = "shader",
+                .deps = &.{"tri_vert.wgsl"},
+            },
+            .{
+                .id = "tri_frag_shader",
+                .output = .pkg_embed,
+                .bake_type = "shader",
+                .deps = &.{"tri_frag.wgsl"},
+            },
         },
     };
     const tri_pkg = std.build.Pkg{

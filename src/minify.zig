@@ -35,8 +35,8 @@ const Minify = struct {
     opt_level: cfg.OptLevel,
 
     fn init(
-        src: []const u8,
         allocator: std.mem.Allocator,
+        src: []const u8,
         language: Language,
         opt_level: cfg.OptLevel,
     ) Minify {
@@ -235,19 +235,19 @@ const Minify = struct {
 };
 
 pub fn js(
-    src: []const u8,
     allocator: std.mem.Allocator,
+    src: []const u8,
     opt_level: cfg.OptLevel,
 ) ![]const u8 {
-    var ctx = Minify.init(src, allocator, .js, opt_level);
+    var ctx = Minify.init(allocator, src, .js, opt_level);
     defer ctx.deinit();
 
     return try ctx.minify();
 }
 
 pub fn shader(
-    src: []const u8,
     allocator: std.mem.Allocator,
+    src: []const u8,
     platform: cfg.Platform,
     opt_level: cfg.OptLevel,
 ) ![]const u8 {
@@ -256,7 +256,7 @@ pub fn shader(
         else => return error.InvalidPlatform,
     };
 
-    var ctx = Minify.init(src, allocator, lang, opt_level);
+    var ctx = Minify.init(allocator, src, lang, opt_level);
     defer ctx.deinit();
 
     return try ctx.minify();
