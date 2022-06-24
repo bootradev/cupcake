@@ -14,8 +14,7 @@ struct _Uniforms {
 
 @group(0) @binding(0) var<uniform> _uniforms : _Uniforms;
 
-@stage(vertex)
-fn vs_main(_in: _VertexInput) -> _VertexOutput {
+@vertex fn vs_main(_in: _VertexInput) -> _VertexOutput {
     var _out : _VertexOutput;
     _out._pos = _in._pos * _uniforms._mvp;
     _out._color = _in._color;

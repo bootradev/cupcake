@@ -193,7 +193,7 @@ fn writeBytes(bytes: []u8, bytes_index: *usize, data: []const u8) !void {
 
 pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     if (data.len < header_len) {
-        return error.InvalidData;
+        return error.InvalidHeader;
     }
 
     // decode header
@@ -222,12 +222,12 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     var bytes_index: usize = 0;
     while (bytes_index < bytes.len) {
         if (data_index + 1 > data.len) {
-            return error.InvalidData;
+            return error.InvalidDataLength;
         }
         const op = data[data_index];
         if (op == op_rgb) {
             if (data_index + 4 > data.len) {
-                return error.InvalidData;
+                return error.InvalidOpRgb;
             }
             pixel.r = data[data_index + 1];
             pixel.g = data[data_index + 2];
@@ -235,7 +235,7 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
             data_index += 4;
         } else if (op == op_rgba) {
             if (data_index + 5 > data.len) {
-                return error.InvalidData;
+                return error.InvalidOpRgba;
             }
             pixel.r = data[data_index + 1];
             pixel.g = data[data_index + 2];
@@ -257,7 +257,7 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
                 data_index += 1;
             } else if (op_code == op_luma) {
                 if (data_index + 2 > data.len) {
-                    return error.InvalidData;
+                    return error.InvalidOpLuma;
                 }
                 // use wrapping adds to match the spec
                 // even though the diffs are signed ints, they are still twos complement
@@ -272,7 +272,7 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
                 // a run is a continuous stream of the same pixel
                 var run = (op & mask_run) + 1;
                 if (bytes_index + format * (run - 1) > bytes.len) {
-                    return error.InvalidData;
+                    return error.InvalidOpRun;
                 }
                 while (run > 1) : (run -= 1) {
                     std.mem.copy(u8, bytes[bytes_index..], std.mem.asBytes(&pixel)[0..format]);

@@ -1,8 +1,14 @@
 const math = @import("cc_math");
 const std = @import("std");
 
-const Instance = struct {
-    mvp: math.Mat,
+pub const Instance = struct {
+    pos_size: math.F32x4,
+    uv_pos_size: math.F32x4,
+    color: math.F32x4,
+};
+
+pub const Uniforms = struct {
+    viewport: Viewport,
 };
 
 pub const Viewport = struct {
@@ -24,19 +30,17 @@ pub const ContextDesc = struct {
 };
 
 pub const Context = struct {
-    pub const instance_size = @sizeOf(Instance);
-
     allocator: std.mem.Allocator,
+    uniforms: Uniforms,
     instances: []Instance,
     instance_count: usize,
-    vp: math.Mat,
 
     pub fn init(desc: ContextDesc) !Context {
         return Context{
             .allocator = desc.allocator,
             .instances = try desc.allocator.alloc(Instance, desc.max_instances),
             .instance_count = 0,
-            .vp = math.identity(),
+            .uniforms = .{ .viewport = .{ .width = 0.0, .height = 0.0 } },
         };
     }
 
@@ -52,12 +56,16 @@ pub const Context = struct {
         return std.mem.sliceAsBytes(ctx.instances[0..ctx.instance_count]);
     }
 
+    pub fn getUniformBytes(ctx: Context) []const u8 {
+        return std.mem.asBytes(&ctx.uniforms);
+    }
+
     pub fn clear(ctx: *Context) void {
         ctx.instance_count = 0;
     }
 
     pub fn setViewport(ctx: *Context, viewport: Viewport) void {
-        ctx.vp = math.orthographicLh(viewport.width, viewport.height, 0.0, 1.0);
+        ctx.uniforms.viewport = viewport;
     }
 
     pub fn debugText(
@@ -66,19 +74,27 @@ pub const Context = struct {
         comptime fmt: []const u8,
         args: anytype,
     ) !void {
-        var buf: [2048]u8 = undefined;
-        const msg = try std.fmt.bufPrint(&buf, fmt, args);
+        _ = layout;
+        _ = fmt;
+        _ = args;
+        try ctx.addInstance(.{
+            .pos_size = math.f32x4(300.0, 300.0, 600.0, 600.0),
+            .uv_pos_size = math.f32x4(0.0, 0.0, 1.0, 1.0),
+            .color = math.f32x4(1.0, 1.0, 1.0, 1.0),
+        });
+        // var buf: [2048]u8 = undefined;
+        // const msg = try std.fmt.bufPrint(&buf, fmt, args);
 
-        const scale = math.scaling(layout.font_size, layout.font_size, 1.0);
+        // const scale = math.scaling(layout.font_size, layout.font_size, 1.0);
 
-        var start_x = layout.x;
-        var start_y = layout.y;
-        for (msg) |_| {
-            const m = math.mul(scale, math.translation(start_x, start_y, 0.0));
-            try ctx.addInstance(.{ .mvp = math.transpose(math.mul(m, ctx.vp)) });
+        // var start_x = layout.x;
+        // var start_y = layout.y;
+        // for (msg) |_| {
+        //     const m = math.mul(scale, math.translation(start_x, start_y, 0.0));
+        //     try ctx.addInstance(.{ .mvp = math.transpose(math.mul(m, ctx.vp)) });
 
-            start_x += layout.font_size;
-        }
+        //     start_x += layout.font_size;
+        // }
     }
 
     fn addInstance(ctx: *Context, instance: Instance) !void {

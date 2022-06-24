@@ -3,7 +3,9 @@ const api = switch (cfg.platform) {
     .win => @compileError("Not yet implemented!"),
 };
 const cfg = @import("cfg.zig");
+const serde = @import("serde.zig");
 const std = @import("std");
+const qoi = @import("qoi.zig");
 
 pub const ContextDesc = struct {
     surface_desc: SurfaceDesc,
@@ -36,11 +38,10 @@ pub const Context = struct {
         });
         const clear_color = .{ .r = 0.32, .g = 0.1, .b = 0.18, .a = 1.0 };
         const depth_texture_format = .depth24plus;
-        var depth_texture = try device.initTexture(.{
-            .size = desc.swapchain_size,
-            .format = depth_texture_format,
-            .usage = .{ .render_attachment = true },
-        });
+        var depth_texture = try device.initTexture(
+            .{ .size = desc.swapchain_size, .format = depth_texture_format },
+            .{ .render_attachment = true },
+        );
         const depth_texture_view = try device.initTextureView(.{
             .texture = &depth_texture,
             .format = depth_texture_format,
@@ -213,8 +214,8 @@ pub const Device = struct {
         device.impl.deinitSwapchain(&swapchain.impl);
     }
 
-    pub fn initShader(device: *Device, data: []const u8) !Shader {
-        return Shader{ .impl = try device.impl.initShader(data) };
+    pub fn initShader(device: *Device, desc: ShaderDesc) !Shader {
+        return Shader{ .impl = try device.impl.initShader(desc) };
     }
 
     pub fn deinitShader(device: *Device, shader: *Shader) void {
@@ -234,8 +235,21 @@ pub const Device = struct {
         device.impl.deinitBuffer(&buffer.impl);
     }
 
-    pub fn initTexture(device: *Device, desc: TextureDesc) !Texture {
-        return Texture{ .impl = try device.impl.initTexture(desc) };
+    pub fn initTexture(device: *Device, desc: TextureDesc, usage: TextureUsage) !Texture {
+        const texture = Texture{ .impl = try device.impl.initTexture(desc, usage) };
+        if (desc.bytes) |bytes| {
+            var queue = device.getQueue();
+            try queue.writeTexture(
+                .{ .texture = &texture },
+                bytes,
+                .{
+                    .bytes_per_row = desc.size.width * try getBytesPerPixel(desc.format),
+                    .rows_per_image = desc.size.height,
+                },
+                desc.size,
+            );
+        }
+        return texture;
     }
 
     pub fn deinitTexture(device: *Device, texture: *Texture) void {
@@ -326,6 +340,10 @@ pub const ShaderStage = packed struct {
     vertex: bool = false,
     fragment: bool = false,
     compute: bool = false,
+};
+
+pub const ShaderDesc = struct {
+    bytes: []const u8,
 };
 
 pub const Shader = struct {
@@ -455,6 +473,23 @@ pub const TextureFormat = enum {
     astc_12x12_unorm_srgb,
 };
 
+pub fn getBytesPerPixel(format: TextureFormat) !u32 {
+    return switch (format) {
+        .r8unorm, .r8snorm, .r8uint, .r8sint => 1,
+        .r16uint, .r16sint, .r16float => 2,
+        .rg8unorm, .rg8snorm, .rg8uint, .rg8sint => 2,
+        .r32float, .r32uint, .r32sint => 4,
+        .rg16uint, .rg16sint, .rg16float => 4,
+        .rgba8unorm, .rgba8unorm_srgb, .rgba8snorm, .rgba8uint, .rgba8sint => 4,
+        .bgra8unorm, .bgra8unorm_srgb => 4,
+        .rgb10a2unorm, .rg11b10ufloat, .rgb9e5ufloat => 4,
+        .rg32float, .rg32uint, .rg32sint => 4,
+        .rgba16uint, .rgba16sint, .rgba16float => 8,
+        .rgba32float, .rgba32uint, .rgba32sint => 16,
+        else => error.InvalidTextureFormat,
+    };
+}
+
 pub const TextureUsage = packed struct {
     copy_src: bool = false,
     copy_dst: bool = false,
@@ -475,10 +510,41 @@ pub const TextureViewDimension = enum {
 pub const TextureDesc = struct {
     size: Extent3d,
     format: TextureFormat,
-    usage: TextureUsage,
     dimension: TextureViewDimension = .@"2d",
     mip_level_count: u32 = 1,
     sample_count: u32 = 1,
+    bytes: ?[]const u8 = null,
+
+    pub fn serialize(allocator: std.mem.Allocator, value: TextureDesc) ![]u8 {
+        var value_encoded = value;
+        if (value.bytes) |bytes| {
+            const qoi_image = qoi.Image{
+                .width = value.size.width,
+                .height = value.size.height,
+                .data = bytes,
+            };
+            const result = try qoi.encode(qoi_image, allocator);
+            value_encoded.bytes = allocator.resize(result.bytes, result.len) orelse
+                return error.ResizeFailed;
+        }
+        defer if (value_encoded.bytes) |bytes| {
+            allocator.free(bytes);
+        };
+        return try serde.serializeGeneric(allocator, value_encoded);
+    }
+
+    pub fn deserialize(desc: serde.DeserializeDesc, bytes: []const u8) !TextureDesc {
+        var texture_desc = try serde.deserializeGeneric(desc, TextureDesc, bytes);
+        if (texture_desc.bytes) |texture_bytes| {
+            const allocator = desc.allocator orelse return error.AllocatorRequired;
+            const image = try qoi.decode(texture_bytes, allocator);
+            if (!desc.bytes_are_embedded) {
+                allocator.free(texture_bytes);
+            }
+            texture_desc.bytes = image.data;
+        }
+        return texture_desc;
+    }
 };
 
 pub const Texture = struct {
@@ -526,7 +592,7 @@ pub const SamplerDesc = struct {
     mipmap_filter: FilterMode = .nearest,
     lod_min_clamp: f32 = 0.0,
     lod_max_clamp: f32 = 32.0,
-    max_anisotropy: u16 = 1,
+    max_anisotropy: u32 = 1,
     compare: ?CompareFunction = null,
 };
 
@@ -1130,6 +1196,25 @@ pub const RenderPass = struct {
     }
 };
 
+pub const Origin3d = struct {
+    x: u32 = 0,
+    y: u32 = 0,
+    z: u32 = 0,
+};
+
+pub const ImageCopyTexture = struct {
+    texture: *const Texture,
+    mip_level: u32 = 0,
+    origin: Origin3d = .{},
+    aspect: TextureAspect = .all,
+};
+
+pub const ImageDataLayout = struct {
+    offset: usize = 0,
+    bytes_per_row: usize,
+    rows_per_image: usize,
+};
+
 pub const Queue = struct {
     impl: api.Queue,
 
@@ -1141,6 +1226,16 @@ pub const Queue = struct {
         data_offset: usize,
     ) !void {
         try queue.impl.writeBuffer(&buffer.impl, buffer_offset, data, data_offset);
+    }
+
+    pub fn writeTexture(
+        queue: *Queue,
+        destination: ImageCopyTexture,
+        data: []const u8,
+        data_layout: ImageDataLayout,
+        size: Extent3d,
+    ) !void {
+        try queue.impl.writeTexture(destination, data, data_layout, size);
     }
 
     pub fn submit(queue: *Queue, buffers: []const CommandBuffer) !void {

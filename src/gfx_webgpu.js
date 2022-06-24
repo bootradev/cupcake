@@ -2,8 +2,8 @@ const _InvalidId = 0;
 const _DefaultDescId = 0;
 const _WholeSize = 0xFFFFFFFF;
 const _BindTypeBuffer = 0;
-const _BindTypeSampler = 1;
-const _BindTypeTextureView = 2;
+const _BindTypeTextureView = 1;
+const _BindTypeSampler = 2;
 
 const _webgpu = {
     _descs: new _Objs(),
@@ -290,13 +290,13 @@ const _webgpu = {
                         _desc.entries[i].resource.size = undefined;
                     }
                 break;
-                case _BindTypeSampler:
-                    _desc.entries[i].resource = _webgpu._samplers._get(
+                case _BindTypeTextureView:
+                    _desc.entries[i].resource = _webgpu._getTextureView(
                         _desc.entries[i].resource
                     );
                 break;
-                case _BindTypeTextureView:
-                    _desc.entries[i].resource = _webgpu._getTextureView(
+                case _BindTypeSampler:
+                    _desc.entries[i].resource = _webgpu._samplers._get(
                         _desc.entries[i].resource
                     );
                 break;
@@ -486,11 +486,7 @@ const _webgpu = {
         const _dest = _webgpu._getDescObj(_destId);
         _dest.texture = _webgpu._textures._getObj(_dest.texture);
         const _layout = _webgpu._getDescObj(_layoutId);
-        if (_layout.offset === undefined) {
-            _layout.offset = _dataPtr;
-        } else {
-            _layout.offset += _dataPtr;
-        }
+        _layout.offset += _dataPtr;
         _webgpu._devices._get(_deviceId).queue.writeTexture(
             _dest,
             _utils._getWasm().memory.buffer,

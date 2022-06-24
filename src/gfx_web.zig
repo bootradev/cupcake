@@ -267,7 +267,7 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
 }
 
 fn typeIsArrayDesc(comptime Type: type) bool {
-    return Type == gfx.Extent3d or Type == gfx.Color;
+    return Type == gfx.Extent3d or Type == gfx.Origin3d or Type == gfx.Color;
 }
 
 fn setDescFieldValue(desc_id: js.DescId, field: []const u8, value: anytype) void {
@@ -432,9 +432,9 @@ pub const Device = struct {
         js.destroyContext(swapchain.id);
     }
 
-    pub fn initShader(device: *Device, data: []const u8) !Shader {
+    pub fn initShader(device: *Device, desc: gfx.ShaderDesc) !Shader {
         const shader = Shader{
-            .id = js.createShader(device.id, data.ptr, data.len),
+            .id = js.createShader(device.id, desc.bytes.ptr, desc.bytes.len),
         };
         return shader;
     }
@@ -458,10 +458,11 @@ pub const Device = struct {
         js.destroyBuffer(buffer.id);
     }
 
-    pub fn initTexture(device: *Device, desc: gfx.TextureDesc) !Texture {
+    pub fn initTexture(device: *Device, desc: gfx.TextureDesc, usage: gfx.TextureUsage) !Texture {
         var js_desc = js.initDesc();
         defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
+        setDescFieldValue(js_desc, "usage", usage);
 
         return Texture{ .id = js.createTexture(device.id, js_desc) };
     }
@@ -817,6 +818,33 @@ pub const Queue = struct {
         data_offset: usize,
     ) !void {
         js.queueWriteBuffer(queue.id, buffer.id, buffer_offset, data.ptr, data.len, data_offset);
+    }
+
+    pub fn writeTexture(
+        queue: *Queue,
+        destination: gfx.ImageCopyTexture,
+        data: []const u8,
+        data_layout: gfx.ImageDataLayout,
+        size: gfx.Extent3d,
+    ) !void {
+        var destination_desc = js.initDesc();
+        defer js.deinitDesc(destination_desc);
+        setDesc(destination_desc, destination);
+
+        var data_layout_desc = js.initDesc();
+        defer js.deinitDesc(data_layout_desc);
+        setDesc(data_layout_desc, data_layout);
+
+        js.queueWriteTexture(
+            queue.id,
+            destination_desc,
+            data.ptr,
+            data.len,
+            data_layout_desc,
+            size.width,
+            size.height,
+            size.depth_or_array_layers,
+        );
     }
 
     pub fn submit(queue: *Queue, command_buffers: []const gfx.CommandBuffer) !void {

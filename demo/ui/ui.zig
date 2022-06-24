@@ -17,23 +17,30 @@ const Demo = struct {
 const max_instances = 256;
 
 pub fn init() !Demo {
-    var ba = try cc_mem.BumpAllocator.init(cc_ui.Context.instance_size * max_instances);
+    var ba = try cc_mem.BumpAllocator.init(256 * 1024);
+    const allocator = ba.allocator();
     const window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
     const uctx = try cc_ui.Context.init(.{
-        .allocator = ba.allocator(),
+        .allocator = allocator,
         .max_instances = max_instances,
     });
     const ugctx = try cc_ui_gfx.Context.init(.{
         .device = &gctx.device,
         .format = gctx.swapchain_format,
-        .vert_shader_bytes = try cc_ui_res.loadVertShaderBytes(),
-        .frag_shader_bytes = try cc_ui_res.loadFragShaderBytes(),
-        .instance_size = cc_ui.Context.instance_size,
+        .vert_shader_desc = try cc_ui_res.loadVertShaderDesc(),
+        .frag_shader_desc = try cc_ui_res.loadFragShaderDesc(),
+        .font_atlas_texture_desc = try cc_ui_res.loadFontAtlasTextureDesc(allocator),
         .max_instances = max_instances,
     });
 
-    return Demo{ .ba = ba, .window = window, .gctx = gctx, .uctx = uctx, .ugctx = ugctx };
+    return Demo{
+        .ba = ba,
+        .window = window,
+        .gctx = gctx,
+        .uctx = uctx,
+        .ugctx = ugctx,
+    };
 }
 
 pub fn loop(demo: *Demo) !void {
@@ -59,7 +66,12 @@ pub fn loop(demo: *Demo) !void {
         .store_op = .store,
     }});
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try demo.ugctx.render(&render_pass, demo.uctx.getInstanceCount(), demo.uctx.getInstanceBytes());
+    try demo.ugctx.render(
+        &render_pass,
+        demo.uctx.getInstanceCount(),
+        demo.uctx.getInstanceBytes(),
+        demo.uctx.getUniformBytes(),
+    );
     try render_pass.end();
 
     try demo.gctx.device.getQueue().submit(&.{try command_encoder.finish()});

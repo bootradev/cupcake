@@ -1,4 +1,5 @@
 const bake_list = @import("bake_list");
+const serde = @import("serde.zig");
 const std = @import("std");
 
 pub fn main() !void {
@@ -43,14 +44,28 @@ pub fn main() !void {
             try deps.append(file_bytes);
         }
 
-        const BakeType = @field(bake_list.pkgs, item.bake_pkg).BakeType(item.bake_type);
-        const bake_bytes = try BakeType.bake(
+        const bake_pkg = @field(bake_list.pkgs, item.bake_pkg);
+        const bake_fn = @field(bake_pkg, item.bake_type ++ "Bake");
+        const BakeType = comptime block: {
+            const return_type = @typeInfo(@TypeOf(bake_fn)).Fn.return_type.?;
+            switch (@typeInfo(return_type)) {
+                .ErrorUnion => |EU| break :block EU.payload,
+                else => @compileError("bake fn return type must be an error union!"),
+            }
+        };
+        const bake_result = try bake_fn(
             allocator,
             deps.items,
             bake_list.platform,
             bake_list.opt_level,
         );
+        defer if (@hasDecl(bake_pkg, item.bake_type ++ "BakeFree")) {
+            const bake_free_fn = @field(bake_pkg, item.bake_type ++ "BakeFree");
+            bake_free_fn(allocator, bake_result);
+        };
+        const bake_bytes = try serde.serialize(allocator, bake_result);
         defer allocator.free(bake_bytes);
+
         try out_dir.writeFile(decl.name, bake_bytes);
 
         if (item.output != .cache) {

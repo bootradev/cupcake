@@ -94,21 +94,23 @@ pub fn getUiGfxPkg() std.build.Pkg {
 // res implementation for user interface
 pub fn getUiResPkg(builder: *std.build.Builder, options: Options) std.build.Pkg {
     const recipe = Recipe{
-        .dir = "src",
-        .items = &.{
-            .{
-                .id = "ui_vert_shader",
-                .output = .pkg_embed,
-                .bake_type = "shader",
-                .deps = &.{"ui_vert.wgsl"},
-            },
-            .{
-                .id = "ui_frag_shader",
-                .output = .pkg_embed,
-                .bake_type = "shader",
-                .deps = &.{"ui_frag.wgsl"},
-            },
-        },
+        .dir = ".",
+        .items = &.{ .{
+            .id = "ui_vert_shader",
+            .output = .pkg_embed,
+            .bake_type = "shader",
+            .deps = &.{"src/ui_vert.wgsl"},
+        }, .{
+            .id = "ui_frag_shader",
+            .output = .pkg_embed,
+            .bake_type = "shader",
+            .deps = &.{"src/ui_frag.wgsl"},
+        }, .{
+            .id = "ui_dbg_font_texture",
+            .output = .pkg_embed,
+            .bake_type = "texture",
+            .deps = &.{"res/ui_dbg_font.png"},
+        } },
     };
     const dependencies = builder.allocator.alloc(std.build.Pkg, 1) catch unreachable;
     dependencies[0] = getBakePkg(builder, options, "cc_ui_res", ".", recipe);
@@ -428,8 +430,20 @@ const Baker = struct {
     }
 
     fn ccLinkBakePkg(builder: *std.build.Builder, lib_exe: *std.build.LibExeObjStep) !void {
-        _ = builder;
-        _ = lib_exe;
+        lib_exe.linkLibC();
+        lib_exe.addIncludePath("ext");
+
+        const header_lib_impl = try GenerateHeaderLibImpl.init(builder, &.{
+            .{ .path = "stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
+        });
+        const header_lib_obj = builder.addStaticLibrary("header_libs", null);
+        header_lib_obj.addCSourceFileSource(.{
+            .source = .{ .generated = &header_lib_impl.file },
+            .args = &.{},
+        });
+        header_lib_obj.linkLibC();
+        header_lib_obj.addIncludePath("ext");
+        lib_exe.linkLibrary(header_lib_obj);
     }
 
     pub fn getPkg(baker: Baker) std.build.Pkg {
@@ -623,5 +637,51 @@ const GenerateWebFiles = struct {
             defer gen_web_files.builder.allocator.free(js_src_bytes_min);
             try std.fs.cwd().writeFile(gen_web_files.js_file.getPath(), js_src_bytes_min);
         }
+    }
+};
+
+const HeaderLib = struct {
+    path: []const u8,
+    define: []const u8,
+};
+
+const GenerateHeaderLibImpl = struct {
+    builder: *std.build.Builder,
+    step: std.build.Step,
+    file: std.build.GeneratedFile,
+    libs: []const HeaderLib,
+
+    pub fn init(builder: *std.build.Builder, libs: []const HeaderLib) !*GenerateHeaderLibImpl {
+        const header_lib_impl = try builder.allocator.create(GenerateHeaderLibImpl);
+        header_lib_impl.* = .{
+            .builder = builder,
+            .step = std.build.Step.init(.custom, "make header impl", builder.allocator, make),
+            .file = std.build.GeneratedFile{ .step = &header_lib_impl.step },
+            .libs = libs,
+        };
+        return header_lib_impl;
+    }
+
+    fn make(step: *std.build.Step) !void {
+        const header_lib_impl = @fieldParentPtr(GenerateHeaderLibImpl, "step", step);
+        const allocator = header_lib_impl.builder.allocator;
+
+        var contents = std.ArrayList(u8).init(allocator);
+        defer contents.deinit();
+
+        const writer = contents.writer();
+        for (header_lib_impl.libs) |lib| {
+            const path = try getPathString(allocator, lib.path);
+            try writer.print("#define {s}\n", .{lib.define});
+            try writer.print("#include \"{s}\"\n", .{path});
+        }
+
+        const write_path = try std.fs.path.join(allocator, &.{
+            try getCacheDir(header_lib_impl.builder),
+            "header_libs_impl.c",
+        });
+        try std.fs.cwd().writeFile(write_path, contents.items);
+
+        header_lib_impl.file.path = write_path;
     }
 };
