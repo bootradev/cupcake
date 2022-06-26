@@ -10,8 +10,7 @@ const Demo = struct {
     ba: cc_mem.BumpAllocator,
     window: cc_wnd.Window,
     gctx: cc_gfx.Context,
-    uctx: cc_ui.Context,
-    ugctx: cc_ui_gfx.Context,
+    uictx: cc_ui.Context(cc_ui_gfx),
 };
 
 const max_instances = 256;
@@ -25,26 +24,17 @@ pub fn init() !Demo {
         .title = "ui",
     });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
-    const uctx = try cc_ui.Context.init(.{
-        .allocator = allocator,
-        .max_instances = max_instances,
-    });
-    const ugctx = try cc_ui_gfx.Context.init(.{
-        .device = &gctx.device,
-        .format = gctx.swapchain_format,
-        .vert_shader_desc = try cc_ui_res.loadVertShaderDesc(),
-        .frag_shader_desc = try cc_ui_res.loadFragShaderDesc(),
-        .font_atlas_desc = try cc_ui_res.loadFontAtlasTextureDesc(allocator),
-        .max_instances = max_instances,
-    });
+    const uictx = try cc_ui.Context(cc_ui_gfx).init(
+        .{
+            .device = &gctx.device,
+            .format = gctx.swapchain_format,
+            .max_instances = max_instances,
+            .allocator = allocator,
+        },
+        cc_ui_res,
+    );
 
-    return Demo{
-        .ba = ba,
-        .window = window,
-        .gctx = gctx,
-        .uctx = uctx,
-        .ugctx = ugctx,
-    };
+    return Demo{ .ba = ba, .window = window, .gctx = gctx, .uictx = uictx };
 }
 
 pub fn loop(demo: *Demo) !void {
@@ -52,12 +42,12 @@ pub fn loop(demo: *Demo) !void {
         return;
     }
 
-    demo.uctx.clear();
-    demo.uctx.setViewport(.{
-        .width = @intToFloat(f32, demo.window.getWidth()),
-        .height = @intToFloat(f32, demo.window.getHeight()),
-    });
-    try demo.uctx.debugText(.{}, "Hello, world!", .{});
+    demo.uictx.reset();
+    demo.uictx.setViewport(
+        @intToFloat(f32, demo.window.getWidth()),
+        @intToFloat(f32, demo.window.getHeight()),
+    );
+    try demo.uictx.debugText(.{}, "Hello, world!", .{});
 
     const swapchain_view = try demo.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try demo.gctx.device.initCommandEncoder();
@@ -70,12 +60,7 @@ pub fn loop(demo: *Demo) !void {
         .store_op = .store,
     }});
     var render_pass = try command_encoder.beginRenderPass(render_pass_desc);
-    try demo.ugctx.render(
-        &render_pass,
-        demo.uctx.getInstanceCount(),
-        demo.uctx.getInstanceBytes(),
-        demo.uctx.getUniformBytes(),
-    );
+    try demo.uictx.render(&render_pass);
     try render_pass.end();
 
     try demo.gctx.device.getQueue().submit(&.{try command_encoder.finish()});
@@ -83,8 +68,7 @@ pub fn loop(demo: *Demo) !void {
 }
 
 pub fn deinit(demo: *Demo) !void {
-    demo.ugctx.deinit();
-    demo.uctx.deinit();
+    demo.uictx.deinit();
     demo.gctx.deinit();
     demo.window.deinit();
     demo.ba.deinit();

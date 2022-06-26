@@ -85,7 +85,6 @@ pub fn getUiPkg() std.build.Pkg {
     return std.build.Pkg{
         .name = "cc_ui",
         .path = .{ .path = "src/ui.zig" },
-        .dependencies = &.{getMathPkg()},
     };
 }
 
