@@ -8,25 +8,25 @@ const cc_wnd_gfx = @import("cc_wnd_gfx");
 const std = @import("std");
 
 const Vertex = struct {
-    position: cc_math.F32x4,
-    color: cc_math.F32x4,
+    position: [4]f32,
+    color: [4]f32,
 };
 
 const Uniforms = struct {
-    mvp: cc_math.Mat,
+    mvp: [16]f32,
 };
 
 const vertices: []const Vertex = &.{
     // front
-    .{ .position = cc_math.f32x4(-1, -1, -1, 1), .color = cc_math.f32x4(1.0, 1.0, 1.0, 1) },
-    .{ .position = cc_math.f32x4(1, -1, -1, 1), .color = cc_math.f32x4(0.71, 1.0, 1.0, 1) },
-    .{ .position = cc_math.f32x4(-1, 1, -1, 1), .color = cc_math.f32x4(1.0, 0.71, 1.0, 1) },
-    .{ .position = cc_math.f32x4(1, 1, -1, 1), .color = cc_math.f32x4(0.71, 0.71, 1.0, 1) },
+    .{ .position = [_]f32{ -1, -1, -1, 1 }, .color = [_]f32{ 1.0, 1.0, 1.0, 1 } },
+    .{ .position = [_]f32{ 1, -1, -1, 1 }, .color = [_]f32{ 0.71, 1.0, 1.0, 1 } },
+    .{ .position = [_]f32{ -1, 1, -1, 1 }, .color = [_]f32{ 1.0, 0.71, 1.0, 1 } },
+    .{ .position = [_]f32{ 1, 1, -1, 1 }, .color = [_]f32{ 0.71, 0.71, 1.0, 1 } },
     // back
-    .{ .position = cc_math.f32x4(-1, -1, 1, 1), .color = cc_math.f32x4(1.0, 1.0, 0.71, 1) },
-    .{ .position = cc_math.f32x4(1, -1, 1, 1), .color = cc_math.f32x4(0.71, 1.0, 0.71, 1) },
-    .{ .position = cc_math.f32x4(-1, 1, 1, 1), .color = cc_math.f32x4(1.0, 0.71, 0.71, 1) },
-    .{ .position = cc_math.f32x4(1, 1, 1, 1), .color = cc_math.f32x4(0.71, 0.71, 0.71, 1) },
+    .{ .position = [_]f32{ -1, -1, 1, 1 }, .color = [_]f32{ 1.0, 1.0, 0.71, 1 } },
+    .{ .position = [_]f32{ 1, -1, 1, 1 }, .color = [_]f32{ 0.71, 1.0, 0.71, 1 } },
+    .{ .position = [_]f32{ -1, 1, 1, 1 }, .color = [_]f32{ 1.0, 0.71, 0.71, 1 } },
+    .{ .position = [_]f32{ 1, 1, 1, 1 }, .color = [_]f32{ 0.71, 0.71, 0.71, 1 } },
 };
 
 const indices: []const u16 = &.{
@@ -46,15 +46,26 @@ const Demo = struct {
     uniform_buffer: cc_gfx.Buffer,
     bind_group: cc_gfx.BindGroup,
     render_pipeline: cc_gfx.RenderPipeline,
+    uniforms: Uniforms,
     game_clock: cc_time.Timer,
 };
 
 pub fn init() !Demo {
-    var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "cube" });
+    var window = try cc_wnd.Window.init(.{
+        .width = 800,
+        .height = 600,
+        .title = "cube",
+    });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
-    const vertex_buffer = try gctx.device.initBufferSlice(vertices, .{ .vertex = true });
-    const index_buffer = try gctx.device.initBufferSlice(indices, .{ .index = true });
+    const vertex_buffer = try gctx.device.initBufferSlice(
+        vertices,
+        .{ .vertex = true },
+    );
+    const index_buffer = try gctx.device.initBufferSlice(
+        indices,
+        .{ .index = true },
+    );
     const uniform_buffer = try gctx.device.initBuffer(.{
         .size = @sizeOf(Uniforms),
         .usage = .{ .uniform = true, .copy_dst = true },
@@ -91,9 +102,9 @@ pub fn init() !Demo {
     var frag_shader = try gctx.device.initShader(frag_shader_desc);
     defer gctx.device.deinitShader(&frag_shader);
 
-    var render_pipeline_desc = cc_gfx.RenderPipelineDesc{};
-    render_pipeline_desc.setPipelineLayout(&pipeline_layout);
-    render_pipeline_desc.setVertexState(.{
+    var pipeline_desc = cc_gfx.RenderPipelineDesc{};
+    pipeline_desc.setPipelineLayout(&pipeline_layout);
+    pipeline_desc.setVertexState(.{
         .module = &vert_shader,
         .entry_point = "vs_main",
         // todo: zig #7607
@@ -101,20 +112,22 @@ pub fn init() !Demo {
             cc_gfx.getVertexBufferLayoutStruct(Vertex, .vertex, 0),
         },
     });
-    render_pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });
-    render_pipeline_desc.setDepthStencilState(.{
+    pipeline_desc.setPrimitiveState(.{ .cull_mode = .back });
+    pipeline_desc.setDepthStencilState(.{
         .format = gctx.depth_texture_format,
         .depth_write_enabled = true,
         .depth_compare = .less,
     });
-    render_pipeline_desc.setFragmentState(.{
+    pipeline_desc.setFragmentState(.{
         .module = &frag_shader,
         .entry_point = "fs_main",
         // todo: zig #7607
-        .targets = &[_]cc_gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
+        .targets = &[_]cc_gfx.ColorTargetState{
+            .{ .format = gctx.swapchain_format },
+        },
     });
 
-    const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
+    const pipeline = try gctx.device.initRenderPipeline(pipeline_desc);
 
     const game_clock = try cc_time.Timer.start();
 
@@ -125,7 +138,8 @@ pub fn init() !Demo {
         .index_buffer = index_buffer,
         .uniform_buffer = uniform_buffer,
         .bind_group = bind_group,
-        .render_pipeline = render_pipeline,
+        .render_pipeline = pipeline,
+        .uniforms = .{ .mvp = [_]f32{0} ** 16 },
         .game_clock = game_clock,
     };
 }
@@ -136,26 +150,31 @@ pub fn loop(demo: *Demo) !void {
     }
 
     const time = demo.game_clock.readSeconds();
-    const model_matrix = cc_math.matFromAxisAngle(
+    const model = cc_math.matFromAxisAngle(
         cc_math.f32x4(cc_math.sin(time), cc_math.cos(time), 0.0, 0.0),
         1.0,
     );
-    const view_matrix = cc_math.lookToLh(
+    const view = cc_math.lookToLh(
         cc_math.f32x4(0, 0, -4, 0),
         cc_math.f32x4(0, 0, 1, 0),
         cc_math.f32x4(0, 1, 0, 0),
     );
-    const proj_matrix = cc_math.perspectiveFovLh(
+    const proj = cc_math.perspectiveFovLh(
         2.0 * std.math.pi / 5.0,
         demo.window.getAspectRatio(),
         1,
         100,
     );
-    const mvp_matrix = cc_math.mul(cc_math.mul(model_matrix, view_matrix), proj_matrix);
-    const uniforms = Uniforms{ .mvp = cc_math.transpose(mvp_matrix) };
+    const mvp = cc_math.transpose(cc_math.mul(cc_math.mul(model, view), proj));
+    cc_math.storeMat(&demo.uniforms.mvp, mvp);
 
     var queue = demo.gctx.device.getQueue();
-    try queue.writeBuffer(&demo.uniform_buffer, 0, std.mem.asBytes(&uniforms), 0);
+    try queue.writeBuffer(
+        &demo.uniform_buffer,
+        0,
+        std.mem.asBytes(&demo.uniforms),
+        0,
+    );
 
     const swapchain_view = try demo.gctx.swapchain.getCurrentTextureView();
     var command_encoder = try demo.gctx.device.initCommandEncoder();
@@ -179,7 +198,12 @@ pub fn loop(demo: *Demo) !void {
     try render_pass.setPipeline(&demo.render_pipeline);
     try render_pass.setBindGroup(0, &demo.bind_group, null);
     try render_pass.setVertexBuffer(0, &demo.vertex_buffer, 0, cc_gfx.whole_size);
-    try render_pass.setIndexBuffer(&demo.index_buffer, .uint16, 0, cc_gfx.whole_size);
+    try render_pass.setIndexBuffer(
+        &demo.index_buffer,
+        .uint16,
+        0,
+        cc_gfx.whole_size,
+    );
     try render_pass.drawIndexed(indices.len, 1, 0, 0, 0);
     try render_pass.end();
 

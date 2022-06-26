@@ -29,7 +29,13 @@ pub fn getBakePkg(
     dest_dir: []const u8,
     recipe: Recipe,
 ) std.build.Pkg {
-    const baker = Baker.init(builder, options, name, dest_dir, recipe) catch unreachable;
+    const baker = Baker.init(
+        builder,
+        options,
+        name,
+        dest_dir,
+        recipe,
+    ) catch unreachable;
     return baker.getPkg();
 }
 
@@ -92,7 +98,10 @@ pub fn getUiGfxPkg() std.build.Pkg {
 }
 
 // res implementation for user interface
-pub fn getUiResPkg(builder: *std.build.Builder, options: Options) std.build.Pkg {
+pub fn getUiResPkg(
+    builder: *std.build.Builder,
+    options: Options,
+) std.build.Pkg {
     const recipe = Recipe{
         .dir = ".",
         .items = &.{ .{
@@ -112,13 +121,13 @@ pub fn getUiResPkg(builder: *std.build.Builder, options: Options) std.build.Pkg 
             .deps = &.{"res/ui_dbg_font.png"},
         } },
     };
-    const dependencies = builder.allocator.alloc(std.build.Pkg, 1) catch unreachable;
-    dependencies[0] = getBakePkg(builder, options, "cc_ui_res", ".", recipe);
+    const deps = builder.allocator.alloc(std.build.Pkg, 1) catch unreachable;
+    deps[0] = getBakePkg(builder, options, "cc_ui_res", ".", recipe);
 
     return std.build.Pkg{
         .name = "cc_ui_res",
         .path = .{ .path = "src/ui_res.zig" },
-        .dependencies = dependencies,
+        .dependencies = deps,
     };
 }
 
@@ -147,9 +156,9 @@ pub const RecipeItemOutput = enum {
 pub const RecipeItem = struct {
     id: []const u8, // needs to be valid zig identifier and unique within the recipe
     output: RecipeItemOutput, // where the baked data gets output to
-    bake_pkg: []const u8 = "cc_bake", // override this if you are using a custom bake pkg
-    bake_type: []const u8, // which bake function should be used for this item
-    deps: []const []const u8, // bake dependencies, can be file path or id of another recipe item
+    bake_pkg: []const u8 = "cc_bake", // modify if you are using a custom bake pkg
+    bake_type: []const u8, // bake function that should be used for this item
+    deps: []const []const u8, // file path or id of another recipe item
 };
 
 pub const BakePkg = struct {
@@ -158,7 +167,7 @@ pub const BakePkg = struct {
 };
 
 pub const Recipe = struct {
-    dir: []const u8, // relative to the build root. all recipe items are relative to this dir
+    dir: []const u8, // relative to build root. all items are relative to this dir
     items: []const RecipeItem, // list of items to bake
     bake_pkgs: []const BakePkg = &.{}, // list of custom bake pkgs
 };
@@ -241,9 +250,18 @@ pub fn initMainLibExe(
     return main_lib_exe;
 }
 
-fn initWebLibExe(builder: *std.build.Builder, name: []const u8) !*std.build.LibExeObjStep {
-    const main_lib_exe = builder.addSharedLibrary(name, "src/main.zig", .unversioned);
-    const target = try std.zig.CrossTarget.parse(.{ .arch_os_abi = "wasm32-freestanding" });
+fn initWebLibExe(
+    builder: *std.build.Builder,
+    name: []const u8,
+) !*std.build.LibExeObjStep {
+    const main_lib_exe = builder.addSharedLibrary(
+        name,
+        "src/main.zig",
+        .unversioned,
+    );
+    const target = try std.zig.CrossTarget.parse(
+        .{ .arch_os_abi = "wasm32-freestanding" },
+    );
     main_lib_exe.setTarget(target);
     return main_lib_exe;
 }
@@ -305,21 +323,29 @@ fn getCacheDir(builder: *std.build.Builder) ![]u8 {
     );
 }
 
-fn getBakeCacheDir(builder: *std.build.Builder, options: Options, name: []const u8) ![]u8 {
+fn getBakeCacheDir(
+    builder: *std.build.Builder,
+    options: Options,
+    name: []const u8,
+) ![]u8 {
     return try std.fs.path.join(
         builder.allocator,
         &.{ try getCacheDir(builder), "bake", name, @tagName(options.platform) },
     );
 }
 
-pub fn getDestDir(builder: *std.build.Builder, options: Options, name: []const u8) ![]u8 {
+pub fn getDestDir(
+    builder: *std.build.Builder,
+    options: Options,
+    name: []const u8,
+) ![]u8 {
     return try std.fs.path.join(
         builder.allocator,
         &.{ name, @tagName(options.platform) },
     );
 }
 
-// takes in a path, returns a valid version of that path for embedding in a source file
+// escapes separators in a string for embedding in a source file
 fn getPathString(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     var path_string = std.ArrayList(u8).init(allocator);
     for (path) |char| {
@@ -360,8 +386,17 @@ const Baker = struct {
             .platform = options.platform,
             .bake_level = options.bake_level,
             .cache_dir = cache_dir,
-            .install_step = std.build.Step.initNoOp(.custom, "bake install", builder.allocator),
-            .list_step = std.build.Step.init(.custom, "bake list", builder.allocator, make),
+            .install_step = std.build.Step.initNoOp(
+                .custom,
+                "bake install",
+                builder.allocator,
+            ),
+            .list_step = std.build.Step.init(
+                .custom,
+                "bake list",
+                builder.allocator,
+                make,
+            ),
             .list_file = .{ .step = &baker.list_step },
             .pkg_file = .{
                 .step = &baker.install_step,
@@ -377,7 +412,10 @@ const Baker = struct {
         bake_exe.setBuildMode(.ReleaseSafe);
 
         const cc_bake_pkg = BakePkg{
-            .pkg = .{ .name = "cc_bake", .path = .{ .path = "src/bake_types.zig" } },
+            .pkg = .{
+                .name = "cc_bake",
+                .path = .{ .path = "src/bake_types.zig" },
+            },
             .link_fn = ccLinkBakePkg,
         };
         try baker.addBakePkg(bake_exe, cc_bake_pkg);
@@ -424,16 +462,23 @@ const Baker = struct {
         return baker;
     }
 
-    fn addBakePkg(baker: *Baker, lib_exe: *std.build.LibExeObjStep, bake_pkg: BakePkg) !void {
+    fn addBakePkg(
+        baker: *Baker,
+        lib_exe: *std.build.LibExeObjStep,
+        bake_pkg: BakePkg,
+    ) !void {
         try baker.deps.append(baker.builder.dupePkg(bake_pkg.pkg));
         try bake_pkg.link_fn(baker.builder, lib_exe);
     }
 
-    fn ccLinkBakePkg(builder: *std.build.Builder, lib_exe: *std.build.LibExeObjStep) !void {
+    fn ccLinkBakePkg(
+        builder: *std.build.Builder,
+        lib_exe: *std.build.LibExeObjStep,
+    ) !void {
         lib_exe.linkLibC();
         lib_exe.addIncludePath("ext");
 
-        const header_lib_impl = try GenerateHeaderLibImpl.init(builder, &.{
+        const header_lib_impl = try GenerateHeaderImpl.init(builder, &.{
             .{ .path = "stb/stb_image.h", .define = "STB_IMAGE_IMPLEMENTATION" },
         });
         const header_lib_obj = builder.addStaticLibrary("header_libs", null);
@@ -475,7 +520,11 @@ const Baker = struct {
 
         try writer.print("pub const pkgs = struct {{\n", .{});
         for (baker.deps.items) |dep| {
-            try writer.print("    pub const {s} = @import(\"{s}\");\n", .{ dep.name, dep.name });
+            try writer.print("    ", .{});
+            try writer.print(
+                "pub const {s} = @import(\"{s}\");\n",
+                .{ dep.name, dep.name },
+            );
         }
         try writer.print("}};\n", .{});
 
@@ -487,20 +536,34 @@ const Baker = struct {
             "pub const out_dir = \"{s}\";\n",
             .{try getPathString(baker.builder.allocator, baker.cache_dir)},
         );
-        try writer.print("pub const platform = .{s};\n", .{@tagName(baker.platform)});
-        try writer.print("pub const opt_level = .{s};\n", .{@tagName(baker.bake_level.?)});
+        try writer.print(
+            "pub const platform = .{s};\n",
+            .{@tagName(baker.platform)},
+        );
+        try writer.print(
+            "pub const opt_level = .{s};\n",
+            .{@tagName(baker.bake_level.?)},
+        );
         try writer.print("pub const items = struct {{\n", .{});
         for (baker.recipe.items) |item| {
-            try writer.print("    pub const {s} = .{{\n", .{item.id});
-            try writer.print("        .bake_pkg = \"{s}\",\n", .{item.bake_pkg});
-            try writer.print("        .bake_type = \"{s}\",\n", .{item.bake_type});
-            try writer.print("        .output = .{s},\n", .{@tagName(item.output)});
-            try writer.print("        .deps = &[_][]const u8{{\n", .{});
+            try writer.print("    ", .{});
+            try writer.print("pub const {s} = .{{\n", .{item.id});
+            try writer.print("        ", .{});
+            try writer.print(".bake_pkg = \"{s}\",\n", .{item.bake_pkg});
+            try writer.print("        ", .{});
+            try writer.print(".bake_type = \"{s}\",\n", .{item.bake_type});
+            try writer.print("        ", .{});
+            try writer.print(".output = .{s},\n", .{@tagName(item.output)});
+            try writer.print("        ", .{});
+            try writer.print(".deps = &[_][]const u8{{\n", .{});
             for (item.deps) |dep| {
-                try writer.print("            \"{s}\",\n", .{dep});
+                try writer.print("            ", .{});
+                try writer.print("\"{s}\",\n", .{dep});
             }
-            try writer.print("        }},\n", .{});
-            try writer.print("    }};\n", .{});
+            try writer.print("        ", .{});
+            try writer.print("}},\n", .{});
+            try writer.print("    ", .{});
+            try writer.print("}};\n", .{});
         }
         try writer.print("}};\n", .{});
 
@@ -542,7 +605,12 @@ const GenerateWebFiles = struct {
         var gen_web_files = try builder.allocator.create(GenerateWebFiles);
         gen_web_files.* = .{
             .builder = builder,
-            .step = std.build.Step.init(.custom, "gen web files", builder.allocator, make),
+            .step = std.build.Step.init(
+                .custom,
+                "gen web files",
+                builder.allocator,
+                make,
+            ),
             .cache_dir = cache_dir,
             .name = name,
             .bake_level = options.bake_level,
@@ -609,8 +677,8 @@ const GenerateWebFiles = struct {
         var js_src_dir = try std.fs.cwd().openDir(js_src_path, .{});
         defer js_src_dir.close();
 
-        var js_file_contents = std.ArrayList(u8).init(gen_web_files.builder.allocator);
-        defer js_file_contents.deinit();
+        var js_contents = std.ArrayList(u8).init(gen_web_files.builder.allocator);
+        defer js_contents.deinit();
 
         for (js_srcs) |js_src| {
             const js_src_file = try js_src_dir.openFile(js_src, .{});
@@ -622,20 +690,26 @@ const GenerateWebFiles = struct {
             );
             defer gen_web_files.builder.allocator.free(js_src_bytes);
 
-            try js_file_contents.appendSlice(js_src_bytes[0..]);
-            try js_file_contents.appendSlice("\n");
+            try js_contents.appendSlice(js_src_bytes[0..]);
+            try js_contents.appendSlice("\n");
         }
 
         if (gen_web_files.bake_level.? == .dbg) {
-            try std.fs.cwd().writeFile(gen_web_files.js_file.getPath(), js_file_contents.items);
+            try std.fs.cwd().writeFile(
+                gen_web_files.js_file.getPath(),
+                js_contents.items,
+            );
         } else {
             const js_src_bytes_min = try minify.js(
                 gen_web_files.builder.allocator,
-                js_file_contents.items,
+                js_contents.items,
                 gen_web_files.bake_level.?,
             );
             defer gen_web_files.builder.allocator.free(js_src_bytes_min);
-            try std.fs.cwd().writeFile(gen_web_files.js_file.getPath(), js_src_bytes_min);
+            try std.fs.cwd().writeFile(
+                gen_web_files.js_file.getPath(),
+                js_src_bytes_min,
+            );
         }
     }
 };
@@ -645,17 +719,25 @@ const HeaderLib = struct {
     define: []const u8,
 };
 
-const GenerateHeaderLibImpl = struct {
+const GenerateHeaderImpl = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
     file: std.build.GeneratedFile,
     libs: []const HeaderLib,
 
-    pub fn init(builder: *std.build.Builder, libs: []const HeaderLib) !*GenerateHeaderLibImpl {
-        const header_lib_impl = try builder.allocator.create(GenerateHeaderLibImpl);
+    pub fn init(
+        builder: *std.build.Builder,
+        libs: []const HeaderLib,
+    ) !*GenerateHeaderImpl {
+        const header_lib_impl = try builder.allocator.create(GenerateHeaderImpl);
         header_lib_impl.* = .{
             .builder = builder,
-            .step = std.build.Step.init(.custom, "make header impl", builder.allocator, make),
+            .step = std.build.Step.init(
+                .custom,
+                "make header impl",
+                builder.allocator,
+                make,
+            ),
             .file = std.build.GeneratedFile{ .step = &header_lib_impl.step },
             .libs = libs,
         };
@@ -663,7 +745,7 @@ const GenerateHeaderLibImpl = struct {
     }
 
     fn make(step: *std.build.Step) !void {
-        const header_lib_impl = @fieldParentPtr(GenerateHeaderLibImpl, "step", step);
+        const header_lib_impl = @fieldParentPtr(GenerateHeaderImpl, "step", step);
         const allocator = header_lib_impl.builder.allocator;
 
         var contents = std.ArrayList(u8).init(allocator);

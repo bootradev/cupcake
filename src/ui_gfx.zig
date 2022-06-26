@@ -54,7 +54,11 @@ pub const Context = struct {
 
         var font_atlas_texture = try desc.device.initTexture(
             desc.font_atlas_texture_desc,
-            .{ .copy_dst = true, .texture_binding = true, .render_attachment = true },
+            .{
+                .copy_dst = true,
+                .texture_binding = true,
+                .render_attachment = true,
+            },
         );
         const font_atlas_view = try desc.device.initTextureView(.{
             .texture = &font_atlas_texture,
@@ -99,7 +103,9 @@ pub const Context = struct {
             .entries = &[_]gfx.BindGroupEntry{
                 .{
                     .binding = 0,
-                    .resource = .{ .buffer_binding = .{ .buffer = &uniform_buffer } },
+                    .resource = .{
+                        .buffer_binding = .{ .buffer = &uniform_buffer },
+                    },
                 },
                 .{
                     .binding = 1,
@@ -135,7 +141,9 @@ pub const Context = struct {
             .targets = &[_]gfx.ColorTargetState{.{ .format = desc.format }},
         });
 
-        const render_pipeline = try desc.device.initRenderPipeline(render_pipeline_desc);
+        const render_pipeline = try desc.device.initRenderPipeline(
+            render_pipeline_desc,
+        );
 
         return Context{
             .device = desc.device,
@@ -164,8 +172,18 @@ pub const Context = struct {
         try render_pass.setPipeline(&ctx.render_pipeline);
         try render_pass.setBindGroup(0, &ctx.bind_group, null);
         try render_pass.setVertexBuffer(0, &ctx.vertex_buffer, 0, gfx.whole_size);
-        try render_pass.setVertexBuffer(1, &ctx.instance_buffer, 0, instance_bytes.len);
-        try render_pass.setIndexBuffer(&ctx.index_buffer, .uint16, 0, gfx.whole_size);
+        try render_pass.setVertexBuffer(
+            1,
+            &ctx.instance_buffer,
+            0,
+            instance_bytes.len,
+        );
+        try render_pass.setIndexBuffer(
+            &ctx.index_buffer,
+            .uint16,
+            0,
+            gfx.whole_size,
+        );
         try render_pass.drawIndexed(quad_indices.len, instance_count, 0, 0, 0);
     }
 

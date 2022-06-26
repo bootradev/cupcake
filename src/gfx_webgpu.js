@@ -72,7 +72,11 @@ const _webgpu = {
     },
 
     beginDescChild(_descId) {
-        _webgpu._descs._get(_descId)._stack.push({ _obj: {}, _field: null, _array: false });
+        _webgpu._descs._get(_descId)._stack.push({
+            _obj: {},
+            _field: null,
+            _array: false
+        });
     },
 
     endDescChild(_descId) {
@@ -165,7 +169,8 @@ const _webgpu = {
     },
 
     requestDevice(_adapterId, _descId) {
-        _webgpu._adapters._get(_adapterId).requestDevice(_webgpu._getDescObj(_descId))
+        _webgpu._adapters._get(_adapterId)
+            .requestDevice(_webgpu._getDescObj(_descId))
             .then(_device => {
                 _utils._getWasm().requestDeviceComplete(
                     _webgpu._devices._insert(_device)
@@ -178,7 +183,8 @@ const _webgpu = {
     },
 
     destroyDevice(_deviceId) {
-        // device destroy should be in the api, but it's not available in chrome canary yet...
+        // device destroy should be in the api,
+        // but it's not available in chrome canary yet...
         _webgpu._devices._remove(_deviceId);
     },
 
@@ -200,7 +206,13 @@ const _webgpu = {
                 let _err = false;
                 for (let i = 0; i < _info.messages.length; ++i) {
                     const _msg = _info.messages[i];
-                    console.log("line:", _msg.lineNum, "col:", _msg.linePos, _msg.message);
+                    console.log(
+                        "line:",
+                        _msg.lineNum,
+                        "col:",
+                        _msg.linePos,
+                        _msg.message
+                    );
                     _err |= _msg.type == "error";
                 }
                 _utils._getWasm().checkShaderCompileComplete(_err);
@@ -236,18 +248,22 @@ const _webgpu = {
     },
 
     destroyTexture(_textureId) {
-        // texture destroy should be in the api, but it's not available in chrome canary yet...
+        // texture destroy should be in the api,
+        // but it's not available in chrome canary yet...
         _webgpu._textures._remove(_textureId);
     },
 
     createTextureView(_descId) {
         const _desc = _webgpu._getDescObj(_descId);
         const _texture = _webgpu._textures._get(_desc.texture);
-        return (_desc.texture << 16) | _texture._views._insert(_texture._obj.createView(_desc));
+        const _view = _texture._views._insert(_texture._obj.createView(_desc));
+        return (_desc.texture << 16) | _view;
     },
 
     destroyTextureView(_textureViewId) {
-        _webgpu._textures._get(_textureViewId >>> 16)._views._remove(_textureViewId & 0x0000FFFF);
+        _webgpu._textures._get(_textureViewId >>> 16)._views._remove(
+            _textureViewId & 0x0000FFFF;
+        );
     },
 
     _getTextureView(_textureViewId) {
@@ -258,7 +274,9 @@ const _webgpu = {
 
     createSampler(_deviceId, _descId) {
         return _webgpu._samplers._insert(
-            _webgpu._devices._get(_deviceId).createSampler(_webgpu._getDescObj(_descId))
+            _webgpu._devices._get(_deviceId).createSampler(
+                _webgpu._getDescObj(_descId)
+            )
         );
     },
 
@@ -315,7 +333,9 @@ const _webgpu = {
     createPipelineLayout(_deviceId, _descId) {
         const _desc = _webgpu._getDescObj(_descId);
         for (let i = 0; i < _desc.bindGroupLayouts.length; ++i) {
-            _desc.bindGroupLayouts[i] = _webgpu._bindGroupLayouts._get(_desc.bindGroupLayouts[i]);
+            _desc.bindGroupLayouts[i] = _webgpu._bindGroupLayouts._get(
+                _desc.bindGroupLayouts[i]
+            );
         }
         return _webgpu._pipelineLayouts._insert(
             _webgpu._devices._get(_deviceId).createPipelineLayout(_desc)
@@ -381,7 +401,9 @@ const _webgpu = {
         }
 
         if (_desc.occlusionQuerySet !== undefined) {
-            _desc.occlusionQuerySet = _webgpu._querySets._get(_desc.occlusionQuerySet);
+            _desc.occlusionQuerySet = _webgpu._querySets._get(
+                _desc.occlusionQuerySet
+            );
         }
 
         if (_desc.timestampWrites !== undefined) {
@@ -403,7 +425,13 @@ const _webgpu = {
         );
     },
 
-    setBindGroup(_renderPassId, _groupIndex, _bindGroupId, _dynOffsetsPtr, _dynOffsetsLen) {
+    setBindGroup(
+        _renderPassId,
+        _groupIndex,
+        _bindGroupId,
+        _dynOffsetsPtr,
+        _dynOffsetsLen
+    ) {
         const _dynOffsets = [];
         if (_dynOffsetsLen > 0) {
             _dynOffsets = _utils._u32Array(_dynOffsetsPtr, _dynOffsetsLen);
@@ -428,7 +456,14 @@ const _webgpu = {
         );
     },
 
-    setIndexBuffer(_renderPassId, _bufferId, _indexFormatPtr, _indexFormatLen, _offset, _size) {
+    setIndexBuffer(
+        _renderPassId,
+        _bufferId,
+        _indexFormatPtr,
+        _indexFormatLen,
+        _offset,
+        _size
+    ) {
         if ((_size >>> 0) === _WholeSize) {
             _size = undefined;
         }
@@ -441,7 +476,13 @@ const _webgpu = {
         );
     },
 
-    draw(_renderPassId, _vertexCount, _instanceCount, _firstVertex, _firstInstance) {
+    draw(
+        _renderPassId,
+        _vertexCount,
+        _instanceCount,
+        _firstVertex,
+        _firstInstance
+    ) {
         _webgpu._renderPasses._get(_renderPassId).draw(
             _vertexCount,
             _instanceCount,
@@ -450,13 +491,20 @@ const _webgpu = {
         );
     },
 
-    drawIndexed(_renderPassId, _indexCount, _instCount, _firstIndex, _baseVertex, _firstInst) {
+    drawIndexed(
+        _renderPassId,
+        _indexCount,
+        _instCount,
+        _firstIndex,
+        _baseVertex,
+        _firstInstance
+    ) {
         _webgpu._renderPasses._get(_renderPassId).drawIndexed(
             _indexCount,
             _instCount,
             _firstIndex,
             _baseVertex,
-            _firstInst
+            _firstInstance
         );
     },
 
@@ -472,7 +520,14 @@ const _webgpu = {
         _webgpu._commandBuffers._remove(_commandBufferId);
     },
 
-    queueWriteBuffer(_deviceId, _bufferId, _bufferOffset, _dataPtr, _dataLen, _dataOffset) {
+    queueWriteBuffer(
+        _deviceId,
+        _bufferId,
+        _bufferOffset,
+        _dataPtr,
+        _dataLen,
+        _dataOffset
+    ) {
         _webgpu._devices._get(_deviceId).queue.writeBuffer(
             _webgpu._buffers._get(_bufferId),
             _bufferOffset,
@@ -482,7 +537,16 @@ const _webgpu = {
         );
     },
 
-    queueWriteTexture(_deviceId, _destId, _dataPtr, _dataLen, _layoutId, _width, _height, _depth) {
+    queueWriteTexture(
+        _deviceId,
+        _destId,
+        _dataPtr,
+        _dataLen,
+        _layoutId,
+        _width,
+        _height,
+        _depth
+    ) {
         const _dest = _webgpu._getDescObj(_destId);
         _dest.texture = _webgpu._textures._getObj(_dest.texture);
         const _layout = _webgpu._getDescObj(_layoutId);

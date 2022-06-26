@@ -41,13 +41,20 @@ pub fn load(comptime res: Res, desc: LoadDesc) !res.Type {
     };
 
     return try serde.deserialize(
-        .{ .allocator = desc.res_allocator, .bytes_are_embedded = bytes_are_embedded },
+        .{
+            .allocator = desc.res_allocator,
+            .bytes_are_embedded = bytes_are_embedded,
+        },
         res.Type,
         file_bytes,
     );
 }
 
-pub fn readFile(allocator: std.mem.Allocator, path: []const u8, size: usize) ![]const u8 {
+pub fn readFile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    size: usize,
+) ![]const u8 {
     const data = try allocator.alloc(u8, size);
     try api.readFile(path, data);
     return data;

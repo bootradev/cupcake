@@ -47,7 +47,11 @@ pub fn loop() !void {
         if (AppData == void) {
             try app.loop();
         } else {
-            try app.loop(if (@typeInfo(AppData) == .Pointer) app_data else &app_data);
+            const app_data_ref = if (@typeInfo(AppData) == .Pointer)
+                app_data
+            else
+                &app_data;
+            try app.loop(app_data_ref);
         }
     }
 }
@@ -57,7 +61,11 @@ pub fn deinit() !void {
         if (AppData == void) {
             try app.deinit();
         } else {
-            try app.deinit(if (@typeInfo(AppData) == .Pointer) app_data else &app_data);
+            const app_data_ref = if (@typeInfo(AppData) == .Pointer)
+                app_data
+            else
+                &app_data;
+            try app.deinit(app_data_ref);
         }
     }
 }

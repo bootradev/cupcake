@@ -26,7 +26,10 @@ pub fn main() !void {
     defer pkg_contents.deinit();
     const writer = pkg_contents.writer();
     inline for (@typeInfo(bake_list.pkgs).Struct.decls) |decl| {
-        try writer.print("pub const {s} = @import(\"{s}\");\n", .{ decl.name, decl.name });
+        try writer.print(
+            "pub const {s} = @import(\"{s}\");\n",
+            .{ decl.name, decl.name },
+        );
     }
 
     inline for (@typeInfo(bake_list.items).Struct.decls) |decl| {
@@ -50,7 +53,9 @@ pub fn main() !void {
             const return_type = @typeInfo(@TypeOf(bake_fn)).Fn.return_type.?;
             switch (@typeInfo(return_type)) {
                 .ErrorUnion => |EU| break :block EU.payload,
-                else => @compileError("bake fn return type must be an error union!"),
+                else => @compileError(
+                    "bake fn return type must be an error union!",
+                ),
             }
         };
         const bake_result = try bake_fn(
@@ -70,15 +75,21 @@ pub fn main() !void {
 
         if (item.output != .cache) {
             try writer.print("pub const {s} = .{{\n", .{decl.name});
-            try writer.print("    .Type = {s}.{s},\n", .{ item.bake_pkg, @typeName(BakeType) });
+            try writer.print("    ", .{});
+            try writer.print(
+                ".Type = {s}.{s},\n",
+                .{ item.bake_pkg, @typeName(BakeType) },
+            );
             if (item.output == .pkg_embed) {
+                try writer.print("    ", .{});
                 try writer.print(
-                    "    .data = .{{ .embed = @embedFile(\"{s}\") }},\n",
+                    ".data = .{{ .embed = @embedFile(\"{s}\") }},\n",
                     .{decl.name},
                 );
             } else {
+                try writer.print("    ", .{});
                 try writer.print(
-                    "    .data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }},\n",
+                    ".data = .{{ .file = .{{ .path = \"{s}\", .size = {} }} }},\n",
                     .{ decl.name, bake_bytes.len },
                 );
             }

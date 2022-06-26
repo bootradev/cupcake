@@ -72,7 +72,8 @@ const Minify = struct {
             const char = ctx.src[ctx.end_index];
             if (ctx.end_index < ctx.src.len - 1 and
                 char == '/' and
-                (ctx.src[ctx.end_index + 1] == '/' or ctx.src[ctx.end_index + 1] == '*'))
+                (ctx.src[ctx.end_index + 1] == '/' or
+                ctx.src[ctx.end_index + 1] == '*'))
             {
                 try ctx.handleComment();
             } else if (std.mem.indexOfScalar(u8, symbols, char) != null) {
@@ -116,8 +117,8 @@ const Minify = struct {
                     char_type == .ident)
                 {
                     const wgsl_skip = "{([]<>=:;,.";
-                    const last_write_char = ctx.out.items[ctx.out.items.len - 1];
-                    if (std.mem.indexOfScalar(u8, wgsl_skip, last_write_char) == null) {
+                    const last_char = ctx.out.items[ctx.out.items.len - 1];
+                    if (std.mem.indexOfScalar(u8, wgsl_skip, last_char) == null) {
                         try ctx.out.append(' ');
                     }
                 }
@@ -137,7 +138,8 @@ const Minify = struct {
         const str_marker = ctx.src[ctx.end_index - 1];
         ctx.start_index = ctx.end_index - 1;
         while (ctx.end_index < ctx.src.len and
-            (ctx.src[ctx.end_index] != str_marker or ctx.src[ctx.end_index - 1] == '\\'))
+            (ctx.src[ctx.end_index] != str_marker or
+            ctx.src[ctx.end_index - 1] == '\\'))
         {
             ctx.end_index += 1;
         }
@@ -171,7 +173,7 @@ const Minify = struct {
 
     fn appendIdent(ctx: *Minify) !void {
         const ident = ctx.src[ctx.start_index..ctx.end_index];
-        // append the identifier as-is if in debug mode or if the identifier starts with _
+        // append the identifier if in debug mode or if the identifier starts with _
         // digits also cannot be converted into a different identifier
         if (ctx.opt_level == .dbg or
             ctx.src[ctx.start_index] != '_' or
@@ -195,22 +197,22 @@ const Minify = struct {
         // they start off as single character identifiers
         const next = ctx.allocator.dupe(u8, ctx.next_ident[0..ctx.next_ident_size]);
 
-        var cur_index = ctx.next_ident_size - 1;
-        if (ctx.next_ident_index[cur_index] != next_ident_symbols.len - 1) {
-            // each time an identifier is allocated, the character in the string is set to
-            // the next one in next_ident_symbols...
-            ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
+        var index = ctx.next_ident_size - 1;
+        if (ctx.next_ident_index[index] != next_ident_symbols.len - 1) {
+            // each time an identifier is allocated, the char in the string is set
+            // to the next one in next_ident_symbols...
+            ctx.setNextIdent(index, ctx.next_ident_index[index] + 1);
         } else {
             // if the size is greater than 1, try to increment
             // the identifier in a previous string index
-            ctx.setNextIdent(cur_index, 0);
+            ctx.setNextIdent(index, 0);
             var out_of_idents = true;
-            while (cur_index != 0) {
-                cur_index -= 1;
-                if (ctx.next_ident_index[cur_index] == next_ident_symbols.len - 1) {
-                    ctx.setNextIdent(cur_index, 0);
+            while (index != 0) {
+                index -= 1;
+                if (ctx.next_ident_index[index] == next_ident_symbols.len - 1) {
+                    ctx.setNextIdent(index, 0);
                 } else {
-                    ctx.setNextIdent(cur_index, ctx.next_ident_index[cur_index] + 1);
+                    ctx.setNextIdent(index, ctx.next_ident_index[index] + 1);
                     out_of_idents = false;
                     break;
                 }

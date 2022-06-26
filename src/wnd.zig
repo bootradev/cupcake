@@ -30,7 +30,9 @@ pub const Window = struct {
     }
 
     pub fn getAspectRatio(window: Window) f32 {
-        return @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());
+        const widthf = @intToFloat(f32, window.getWidth());
+        const heightf = @intToFloat(f32, window.getHeight());
+        return widthf / heightf;
     }
 
     pub fn isVisible(window: Window) bool {

@@ -144,7 +144,8 @@ pub fn encode(image: Image, allocator: std.mem.Allocator) !Result {
                             &bytes_index,
                             &[_]u8{
                                 op_luma | @intCast(u8, diff_g + 32),
-                                @intCast(u8, diff_rg + 8) << 4 | @intCast(u8, diff_rb + 8) << 0,
+                                @intCast(u8, diff_rg + 8) << 4 |
+                                    @intCast(u8, diff_rb + 8) << 0,
                             },
                         );
                     } else {
@@ -249,8 +250,8 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
                 data_index += 1;
             } else if (op_code == op_diff) {
                 // use wrapping adds to match the spec
-                // even though the diffs are signed ints, they are still twos complement
-                // numbers and the wrapping arithmetic works out the same.
+                // even though the diffs are signed ints, they are still twos
+                // complement numbers and the wrapping arithmetic works out
                 pixel.r +%= ((op & mask_diff_r) >> 4) -% 2;
                 pixel.g +%= ((op & mask_diff_g) >> 2) -% 2;
                 pixel.b +%= ((op & mask_diff_b) >> 0) -% 2;
@@ -260,8 +261,8 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
                     return error.InvalidOpLuma;
                 }
                 // use wrapping adds to match the spec
-                // even though the diffs are signed ints, they are still twos complement
-                // numbers and the wrapping arithmetic works out the same.
+                // even though the diffs are signed ints, they are still twos
+                // complement numbers and the wrapping arithmetic works out
                 const diff_g = (op & mask_luma_g) -% 32;
                 const op_rb = data[data_index + 1];
                 pixel.r +%= diff_g +% ((op_rb & mask_luma_r) >> 4) -% 8;
@@ -275,7 +276,11 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
                     return error.InvalidOpRun;
                 }
                 while (run > 1) : (run -= 1) {
-                    std.mem.copy(u8, bytes[bytes_index..], std.mem.asBytes(&pixel)[0..format]);
+                    std.mem.copy(
+                        u8,
+                        bytes[bytes_index..],
+                        std.mem.asBytes(&pixel)[0..format],
+                    );
                     bytes_index += format;
                 }
                 data_index += 1;
@@ -292,7 +297,9 @@ pub fn decode(data: []const u8, allocator: std.mem.Allocator) !Image {
     }
 
     // decode end marker
-    if (data_index + 8 != data.len or !std.mem.eql(u8, data[data_index..], &end_marker)) {
+    if (data_index + 8 != data.len or
+        !std.mem.eql(u8, data[data_index..], &end_marker))
+    {
         return error.InvalidEndMarker;
     }
 

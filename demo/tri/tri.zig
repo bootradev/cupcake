@@ -11,7 +11,11 @@ const Demo = struct {
 };
 
 pub fn init() !Demo {
-    var window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "tri" });
+    var window = try cc_wnd.Window.init(.{
+        .width = 800,
+        .height = 600,
+        .title = "tri",
+    });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
 
     const vert_shader_desc = try cc_res.load(cc_bake.tri_vert_shader, .{});
@@ -22,20 +26,22 @@ pub fn init() !Demo {
     var frag_shader = try gctx.device.initShader(frag_shader_desc);
     defer gctx.device.deinitShader(&frag_shader);
 
-    var render_pipeline_desc = cc_gfx.RenderPipelineDesc{};
-    render_pipeline_desc.setVertexState(.{
+    var pipeline_desc = cc_gfx.RenderPipelineDesc{};
+    pipeline_desc.setVertexState(.{
         .module = &vert_shader,
         .entry_point = "vs_main",
     });
-    render_pipeline_desc.setFragmentState(.{
+    pipeline_desc.setFragmentState(.{
         .module = &frag_shader,
         .entry_point = "fs_main",
         // todo: zig #7607
-        .targets = &[_]cc_gfx.ColorTargetState{.{ .format = gctx.swapchain_format }},
+        .targets = &[_]cc_gfx.ColorTargetState{
+            .{ .format = gctx.swapchain_format },
+        },
     });
-    const render_pipeline = try gctx.device.initRenderPipeline(render_pipeline_desc);
+    const pipeline = try gctx.device.initRenderPipeline(pipeline_desc);
 
-    return Demo{ .window = window, .gctx = gctx, .render_pipeline = render_pipeline };
+    return Demo{ .window = window, .gctx = gctx, .render_pipeline = pipeline };
 }
 
 pub fn loop(demo: *Demo) !void {

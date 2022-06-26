@@ -15,8 +15,8 @@ const _main = {
         fetch(_wasmPath)
             .then(_response => _response.arrayBuffer())
             .then(_arrayBuffer => WebAssembly.instantiate(_arrayBuffer, _imports))
-            .then(_results => {
-                _main._currentWasmId = _main._wasms._insert(_results.instance.exports);
+            .then(_mod => {
+                _main._currentWasmId = _main._wasms._insert(_mod.instance.exports);
                 _main._wasms._get(_main._currentWasmId).initApp();
                 window.requestAnimationFrame(_main._loop);
             })

@@ -19,7 +19,11 @@ const max_instances = 256;
 pub fn init() !Demo {
     var ba = try cc_mem.BumpAllocator.init(256 * 1024);
     const allocator = ba.allocator();
-    const window = try cc_wnd.Window.init(.{ .width = 800, .height = 600, .title = "ui" });
+    const window = try cc_wnd.Window.init(.{
+        .width = 800,
+        .height = 600,
+        .title = "ui",
+    });
     var gctx = try cc_gfx.Context.init(cc_wnd_gfx.getContextDesc(window));
     const uctx = try cc_ui.Context.init(.{
         .allocator = allocator,
@@ -30,7 +34,7 @@ pub fn init() !Demo {
         .format = gctx.swapchain_format,
         .vert_shader_desc = try cc_ui_res.loadVertShaderDesc(),
         .frag_shader_desc = try cc_ui_res.loadFragShaderDesc(),
-        .font_atlas_texture_desc = try cc_ui_res.loadFontAtlasTextureDesc(allocator),
+        .font_atlas_desc = try cc_ui_res.loadFontAtlasTextureDesc(allocator),
         .max_instances = max_instances,
     });
 

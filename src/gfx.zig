@@ -129,11 +129,17 @@ pub const PowerPreference = enum {
 pub const AdapterDesc = struct {
     impl: api.AdapterDesc = .{},
 
-    pub fn setPowerPreference(desc: *AdapterDesc, power_preference: PowerPreference) void {
+    pub fn setPowerPreference(
+        desc: *AdapterDesc,
+        power_preference: PowerPreference,
+    ) void {
         desc.impl.setPowerPreference(power_preference);
     }
 
-    pub fn setForceFallbackAdapter(desc: *AdapterDesc, force_fallback_adapter: bool) void {
+    pub fn setForceFallbackAdapter(
+        desc: *AdapterDesc,
+        force_fallback_adapter: bool,
+    ) void {
         desc.impl.setForceFallbackAdapter(force_fallback_adapter);
     }
 };
@@ -194,7 +200,10 @@ pub const Limits = struct {
 pub const DeviceDesc = struct {
     impl: api.DeviceDesc = .{},
 
-    pub fn setRequiredFeatures(desc: *DeviceDesc, required_features: []const FeatureName) void {
+    pub fn setRequiredFeatures(
+        desc: *DeviceDesc,
+        required_features: []const FeatureName,
+    ) void {
         desc.impl.setRequiredFeatures(required_features);
     }
 
@@ -206,8 +215,14 @@ pub const DeviceDesc = struct {
 pub const Device = struct {
     impl: api.Device,
 
-    pub fn initSwapchain(device: *Device, surface: *Surface, desc: SwapchainDesc) !Swapchain {
-        return Swapchain{ .impl = try device.impl.initSwapchain(&surface.impl, desc) };
+    pub fn initSwapchain(
+        device: *Device,
+        surface: *Surface,
+        desc: SwapchainDesc,
+    ) !Swapchain {
+        return Swapchain{
+            .impl = try device.impl.initSwapchain(&surface.impl, desc),
+        };
     }
 
     pub fn deinitSwapchain(device: *Device, swapchain: *Swapchain) void {
@@ -226,24 +241,39 @@ pub const Device = struct {
         return Buffer{ .impl = try device.impl.initBuffer(desc) };
     }
 
-    pub fn initBufferSlice(device: *Device, slice: anytype, usage: BufferUsage) !Buffer {
+    pub fn initBufferSlice(
+        device: *Device,
+        slice: anytype,
+        usage: BufferUsage,
+    ) !Buffer {
         const bytes = std.mem.sliceAsBytes(slice);
-        return try device.initBuffer(.{ .size = bytes.len, .usage = usage, .data = bytes });
+        return try device.initBuffer(.{
+            .size = bytes.len,
+            .usage = usage,
+            .data = bytes,
+        });
     }
 
     pub fn deinitBuffer(device: *Device, buffer: *Buffer) void {
         device.impl.deinitBuffer(&buffer.impl);
     }
 
-    pub fn initTexture(device: *Device, desc: TextureDesc, usage: TextureUsage) !Texture {
-        const texture = Texture{ .impl = try device.impl.initTexture(desc, usage) };
+    pub fn initTexture(
+        device: *Device,
+        desc: TextureDesc,
+        usage: TextureUsage,
+    ) !Texture {
+        const texture = Texture{
+            .impl = try device.impl.initTexture(desc, usage),
+        };
         if (desc.bytes) |bytes| {
+            const bytes_per_pixel = try getBytesPerPixel(desc.format);
             var queue = device.getQueue();
             try queue.writeTexture(
                 .{ .texture = &texture },
                 bytes,
                 .{
-                    .bytes_per_row = desc.size.width * try getBytesPerPixel(desc.format),
+                    .bytes_per_row = desc.size.width * bytes_per_pixel,
                     .rows_per_image = desc.size.height,
                 },
                 desc.size,
@@ -272,11 +302,17 @@ pub const Device = struct {
         device.impl.deinitSampler(&sampler.impl);
     }
 
-    pub fn initBindGroupLayout(device: *Device, desc: BindGroupLayoutDesc) !BindGroupLayout {
+    pub fn initBindGroupLayout(
+        device: *Device,
+        desc: BindGroupLayoutDesc,
+    ) !BindGroupLayout {
         return BindGroupLayout{ .impl = try device.impl.initBindGroupLayout(desc) };
     }
 
-    pub fn deinitBindGroupLayout(device: *Device, bind_group_layout: *BindGroupLayout) void {
+    pub fn deinitBindGroupLayout(
+        device: *Device,
+        bind_group_layout: *BindGroupLayout,
+    ) void {
         device.impl.deinitBindGroupLayout(&bind_group_layout.impl);
     }
 
@@ -288,19 +324,31 @@ pub const Device = struct {
         device.impl.deinitBindGroup(&bind_group.impl);
     }
 
-    pub fn initPipelineLayout(device: *Device, desc: PipelineLayoutDesc) !PipelineLayout {
+    pub fn initPipelineLayout(
+        device: *Device,
+        desc: PipelineLayoutDesc,
+    ) !PipelineLayout {
         return PipelineLayout{ .impl = try device.impl.initPipelineLayout(desc) };
     }
 
-    pub fn deinitPipelineLayout(device: *Device, pipeline_layout: *PipelineLayout) void {
+    pub fn deinitPipelineLayout(
+        device: *Device,
+        pipeline_layout: *PipelineLayout,
+    ) void {
         device.impl.deinitPipelineLayout(&pipeline_layout.impl);
     }
 
-    pub fn initRenderPipeline(device: *Device, desc: RenderPipelineDesc) !RenderPipeline {
+    pub fn initRenderPipeline(
+        device: *Device,
+        desc: RenderPipelineDesc,
+    ) !RenderPipeline {
         return RenderPipeline{ .impl = try device.impl.initRenderPipeline(desc) };
     }
 
-    pub fn deinitRenderPipeline(device: *Device, render_pipeline: *RenderPipeline) void {
+    pub fn deinitRenderPipeline(
+        device: *Device,
+        render_pipeline: *RenderPipeline,
+    ) void {
         device.impl.deinitRenderPipeline(&render_pipeline.impl);
     }
 
@@ -533,7 +581,10 @@ pub const TextureDesc = struct {
         return try serde.serializeGeneric(allocator, value_encoded);
     }
 
-    pub fn deserialize(desc: serde.DeserializeDesc, bytes: []const u8) !TextureDesc {
+    pub fn deserialize(
+        desc: serde.DeserializeDesc,
+        bytes: []const u8,
+    ) !TextureDesc {
         var texture_desc = try serde.deserializeGeneric(desc, TextureDesc, bytes);
         if (texture_desc.bytes) |texture_bytes| {
             const allocator = desc.allocator orelse return error.AllocatorRequired;
@@ -776,7 +827,11 @@ pub fn getVertexBufferLayoutTypes(
 
     inline for (types) |Type| {
         attributes = attributes ++ &[_]VertexAttribute{
-            .{ .format = getVertexFormat(Type), .offset = offset, .shader_location = location },
+            .{
+                .format = getVertexFormat(Type),
+                .offset = offset,
+                .shader_location = location,
+            },
         };
 
         if (offset % @sizeOf(Type) != 0) {
@@ -796,29 +851,34 @@ pub fn getVertexBufferLayoutTypes(
 
 fn getVertexFormat(comptime Type: type) VertexFormat {
     return switch (@typeInfo(Type)) {
-        .Int, .ComptimeInt, .Float, .ComptimeFloat => getVertexFormatWithLen(Type, 1),
-        .Array => |A| getVertexFormatWithLen(A.child, A.len),
-        .Vector => |V| getVertexFormatWithLen(V.child, V.len),
+        .Int, .ComptimeInt, .Float, .ComptimeFloat => getVertexFormatLen(Type, 1),
+        .Array => |A| getVertexFormatLen(A.child, A.len),
+        .Vector => |V| getVertexFormatLen(V.child, V.len),
         .Struct => |S| block: {
             if (S.fields.len == 0 or S.fields.len > 4) {
                 @compileError("Invalid number of fields for vertex attribute!");
             }
             const field_type = S.fields[0].field_type;
-            if (@typeInfo(field_type) != .Int and @typeInfo(field_type) != .Float) {
-                @compileError("Vertex attribute structs must be composed of ints or floats!");
+            const field_type_info = @typeInfo(field_type);
+            if (field_type_info != .Int and field_type_info != .Float) {
+                @compileError(
+                    "Vertex attribute structs must be composed of ints or floats!",
+                );
             }
             inline for (S.fields) |field| {
                 if (field.field_type != field_type) {
                     @compileError("Vertex attribute fields must be homogenous!");
                 }
             }
-            break :block getVertexFormatWithLen(field_type, S.fields.len);
+            break :block getVertexFormatLen(field_type, S.fields.len);
         },
-        else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
+        else => @compileError(
+            "Invalid vertex attribute type " ++ @typeName(Type) ++ "!",
+        ),
     };
 }
 
-fn getVertexFormatWithLen(comptime Type: type, len: comptime_int) VertexFormat {
+fn getVertexFormatLen(comptime Type: type, len: comptime_int) VertexFormat {
     return switch (@typeInfo(Type)) {
         .Int => |I| switch (I.signedness) {
             .signed => switch (I.bits) {
@@ -877,7 +937,9 @@ fn getVertexFormatWithLen(comptime Type: type, len: comptime_int) VertexFormat {
             },
             else => @compileError("Invalid bit size for vertex attribute!"),
         },
-        else => @compileError("Invalid vertex attribute type " ++ @typeName(Type) ++ "!"),
+        else => @compileError(
+            "Invalid vertex attribute type " ++ @typeName(Type) ++ "!",
+        ),
     };
 }
 
@@ -1001,7 +1063,12 @@ pub const ColorWrite = packed struct {
     blue: bool = false,
     alpha: bool = false,
 
-    pub const all = ColorWrite{ .red = true, .green = true, .blue = true, .alpha = true };
+    pub const all = ColorWrite{
+        .red = true,
+        .green = true,
+        .blue = true,
+        .alpha = true,
+    };
 };
 
 pub const ColorTargetState = struct {
@@ -1026,11 +1093,17 @@ pub const RenderPipelineDesc = struct {
         desc.impl.setPipelineLayout(pipeline_layout);
     }
 
-    pub fn setVertexState(desc: *RenderPipelineDesc, vertex_state: VertexState) void {
+    pub fn setVertexState(
+        desc: *RenderPipelineDesc,
+        vertex_state: VertexState,
+    ) void {
         desc.impl.setVertexState(vertex_state);
     }
 
-    pub fn setPrimitiveState(desc: *RenderPipelineDesc, primitive_state: PrimitiveState) void {
+    pub fn setPrimitiveState(
+        desc: *RenderPipelineDesc,
+        primitive_state: PrimitiveState,
+    ) void {
         desc.impl.setPrimitiveState(primitive_state);
     }
 
@@ -1048,7 +1121,10 @@ pub const RenderPipelineDesc = struct {
         desc.impl.setMultisampleState(multisample_state);
     }
 
-    pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: FragmentState) void {
+    pub fn setFragmentState(
+        desc: *RenderPipelineDesc,
+        fragment_state: FragmentState,
+    ) void {
         desc.impl.setFragmentState(fragment_state);
     }
 };
@@ -1060,7 +1136,10 @@ pub const RenderPipeline = struct {
 pub const CommandEncoder = struct {
     impl: api.CommandEncoder,
 
-    pub fn beginRenderPass(encoder: *CommandEncoder, desc: RenderPassDesc) !RenderPass {
+    pub fn beginRenderPass(
+        encoder: *CommandEncoder,
+        desc: RenderPassDesc,
+    ) !RenderPass {
         return RenderPass{ .impl = try encoder.impl.beginRenderPass(desc) };
     }
 
@@ -1131,7 +1210,10 @@ pub const RenderPassDesc = struct {
 pub const RenderPass = struct {
     impl: api.RenderPass,
 
-    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *const RenderPipeline) !void {
+    pub fn setPipeline(
+        render_pass: *RenderPass,
+        render_pipeline: *const RenderPipeline,
+    ) !void {
         try render_pass.impl.setPipeline(&render_pipeline.impl);
     }
 
@@ -1141,7 +1223,11 @@ pub const RenderPass = struct {
         group: *const BindGroup,
         dynamic_offsets: ?[]const u32,
     ) !void {
-        try render_pass.impl.setBindGroup(group_index, &group.impl, dynamic_offsets);
+        try render_pass.impl.setBindGroup(
+            group_index,
+            &group.impl,
+            dynamic_offsets,
+        );
     }
 
     pub fn setVertexBuffer(
@@ -1161,7 +1247,12 @@ pub const RenderPass = struct {
         offset: u32,
         size: usize,
     ) !void {
-        try render_pass.impl.setIndexBuffer(&buffer.impl, index_format, offset, size);
+        try render_pass.impl.setIndexBuffer(
+            &buffer.impl,
+            index_format,
+            offset,
+            size,
+        );
     }
 
     pub fn draw(
@@ -1171,7 +1262,12 @@ pub const RenderPass = struct {
         first_vertex: usize,
         first_instance: usize,
     ) !void {
-        try render_pass.impl.draw(vertex_count, instance_count, first_vertex, first_instance);
+        try render_pass.impl.draw(
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        );
     }
 
     pub fn drawIndexed(

@@ -32,8 +32,16 @@ const js = struct {
 
     extern fn initDesc() DescId;
     extern fn deinitDesc(desc_id: DescId) void;
-    extern fn setDescField(desc_id: DescId, field_ptr: [*]const u8, field_len: usize) void;
-    extern fn setDescString(desc_id: DescId, value_ptr: [*]const u8, value_len: usize) void;
+    extern fn setDescField(
+        desc_id: DescId,
+        field_ptr: [*]const u8,
+        field_len: usize,
+    ) void;
+    extern fn setDescString(
+        desc_id: DescId,
+        value_ptr: [*]const u8,
+        value_len: usize,
+    ) void;
     extern fn setDescBool(desc_id: DescId, value: bool) void;
     extern fn setDescU32(desc_id: DescId, value: u32) void;
     extern fn setDescI32(desc_id: DescId, value: i32) void;
@@ -43,10 +51,17 @@ const js = struct {
     extern fn beginDescChild(desc_id: DescId) void;
     extern fn endDescChild(desc_id: DescId) void;
 
-    extern fn createContext(canvas_id_ptr: [*]const u8, canvas_id_len: usize) ContextId;
+    extern fn createContext(
+        canvas_id_ptr: [*]const u8,
+        canvas_id_len: usize,
+    ) ContextId;
     extern fn destroyContext(context_id: ContextId) void;
     extern fn getContextCurrentTexture(context_id: ContextId) TextureId;
-    extern fn configure(device_id: DeviceId, context_id: ContextId, desc_id: DescId) void;
+    extern fn configure(
+        device_id: DeviceId,
+        context_id: ContextId,
+        desc_id: DescId,
+    ) void;
     extern fn getPreferredFormat() usize;
 
     extern fn requestAdapter(desc_id: DescId) void;
@@ -55,7 +70,11 @@ const js = struct {
     extern fn requestDevice(adapter_id: AdapterId, desc_id: DescId) void;
     extern fn destroyDevice(device_id: DeviceId) void;
 
-    extern fn createShader(device_id: DeviceId, code_ptr: [*]const u8, code_len: usize) ShaderId;
+    extern fn createShader(
+        device_id: DeviceId,
+        code_ptr: [*]const u8,
+        code_len: usize,
+    ) ShaderId;
     extern fn destroyShader(shader_id: ShaderId) void;
     extern fn checkShaderCompile(shader_id: ShaderId) void;
 
@@ -75,21 +94,38 @@ const js = struct {
     extern fn createSampler(device_id: DeviceId, desc_id: DescId) SamplerId;
     extern fn destroySampler(sampler_id: SamplerId) void;
 
-    extern fn createBindGroupLayout(device_id: DeviceId, desc_id: DescId) BindGroupLayoutId;
+    extern fn createBindGroupLayout(
+        device_id: DeviceId,
+        desc_id: DescId,
+    ) BindGroupLayoutId;
     extern fn destroyBindGroupLayout(bind_group_layout_id: BindGroupLayoutId) void;
     extern fn createBindGroup(device_id: DeviceId, desc_id: DescId) BindGroupId;
     extern fn destroyBindGroup(bind_group_id: BindGroupId) void;
 
-    extern fn createPipelineLayout(device_id: DeviceId, desc_id: DescId) PipelineLayoutId;
+    extern fn createPipelineLayout(
+        device_id: DeviceId,
+        desc_id: DescId,
+    ) PipelineLayoutId;
     extern fn destroyPipelineLayout(pipeline_layout_id: PipelineLayoutId) void;
-    extern fn createRenderPipeline(device_id: DeviceId, desc_id: DescId) RenderPipelineId;
+    extern fn createRenderPipeline(
+        device_id: DeviceId,
+        desc_id: DescId,
+    ) RenderPipelineId;
     extern fn destroyRenderPipeline(render_pipeline_id: RenderPipelineId) void;
 
     extern fn createCommandEncoder(device_id: DeviceId) CommandEncoderId;
-    extern fn finishCommandEncoder(command_encoder_id: CommandEncoderId) CommandBufferId;
+    extern fn finishCommandEncoder(
+        command_encoder_id: CommandEncoderId,
+    ) CommandBufferId;
 
-    extern fn beginRenderPass(command_encoder_id: CommandEncoderId, desc_id: DescId) RenderPassId;
-    extern fn setPipeline(render_pass_id: RenderPassId, render_pipeline_id: RenderPipelineId) void;
+    extern fn beginRenderPass(
+        command_encoder_id: CommandEncoderId,
+        desc_id: DescId,
+    ) RenderPassId;
+    extern fn setPipeline(
+        render_pass_id: RenderPassId,
+        render_pipeline_id: RenderPipelineId,
+    ) void;
     extern fn setBindGroup(
         render_pass_id: RenderPassId,
         group_index: GPUIndex32,
@@ -129,7 +165,10 @@ const js = struct {
     ) void;
     extern fn endRenderPass(render_pass_id: RenderPassId) void;
 
-    extern fn queueSubmit(device_id: DeviceId, command_buffer_id: CommandBufferId) void;
+    extern fn queueSubmit(
+        device_id: DeviceId,
+        command_buffer_id: CommandBufferId,
+    ) void;
     extern fn queueWriteBuffer(
         device_id: DeviceId,
         buffer_id: BufferId,
@@ -171,7 +210,8 @@ fn getFieldName(comptime name: []const u8) []const u8 {
             next_upper = true;
             continue;
         }
-        field_name = field_name ++ &[_]u8{if (next_upper) std.ascii.toUpper(char) else char};
+        const next_char = if (next_upper) std.ascii.toUpper(char) else char;
+        field_name = field_name ++ &[_]u8{next_char};
         next_upper = false;
     }
     return field_name;
@@ -230,7 +270,10 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
         .Struct => |S| {
             if (S.layout == .Packed) {
                 const BitType = @Type(.{
-                    .Int = .{ .signedness = .unsigned, .bits = @bitSizeOf(@TypeOf(value)) },
+                    .Int = .{
+                        .signedness = .unsigned,
+                        .bits = @bitSizeOf(@TypeOf(value)),
+                    },
                 });
                 js.setDescU32(desc_id, @intCast(u32, @bitCast(BitType, value)));
             } else if (typeIsArrayDesc(@TypeOf(value))) {
@@ -244,15 +287,16 @@ fn setDescValue(desc_id: js.DescId, value: anytype) void {
             } else {
                 js.beginDescChild(desc_id);
                 inline for (S.fields) |field| {
-                    const field_name = comptime getFieldName(field.name);
-                    setDescFieldValue(desc_id, field_name, @field(value, field.name));
+                    const name = comptime getFieldName(field.name);
+                    setDescFieldValue(desc_id, name, @field(value, field.name));
                 }
                 js.endDescChild(desc_id);
             }
         },
         .Union => |U| {
             inline for (U.fields) |field, i| {
-                const Tag = U.tag_type orelse @compileError("Desc union must be tagged!");
+                const Tag = U.tag_type orelse
+                    @compileError("Desc union must be tagged!");
                 const tag = std.meta.activeTag(value);
                 const type_name = @typeName(@TypeOf(value)) ++ "Type";
                 if (@field(Tag, field.name) == tag) {
@@ -341,14 +385,20 @@ pub const Surface = struct {
 pub const AdapterDesc = struct {
     id: js.DescId = js.default_desc_id,
 
-    pub fn setPowerPreference(desc: *AdapterDesc, power_preference: gfx.PowerPreference) void {
+    pub fn setPowerPreference(
+        desc: *AdapterDesc,
+        power_preference: gfx.PowerPreference,
+    ) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.initDesc();
         }
         setDescFieldValue(desc.id, "powerPreference", power_preference);
     }
 
-    pub fn setForceFallbackAdapter(desc: *AdapterDesc, force_fallback_adapter: bool) void {
+    pub fn setForceFallbackAdapter(
+        desc: *AdapterDesc,
+        force_fallback_adapter: bool,
+    ) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.initDesc();
         }
@@ -420,9 +470,12 @@ pub const Device = struct {
         var js_desc = js.initDesc();
         defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
-        setDescFieldValue(js_desc, "compositingAlphaMode", @as([]const u8, "opaque"));
+        setDescFieldValue(js_desc, "alphaMode", @as([]const u8, "opaque"));
 
-        const swapchain = Swapchain{ .id = surface.context_id, .view_desc = js.initDesc() };
+        const swapchain = Swapchain{
+            .id = surface.context_id,
+            .view_desc = js.initDesc(),
+        };
         js.configure(device.id, swapchain.id, js_desc);
         return swapchain;
     }
@@ -458,7 +511,11 @@ pub const Device = struct {
         js.destroyBuffer(buffer.id);
     }
 
-    pub fn initTexture(device: *Device, desc: gfx.TextureDesc, usage: gfx.TextureUsage) !Texture {
+    pub fn initTexture(
+        device: *Device,
+        desc: gfx.TextureDesc,
+        usage: gfx.TextureUsage,
+    ) !Texture {
         var js_desc = js.initDesc();
         defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
@@ -508,7 +565,10 @@ pub const Device = struct {
         };
     }
 
-    pub fn deinitBindGroupLayout(_: *Device, bind_group_layout: *BindGroupLayout) void {
+    pub fn deinitBindGroupLayout(
+        _: *Device,
+        bind_group_layout: *BindGroupLayout,
+    ) void {
         js.destroyBindGroupLayout(bind_group_layout.id);
     }
 
@@ -524,7 +584,10 @@ pub const Device = struct {
         js.destroyBindGroup(bind_group.id);
     }
 
-    pub fn initPipelineLayout(device: *Device, desc: gfx.PipelineLayoutDesc) !PipelineLayout {
+    pub fn initPipelineLayout(
+        device: *Device,
+        desc: gfx.PipelineLayoutDesc,
+    ) !PipelineLayout {
         var js_desc = js.initDesc();
         defer js.deinitDesc(js_desc);
         setDesc(js_desc, desc);
@@ -536,7 +599,10 @@ pub const Device = struct {
         js.destroyPipelineLayout(pipeline_layout.id);
     }
 
-    pub fn initRenderPipeline(device: *Device, desc: gfx.RenderPipelineDesc) !RenderPipeline {
+    pub fn initRenderPipeline(
+        device: *Device,
+        desc: gfx.RenderPipelineDesc,
+    ) !RenderPipeline {
         defer js.deinitDesc(desc.impl.id);
         return RenderPipeline{
             .id = js.createRenderPipeline(device.id, desc.impl.id),
@@ -638,7 +704,10 @@ pub const RenderPipelineDesc = struct {
         setDescFieldValue(desc.id, "layout", pipeline_layout);
     }
 
-    pub fn setVertexState(desc: *RenderPipelineDesc, vertex_state: gfx.VertexState) void {
+    pub fn setVertexState(
+        desc: *RenderPipelineDesc,
+        vertex_state: gfx.VertexState,
+    ) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.initDesc();
         }
@@ -675,7 +744,10 @@ pub const RenderPipelineDesc = struct {
         setDescFieldValue(desc.id, "multisample", multisample_state);
     }
 
-    pub fn setFragmentState(desc: *RenderPipelineDesc, fragment_state: gfx.FragmentState) void {
+    pub fn setFragmentState(
+        desc: *RenderPipelineDesc,
+        fragment_state: gfx.FragmentState,
+    ) void {
         if (desc.id == js.default_desc_id) {
             desc.id = js.initDesc();
         }
@@ -694,7 +766,10 @@ pub const RenderPipeline = struct {
 pub const CommandEncoder = struct {
     id: js.CommandEncoderId,
 
-    pub fn beginRenderPass(encoder: *CommandEncoder, desc: gfx.RenderPassDesc) !RenderPass {
+    pub fn beginRenderPass(
+        encoder: *CommandEncoder,
+        desc: gfx.RenderPassDesc,
+    ) !RenderPass {
         defer js.deinitDesc(desc.impl.id);
         return RenderPass{ .id = js.beginRenderPass(encoder.id, desc.impl.id) };
     }
@@ -728,14 +803,21 @@ pub const RenderPassDesc = struct {
         if (desc.id == js.default_desc_id) {
             desc.id = js.initDesc();
         }
-        setDescFieldValue(desc.id, "depthStencilAttachment", depth_stencil_attachment);
+        setDescFieldValue(
+            desc.id,
+            "depthStencilAttachment",
+            depth_stencil_attachment,
+        );
     }
 };
 
 pub const RenderPass = struct {
     id: js.RenderPassId,
 
-    pub fn setPipeline(render_pass: *RenderPass, render_pipeline: *const RenderPipeline) !void {
+    pub fn setPipeline(
+        render_pass: *RenderPass,
+        render_pipeline: *const RenderPipeline,
+    ) !void {
         js.setPipeline(render_pass.id, render_pipeline.id);
     }
 
@@ -750,7 +832,13 @@ pub const RenderPass = struct {
         else
             &[_]u8{};
 
-        js.setBindGroup(render_pass.id, group_index, group.id, offsets.ptr, offsets.len);
+        js.setBindGroup(
+            render_pass.id,
+            group_index,
+            group.id,
+            offsets.ptr,
+            offsets.len,
+        );
     }
 
     pub fn setVertexBuffer(
@@ -771,7 +859,14 @@ pub const RenderPass = struct {
         size: usize,
     ) !void {
         const fmt_name = getEnumName(index_format);
-        js.setIndexBuffer(render_pass.id, buffer.id, fmt_name.ptr, fmt_name.len, offset, size);
+        js.setIndexBuffer(
+            render_pass.id,
+            buffer.id,
+            fmt_name.ptr,
+            fmt_name.len,
+            offset,
+            size,
+        );
     }
 
     pub fn draw(
@@ -781,7 +876,13 @@ pub const RenderPass = struct {
         first_vertex: usize,
         first_instance: usize,
     ) !void {
-        js.draw(render_pass.id, vertex_count, instance_count, first_vertex, first_instance);
+        js.draw(
+            render_pass.id,
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        );
     }
 
     pub fn drawIndexed(
@@ -817,7 +918,14 @@ pub const Queue = struct {
         data: []const u8,
         data_offset: usize,
     ) !void {
-        js.queueWriteBuffer(queue.id, buffer.id, buffer_offset, data.ptr, data.len, data_offset);
+        js.queueWriteBuffer(
+            queue.id,
+            buffer.id,
+            buffer_offset,
+            data.ptr,
+            data.len,
+            data_offset,
+        );
     }
 
     pub fn writeTexture(

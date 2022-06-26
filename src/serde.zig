@@ -17,7 +17,8 @@ pub fn serialize(allocator: std.mem.Allocator, value: anytype) ![]u8 {
 }
 
 pub fn serializeGeneric(allocator: std.mem.Allocator, value: anytype) ![]u8 {
-    const bytes = allocator.alloc(u8, serializeSize(value)) catch return error.OutOfMemory;
+    const bytes = allocator.alloc(u8, serializeSize(value)) catch
+        return error.OutOfMemory;
     _ = serializeBytes(value, bytes);
     return bytes;
 }
@@ -43,7 +44,10 @@ fn serializeBytes(value: anytype, bytes: []u8) []u8 {
             switch (P.size) {
                 .One => out_bytes = serializeBytes(value.*, out_bytes),
                 .Slice => {
-                    out_bytes = serializeBytes(@intCast(serde_usize, value.len), out_bytes);
+                    out_bytes = serializeBytes(
+                        @intCast(serde_usize, value.len),
+                        out_bytes,
+                    );
                     switch (@typeInfo(P.child)) {
                         .Bool, .Int, .Float, .Enum => {
                             const value_bytes = std.mem.sliceAsBytes(value);
@@ -61,7 +65,9 @@ fn serializeBytes(value: anytype, bytes: []u8) []u8 {
                     }
                 },
                 else => |E| {
-                    @compileError("Cannot serialize pointer size " ++ @tagName(E) ++ "!");
+                    @compileError(
+                        "Cannot serialize pointer size " ++ @tagName(E) ++ "!",
+                    );
                 },
             }
         },
@@ -94,7 +100,10 @@ fn serializeBytes(value: anytype, bytes: []u8) []u8 {
             out_bytes = serializeBytes(tag, out_bytes);
             inline for (U.fields) |field| {
                 if (@field(UnionTagType, field.name) == tag) {
-                    out_bytes = serializeBytes(@field(value, field.name), out_bytes);
+                    out_bytes = serializeBytes(
+                        @field(value, field.name),
+                        out_bytes,
+                    );
                     break;
                 }
             }
@@ -121,7 +130,9 @@ pub fn serializeSize(value: anytype) usize {
                 .Slice => {
                     size += @sizeOf(serde_usize); // len
                     switch (@typeInfo(P.child)) {
-                        .Bool, .Int, .Float, .Enum => size += @sizeOf(P.child) * value.len,
+                        .Bool, .Int, .Float, .Enum => {
+                            size += @sizeOf(P.child) * value.len;
+                        },
                         else => {
                             for (value) |v| {
                                 size += serializeSize(v);
@@ -133,7 +144,9 @@ pub fn serializeSize(value: anytype) usize {
                     }
                 },
                 else => |E| {
-                    @compileError("Cannot serialize pointer size " ++ @tagName(E) ++ "!");
+                    @compileError(
+                        "Cannot serialize pointer size " ++ @tagName(E) ++ "!",
+                    );
                 },
             }
         },
@@ -178,7 +191,11 @@ pub const DeserializeDesc = struct {
     bytes_are_embedded: bool = false,
 };
 
-pub fn deserialize(desc: DeserializeDesc, comptime Type: type, bytes: []const u8) !Type {
+pub fn deserialize(
+    desc: DeserializeDesc,
+    comptime Type: type,
+    bytes: []const u8,
+) !Type {
     if (@hasDecl(Type, "deserialize")) {
         return try Type.deserialize(desc, bytes);
     } else {
@@ -186,7 +203,11 @@ pub fn deserialize(desc: DeserializeDesc, comptime Type: type, bytes: []const u8
     }
 }
 
-pub fn deserializeGeneric(desc: DeserializeDesc, comptime Type: type, bytes: []const u8) !Type {
+pub fn deserializeGeneric(
+    desc: DeserializeDesc,
+    comptime Type: type,
+    bytes: []const u8,
+) !Type {
     var value: Type = undefined;
     _ = try deserializeBytes(desc, Type, &value, bytes);
     return value;
@@ -220,7 +241,12 @@ fn deserializeBytes(
                 .One => {
                     if (desc.allocator) |a| {
                         var ptr = a.create(P.child) catch return error.OutOfMemory;
-                        in_bytes = try deserializeBytes(desc, P.child, ptr, in_bytes);
+                        in_bytes = try deserializeBytes(
+                            desc,
+                            P.child,
+                            ptr,
+                            in_bytes,
+                        );
                         value.* = ptr;
                     } else {
                         return error.AllocatorRequired;
@@ -228,7 +254,12 @@ fn deserializeBytes(
                 },
                 .Slice => {
                     var serde_len: serde_usize = undefined;
-                    in_bytes = try deserializeBytes(desc, serde_usize, &serde_len, in_bytes);
+                    in_bytes = try deserializeBytes(
+                        desc,
+                        serde_usize,
+                        &serde_len,
+                        in_bytes,
+                    );
 
                     const len = @intCast(usize, serde_len);
                     if (P.is_const and desc.bytes_are_embedded) {
@@ -243,7 +274,8 @@ fn deserializeBytes(
                             else => return error.AllocatorRequired,
                         }
                     } else if (desc.allocator) |a| {
-                        var slice = a.alloc(P.child, len) catch return error.OutOfMemory;
+                        var slice = a.alloc(P.child, len) catch
+                            return error.OutOfMemory;
                         switch (@typeInfo(P.child)) {
                             .Bool, .Int, .Float, .Enum => {
                                 std.mem.copy(
@@ -258,12 +290,22 @@ fn deserializeBytes(
                             },
                             else => {
                                 for (slice) |*s| {
-                                    in_bytes = try deserializeBytes(desc, P.child, s, in_bytes);
+                                    in_bytes = try deserializeBytes(
+                                        desc,
+                                        P.child,
+                                        s,
+                                        in_bytes,
+                                    );
                                 }
                             },
                         }
                         if (P.sentinel) |_| {
-                            in_bytes = try deserializeBytes(desc, P.child, &slice[P.len], in_bytes);
+                            in_bytes = try deserializeBytes(
+                                desc,
+                                P.child,
+                                &slice[P.len],
+                                in_bytes,
+                            );
                         }
                         value.* = slice;
                     } else {
@@ -271,7 +313,9 @@ fn deserializeBytes(
                     }
                 },
                 else => |E| {
-                    @compileError("Cannot deserialize pointer size " ++ @tagName(E));
+                    @compileError(
+                        "Cannot deserialize pointer size " ++ @tagName(E),
+                    );
                 },
             }
         },
@@ -295,12 +339,22 @@ fn deserializeBytes(
                 },
             }
             if (A.sentinel) |_| {
-                in_bytes = try deserializeBytes(desc, A.child, &value.*[A.len], in_bytes);
+                in_bytes = try deserializeBytes(
+                    desc,
+                    A.child,
+                    &value.*[A.len],
+                    in_bytes,
+                );
             }
         },
         .Struct => |S| {
             inline for (S.fields) |field| {
-                in_bytes = try deserializeBytes(desc, field.field_type, &@field(value.*, field.name), in_bytes);
+                in_bytes = try deserializeBytes(
+                    desc,
+                    field.field_type,
+                    &@field(value.*, field.name),
+                    in_bytes,
+                );
             }
         },
         .Union => |U| {
@@ -312,13 +366,20 @@ fn deserializeBytes(
                 if (@field(UnionTagType, field.name) == tag) {
                     const UnionType = @TypeOf(@field(value.*, field.name));
                     var u: UnionType = undefined;
-                    in_bytes = try deserializeBytes(desc, field.field_type, &u, in_bytes);
+                    in_bytes = try deserializeBytes(
+                        desc,
+                        field.field_type,
+                        &u,
+                        in_bytes,
+                    );
                     value.* = @unionInit(Type, field.name, u);
                     break;
                 }
             }
         },
-        else => |E| @compileError("Cannot deserializeBytes desc, type " ++ @tagName(E)),
+        else => |E| @compileError(
+            "Cannot deserializeBytes desc, type " ++ @tagName(E),
+        ),
     }
 
     return in_bytes;
@@ -350,7 +411,9 @@ pub fn deserializeFree(allocator: std.mem.Allocator, value: anytype) void {
                     allocator.free(value);
                 },
                 else => |E| {
-                    @compileError("Cannot deserialize pointer size " ++ @tagName(E) ++ "!");
+                    @compileError(
+                        "Cannot deserialize pointer size " ++ @tagName(E) ++ "!",
+                    );
                 },
             }
         },
@@ -427,22 +490,22 @@ test "serde" {
     const bytes = try serialize(std.testing.allocator, value);
     defer std.testing.allocator.free(bytes);
 
-    var deserialized_value = try deserialize(
+    var deser = try deserialize(
         .{ .allocator = std.testing.allocator },
         TestStruct,
         bytes,
     );
-    defer deserializeFree(std.testing.allocator, deserialized_value);
+    defer deserializeFree(std.testing.allocator, deser);
 
-    try std.testing.expectEqual(value.bool_field, deserialized_value.bool_field);
-    try std.testing.expectEqual(value.u32_field, deserialized_value.u32_field);
-    try std.testing.expectEqual(value.u64_field, deserialized_value.u64_field);
-    try std.testing.expectEqual(value.f32_field, deserialized_value.f32_field);
-    try std.testing.expectEqual(value.enum_field, deserialized_value.enum_field);
-    try std.testing.expectEqual(value.optional_field, deserialized_value.optional_field);
-    try std.testing.expectEqual(value.ptr_field.*, deserialized_value.ptr_field.*);
-    try std.testing.expectEqualSlices(u8, value.slice_field, deserialized_value.slice_field);
-    try std.testing.expectEqualSlices(u8, &value.array_field, &deserialized_value.array_field);
-    try std.testing.expectEqual(value.struct_field, deserialized_value.struct_field);
-    try std.testing.expectEqual(value.union_field, deserialized_value.union_field);
+    try std.testing.expectEqual(value.bool_field, deser.bool_field);
+    try std.testing.expectEqual(value.u32_field, deser.u32_field);
+    try std.testing.expectEqual(value.u64_field, deser.u64_field);
+    try std.testing.expectEqual(value.f32_field, deser.f32_field);
+    try std.testing.expectEqual(value.enum_field, deser.enum_field);
+    try std.testing.expectEqual(value.optional_field, deser.optional_field);
+    try std.testing.expectEqual(value.ptr_field.*, deser.ptr_field.*);
+    try std.testing.expectEqualSlices(u8, value.slice_field, deser.slice_field);
+    try std.testing.expectEqualSlices(u8, &value.array_field, &deser.array_field);
+    try std.testing.expectEqual(value.struct_field, deser.struct_field);
+    try std.testing.expectEqual(value.union_field, deser.union_field);
 }

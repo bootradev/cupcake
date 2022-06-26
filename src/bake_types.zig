@@ -47,7 +47,8 @@ pub fn textureBake(
         0,
     );
     defer stb.stbi_image_free(texture_bytes);
-    const texture_bytes_slice = texture_bytes[0..@intCast(usize, width * height * channels)];
+    const texture_bytes_len = @intCast(usize, width * height * channels);
+    const texture_bytes_slice = texture_bytes[0..texture_bytes_len];
 
     return TextureDesc{
         .size = .{ .width = @intCast(u32, width), .height = @intCast(u32, height) },

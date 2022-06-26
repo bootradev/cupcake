@@ -20,7 +20,8 @@ struct _Uniforms {
 
 @group(0) @binding(0) var<uniform> _uniforms : _Uniforms;
 
-@vertex fn vs_main(_vertex: _VertexInput, _instance: _InstanceInput) -> _VertexOutput {
+@vertex
+fn vs_main(_vertex: _VertexInput, _instance: _InstanceInput) -> _VertexOutput {
     let _vertex_pos = _vertex._pos_uv.xy;
     let _vertex_uv = _vertex._pos_uv.zw;
     let _instance_pos = _instance._pos_size.xy;
@@ -28,7 +29,8 @@ struct _Uniforms {
     let _instance_uv_pos = _instance._uv_pos_size.xy;
     let _instance_uv_size = _instance._uv_pos_size.zw;
 
-    let _pos = (_instance_pos + _vertex_pos * _instance_size) / _uniforms._viewport * 2.0 - 1.0;
+    let _inst_pos = _instance_pos + _vertex_pos * _instance_size; 
+    let _pos = _inst_pos / _uniforms._viewport * 2.0 - 1.0;
     let _uv = _instance_uv_pos + _vertex_uv * _instance_uv_size;
 
     var _output: _VertexOutput;
