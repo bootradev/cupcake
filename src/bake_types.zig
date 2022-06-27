@@ -38,16 +38,17 @@ pub fn textureBake(
     var width: c_int = undefined;
     var height: c_int = undefined;
     var channels: c_int = undefined;
+    const desired_channels: c_int = 4; // todo: add option to configure this
     const texture_bytes = stb.stbi_load_from_memory(
         deps[0].ptr,
         @intCast(c_int, deps[0].len),
         &width,
         &height,
         &channels,
-        0,
+        desired_channels,
     );
     defer stb.stbi_image_free(texture_bytes);
-    const texture_bytes_len = @intCast(usize, width * height * channels);
+    const texture_bytes_len = @intCast(usize, width * height * desired_channels);
     const texture_bytes_slice = texture_bytes[0..texture_bytes_len];
 
     return TextureDesc{

@@ -262,7 +262,7 @@ const _webgpu = {
 
     destroyTextureView(_textureViewId) {
         _webgpu._textures._get(_textureViewId >>> 16)._views._remove(
-            _textureViewId & 0x0000FFFF;
+            _textureViewId & 0x0000FFFF
         );
     },
 
